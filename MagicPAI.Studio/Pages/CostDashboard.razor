@@ -1,0 +1,86 @@
+@page "/magic/costs"
+@using MagicPAI.Core.Models
+@using MagicPAI.Studio.Services
+@inject SessionApiClient Api
+@inject SessionHubClient Hub
+
+<PageTitle>Cost Analytics</PageTitle>
+
+<div class="cost-dashboard">
+    <h2>Cost Analytics</h2>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+        <div class="summary-card">
+            <h4>Total Cost</h4>
+            <span class="big-number">$@totalCost.ToString("F4")</span>
+        </div>
+        <div class="summary-card">
+            <h4>Total Sessions</h4>
+            <span class="big-number">@sessions.Count</span>
+        </div>
+        <div class="summary-card">
+            <h4>Total Input Tokens</h4>
+            <span class="big-number">@totalInputTokens.ToString("N0")</span>
+        </div>
+        <div class="summary-card">
+            <h4>Total Output Tokens</h4>
+            <span class="big-number">@totalOutputTokens.ToString("N0")</span>
+        </div>
+    </div>
+
+    <!-- Per-Session Cost Table -->
+    <div class="cost-table card">
+        <h3>Cost by Session</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Session</th>
+                    <th>Agent</th>
+                    <th>State</th>
+                    <th>Cost (USD)</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in sessions.OrderByDescending(s => s.CreatedAt))
+                {
+                    <tr>
+                        <td>@(s.Id.Length > 8 ? s.Id[..8] : s.Id)...</td>
+                        <td>@s.Agent</td>
+                        <td><span class="status-badge @s.State.ToLowerInvariant()">@s.State</span></td>
+                        <td>$@s.TotalCostUsd.ToString("F4")</td>
+                        <td>@s.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private List<SessionInfo> sessions = new();
+    private decimal totalCost;
+    private int totalInputTokens;
+    private int totalOutputTokens;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Hub.OnCostUpdate += OnCostUpdate;
+        sessions = await Api.ListSessionsAsync();
+        totalCost = sessions.Sum(s => s.TotalCostUsd);
+    }
+
+    private void OnCostUpdate(CostUpdateEvent e)
+    {
+        var session = sessions.FirstOrDefault(s => s.Id == e.SessionId);
+        if (session is not null)
+        {
+            session.TotalCostUsd = e.TotalCostUsd;
+        }
+        totalCost = sessions.Sum(s => s.TotalCostUsd);
+        totalInputTokens += e.InputTokens;
+        totalOutputTokens += e.OutputTokens;
+        InvokeAsync(StateHasChanged);
+    }
+}

@@ -1,0 +1,116 @@
+@page "/magic/sessions/{SessionId}"
+@using MagicPAI.Core.Models
+@using MagicPAI.Studio.Services
+@using MagicPAI.Studio.Components
+@inject SessionHubClient Hub
+
+<PageTitle>Session @(SessionId.Length > 8 ? SessionId[..8] : SessionId)</PageTitle>
+
+<div class="session-view">
+    <!-- Output Panel (streaming) -->
+    <div class="output-area">
+        <OutputPanel @ref="outputPanel" />
+    </div>
+
+    <!-- Sidebar: Status + Verification -->
+    <div class="session-sidebar">
+        <h3>Status: <span class="status-badge @state">@state</span></h3>
+
+        <CostTracker SessionId="@SessionId" />
+
+        <ContainerStatus ContainerId="@containerId" />
+
+        @if (verificationUpdate is not null)
+        {
+            <VerificationBadge GateName="@verificationUpdate.GateName"
+                               Passed="@verificationUpdate.Passed"
+                               Output="@verificationUpdate.Output"
+                               Issues="@verificationUpdate.Issues" />
+        }
+
+        <DagView Activities="@activities" />
+
+        @if (state == "running")
+        {
+            <button @onclick="Stop" class="btn btn-danger">Stop Session</button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = "";
+
+    private OutputPanel? outputPanel;
+    private string state = "idle";
+    private string containerId = "";
+    private VerificationUpdateEvent? verificationUpdate;
+    private List<(string Name, string Status)> activities = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Hub.OnOutputChunk += OnChunk;
+        Hub.OnSessionStateChanged += OnState;
+        Hub.OnVerificationUpdate += OnVerification;
+        Hub.OnWorkflowProgress += OnProgress;
+        Hub.OnContainerSpawned += OnContainer;
+        Hub.OnError += OnError;
+
+        try
+        {
+            await Hub.ConnectAsync();
+        }
+        catch
+        {
+            // Hub may not be available
+        }
+    }
+
+    private void OnChunk(OutputChunkEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+        outputPanel?.AppendText(e.Text);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnState(SessionStateEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+        state = e.State;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnVerification(VerificationUpdateEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+        verificationUpdate = e;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnProgress(WorkflowProgressEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+        var existing = activities.FindIndex(a => a.Name == e.ActivityName);
+        if (existing >= 0)
+            activities[existing] = (e.ActivityName, e.Status);
+        else
+            activities.Add((e.ActivityName, e.Status));
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnContainer(ContainerEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+        containerId = e.ContainerId;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnError(ErrorEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+        outputPanel?.AppendText($"\n[ERROR] {e.Message}\n");
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Stop() =>
+        await Hub.StopSessionAsync(SessionId);
+}

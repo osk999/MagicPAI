@@ -1,0 +1,28 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="output-panel">
+    <div class="output-header">
+        <span>Output</span>
+        <button @onclick="Clear" class="btn btn-sm">Clear</button>
+    </div>
+    <pre class="output-content" @ref="preElement">@output</pre>
+</div>
+
+@code {
+    private string output = "";
+    private ElementReference preElement;
+
+    /// <summary>Append text to the output panel (called from parent).</summary>
+    public void AppendText(string text)
+    {
+        output += text;
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Clear the output panel.</summary>
+    public void Clear()
+    {
+        output = "";
+        StateHasChanged();
+    }
+}

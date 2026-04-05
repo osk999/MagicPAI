@@ -1,0 +1,15 @@
+<select @bind="Value" @bind:after="OnValueChanged" class="form-input agent-selector">
+    <option value="claude">Claude Code</option>
+    <option value="codex">Codex CLI</option>
+    <option value="gemini">Gemini CLI</option>
+</select>
+
+@code {
+    [Parameter] public string Value { get; set; } = "claude";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private async Task OnValueChanged()
+    {
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

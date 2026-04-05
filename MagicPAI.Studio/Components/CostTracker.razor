@@ -1,0 +1,34 @@
+@using MagicPAI.Core.Models
+@using MagicPAI.Studio.Services
+@inject SessionHubClient Hub
+
+<div class="cost-tracker">
+    <h4>Cost</h4>
+    <div class="cost-value">$@totalCost.ToString("F4")</div>
+    <div class="token-counts">
+        <span>In: @inputTokens.ToString("N0")</span>
+        <span>Out: @outputTokens.ToString("N0")</span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = "";
+
+    private decimal totalCost;
+    private int inputTokens;
+    private int outputTokens;
+
+    protected override void OnInitialized()
+    {
+        Hub.OnCostUpdate += OnCostUpdate;
+    }
+
+    private void OnCostUpdate(CostUpdateEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+        totalCost = e.TotalCostUsd;
+        inputTokens = e.InputTokens;
+        outputTokens = e.OutputTokens;
+        InvokeAsync(StateHasChanged);
+    }
+}

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "definitionId": "PostExecutionPipelineWorkflow",
+  "name": "Post-Execution Pipeline",
+  "description": "Post-execution quality: audit, review, quality gates, E2E test, verify and repair",
+  "version": 1,
+  "isLatest": true,
+  "isPublished": true,
+  "variables": [
+    { "name": "Prompt", "typeName": "String", "value": "" },
+    { "name": "ContainerId", "typeName": "String", "value": "" },
+    { "name": "Agent", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "sonnet" },
+    { "name": "WorkerOutput", "typeName": "String", "value": "" }
+  ],
+  "root": {
+    "type": "Elsa.Flowchart",
+    "id": "post-execution-pipeline-flow",
+    "start": "completeness-audit",
+    "activities": [
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "completeness-audit",
+        "name": "Completeness Audit"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "review-agent",
+        "name": "Review Agent"
+      },
+      {
+        "type": "MagicPAI.TriageActivity",
+        "id": "review-check",
+        "name": "Review Check"
+      },
+      {
+        "type": "MagicPAI.RunVerificationActivity",
+        "id": "quality-gates",
+        "name": "Quality Gates"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "e2e-test",
+        "name": "E2E Test"
+      },
+      {
+        "type": "MagicPAI.RunVerificationActivity",
+        "id": "final-verify",
+        "name": "Final Verify"
+      },
+      {
+        "type": "MagicPAI.RepairActivity",
+        "id": "post-repair",
+        "name": "Repair"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "post-repair-agent",
+        "name": "Repair Agent"
+      }
+    ],
+    "connections": [
+      { "source": { "activity": "completeness-audit", "port": "Done" }, "target": { "activity": "review-agent" } },
+      { "source": { "activity": "completeness-audit", "port": "Failed" }, "target": { "activity": "review-agent" } },
+      { "source": { "activity": "review-agent", "port": "Done" }, "target": { "activity": "review-check" } },
+      { "source": { "activity": "review-agent", "port": "Failed" }, "target": { "activity": "quality-gates" } },
+      { "source": { "activity": "review-check", "port": "Complex" }, "target": { "activity": "review-agent" } },
+      { "source": { "activity": "review-check", "port": "Simple" }, "target": { "activity": "quality-gates" } },
+      { "source": { "activity": "quality-gates", "port": "Passed" }, "target": { "activity": "e2e-test" } },
+      { "source": { "activity": "quality-gates", "port": "Inconclusive" }, "target": { "activity": "e2e-test" } },
+      { "source": { "activity": "quality-gates", "port": "Failed" }, "target": { "activity": "post-repair" } },
+      { "source": { "activity": "e2e-test", "port": "Done" }, "target": { "activity": "final-verify" } },
+      { "source": { "activity": "e2e-test", "port": "Failed" }, "target": { "activity": "final-verify" } },
+      { "source": { "activity": "final-verify", "port": "Failed" }, "target": { "activity": "post-repair" } },
+      { "source": { "activity": "post-repair", "port": "Done" }, "target": { "activity": "post-repair-agent" } },
+      { "source": { "activity": "post-repair-agent", "port": "Done" }, "target": { "activity": "final-verify" } },
+      { "source": { "activity": "post-repair-agent", "port": "Failed" }, "target": { "activity": "final-verify" } }
+    ]
+  }
+}

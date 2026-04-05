@@ -1,0 +1,61 @@
+{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "definitionId": "ResearchPipelineWorkflow",
+  "name": "Research Pipeline",
+  "description": "Research-first orchestration: enhance prompt, research, triage, then route to execution",
+  "version": 1,
+  "isLatest": true,
+  "isPublished": true,
+  "variables": [
+    { "name": "Prompt", "typeName": "String", "value": "" },
+    { "name": "ContainerId", "typeName": "String", "value": "" },
+    { "name": "Agent", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "sonnet" }
+  ],
+  "root": {
+    "type": "Elsa.Flowchart",
+    "id": "research-pipeline-flow",
+    "start": "research-enhance",
+    "activities": [
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "research-enhance",
+        "name": "Enhance Prompt"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "research-gather",
+        "name": "Research Gather"
+      },
+      {
+        "type": "MagicPAI.TriageActivity",
+        "id": "research-triage",
+        "name": "Triage"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "research-simple-exec",
+        "name": "Simple Execution"
+      },
+      {
+        "type": "MagicPAI.ArchitectActivity",
+        "id": "research-architect",
+        "name": "Architect"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "research-complex-exec",
+        "name": "Complex Execution"
+      }
+    ],
+    "connections": [
+      { "source": { "activity": "research-enhance", "port": "Done" }, "target": { "activity": "research-gather" } },
+      { "source": { "activity": "research-enhance", "port": "Failed" }, "target": { "activity": "research-gather" } },
+      { "source": { "activity": "research-gather", "port": "Done" }, "target": { "activity": "research-triage" } },
+      { "source": { "activity": "research-gather", "port": "Failed" }, "target": { "activity": "research-triage" } },
+      { "source": { "activity": "research-triage", "port": "Simple" }, "target": { "activity": "research-simple-exec" } },
+      { "source": { "activity": "research-triage", "port": "Complex" }, "target": { "activity": "research-architect" } },
+      { "source": { "activity": "research-architect", "port": "Done" }, "target": { "activity": "research-complex-exec" } }
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+@inherits LayoutComponentBase
+
+<div class="magicpai-layout">
+    <nav class="magicpai-sidebar">
+        <div class="sidebar-header">
+            <h3>MagicPAI</h3>
+        </div>
+        <ul class="nav-links">
+            <li><NavLink href="magic/dashboard" Match="NavLinkMatch.All">Dashboard</NavLink></li>
+            <li><NavLink href="magic/sessions">Sessions</NavLink></li>
+            <li><NavLink href="magic/costs">Cost Analytics</NavLink></li>
+            <li><NavLink href="magic/settings">Settings</NavLink></li>
+        </ul>
+        <hr />
+        <div class="sidebar-section">
+            <small>Elsa Studio</small>
+        </div>
+    </nav>
+    <main class="magicpai-content">
+        @Body
+    </main>
+</div>

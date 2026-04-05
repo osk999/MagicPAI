@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: docker/server/Dockerfile
+    ports:
+      - "5000:8080"        # API + SignalR + Blazor WASM
+      - "5001:8081"        # Secondary port (Elsa Studio)
+    environment:
+      - ConnectionStrings__MagicPai=Host=db;Database=magicpai;Username=magicpai;Password=magicpai
+      - MagicPAI__UseDocker=true
+      - MagicPAI__WorkerImage=magicpai-env:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for container management
+      - workspaces:/workspaces
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: magicpai
+      POSTGRES_USER: magicpai
+      POSTGRES_PASSWORD: magicpai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  worker-env-builder:
+    build:
+      context: worker-env
+      dockerfile: Dockerfile
+    image: magicpai-env:latest
+    # This service only builds the image; it does not run
+    profiles: ["build"]
+
+volumes:
+  pgdata:
+  workspaces:

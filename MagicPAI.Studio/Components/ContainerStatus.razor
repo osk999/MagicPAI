@@ -1,0 +1,14 @@
+<div class="container-status">
+    @if (string.IsNullOrEmpty(ContainerId))
+    {
+        <span class="status-indicator idle">No Container</span>
+    }
+    else
+    {
+        <span class="status-indicator running">Container: @(ContainerId.Length > 12 ? ContainerId[..12] : ContainerId)</span>
+    }
+</div>
+
+@code {
+    [Parameter] public string ContainerId { get; set; } = "";
+}

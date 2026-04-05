@@ -1,0 +1,115 @@
+{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "definitionId": "StandardOrchestrateWorkflow",
+  "name": "Standard Orchestrate",
+  "description": "Balanced pipeline: prompt enhancement, context, triage, complex/simple routing, verification",
+  "version": 1,
+  "isLatest": true,
+  "isPublished": true,
+  "variables": [
+    { "name": "Prompt", "typeName": "String", "value": "" },
+    { "name": "WorkspacePath", "typeName": "String", "value": "/workspace" },
+    { "name": "Agent", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "sonnet" },
+    { "name": "ContainerId", "typeName": "String", "value": "" }
+  ],
+  "root": {
+    "type": "Elsa.Flowchart",
+    "id": "standard-orchestrate-flow",
+    "start": "std-spawn",
+    "activities": [
+      {
+        "type": "MagicPAI.SpawnContainerActivity",
+        "id": "std-spawn",
+        "name": "Spawn Container"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "std-enhance",
+        "name": "Enhance Prompt"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "std-elaborate",
+        "name": "Elaborate"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "std-context",
+        "name": "Gather Context"
+      },
+      {
+        "type": "MagicPAI.TriageActivity",
+        "id": "std-triage",
+        "name": "Triage"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "std-simple-agent",
+        "name": "Simple Agent"
+      },
+      {
+        "type": "MagicPAI.RunVerificationActivity",
+        "id": "std-simple-verify",
+        "name": "Verify (Simple)"
+      },
+      {
+        "type": "MagicPAI.ArchitectActivity",
+        "id": "std-architect",
+        "name": "Architect"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "std-complex-agent",
+        "name": "Complex Agent"
+      },
+      {
+        "type": "MagicPAI.RunVerificationActivity",
+        "id": "std-complex-verify",
+        "name": "Verify (Complex)"
+      },
+      {
+        "type": "MagicPAI.RepairActivity",
+        "id": "std-repair",
+        "name": "Repair"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "std-repair-agent",
+        "name": "Repair Agent"
+      },
+      {
+        "type": "MagicPAI.DestroyContainerActivity",
+        "id": "std-destroy",
+        "name": "Destroy Container"
+      }
+    ],
+    "connections": [
+      { "source": { "activity": "std-spawn", "port": "Done" }, "target": { "activity": "std-enhance" } },
+      { "source": { "activity": "std-spawn", "port": "Failed" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-enhance", "port": "Done" }, "target": { "activity": "std-elaborate" } },
+      { "source": { "activity": "std-enhance", "port": "Failed" }, "target": { "activity": "std-elaborate" } },
+      { "source": { "activity": "std-elaborate", "port": "Done" }, "target": { "activity": "std-context" } },
+      { "source": { "activity": "std-elaborate", "port": "Failed" }, "target": { "activity": "std-context" } },
+      { "source": { "activity": "std-context", "port": "Done" }, "target": { "activity": "std-triage" } },
+      { "source": { "activity": "std-context", "port": "Failed" }, "target": { "activity": "std-triage" } },
+      { "source": { "activity": "std-triage", "port": "Simple" }, "target": { "activity": "std-simple-agent" } },
+      { "source": { "activity": "std-triage", "port": "Complex" }, "target": { "activity": "std-architect" } },
+      { "source": { "activity": "std-simple-agent", "port": "Done" }, "target": { "activity": "std-simple-verify" } },
+      { "source": { "activity": "std-simple-agent", "port": "Failed" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-simple-verify", "port": "Passed" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-simple-verify", "port": "Failed" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-simple-verify", "port": "Inconclusive" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-architect", "port": "Done" }, "target": { "activity": "std-complex-agent" } },
+      { "source": { "activity": "std-architect", "port": "Failed" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-complex-agent", "port": "Done" }, "target": { "activity": "std-complex-verify" } },
+      { "source": { "activity": "std-complex-agent", "port": "Failed" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-complex-verify", "port": "Passed" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-complex-verify", "port": "Inconclusive" }, "target": { "activity": "std-destroy" } },
+      { "source": { "activity": "std-complex-verify", "port": "Failed" }, "target": { "activity": "std-repair" } },
+      { "source": { "activity": "std-repair", "port": "Done" }, "target": { "activity": "std-repair-agent" } },
+      { "source": { "activity": "std-repair-agent", "port": "Done" }, "target": { "activity": "std-complex-verify" } },
+      { "source": { "activity": "std-repair-agent", "port": "Failed" }, "target": { "activity": "std-destroy" } }
+    ]
+  }
+}

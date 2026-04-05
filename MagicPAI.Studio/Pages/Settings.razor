@@ -1,0 +1,126 @@
+@page "/magic/settings"
+
+<PageTitle>Settings</PageTitle>
+
+<div class="settings-page">
+    <h2>Settings</h2>
+
+    <!-- Agent Configuration -->
+    <div class="card">
+        <h3>Default Agent Configuration</h3>
+        <div class="form-group">
+            <label>Default Agent</label>
+            <select @bind="defaultAgent" class="form-input">
+                <option value="claude">Claude Code</option>
+                <option value="codex">Codex CLI</option>
+                <option value="gemini">Gemini CLI</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Default Model</label>
+            <select @bind="defaultModel" class="form-input">
+                @foreach (var model in GetModelsForAgent(defaultAgent))
+                {
+                    <option value="@model">@model</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Max Turns Per Task</label>
+            <input type="number" @bind="maxTurns" min="1" max="100" class="form-input" />
+        </div>
+    </div>
+
+    <!-- Verification Configuration -->
+    <div class="card">
+        <h3>Verification Pipeline</h3>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" @bind="enableVerification" />
+                Enable Verification
+            </label>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" @bind="enableRepair" />
+                Enable Auto-Repair
+            </label>
+        </div>
+        <div class="form-group">
+            <label>Max Repair Attempts</label>
+            <input type="number" @bind="maxRepairAttempts" min="0" max="10" class="form-input" />
+        </div>
+        <div class="form-group">
+            <label>Enabled Gates</label>
+            @foreach (var gate in allGates)
+            {
+                <label class="checkbox-label">
+                    <input type="checkbox" checked="@enabledGates.Contains(gate)"
+                           @onchange="(e) => ToggleGate(gate, (bool)(e.Value ?? false))" />
+                    @gate
+                </label>
+            }
+        </div>
+    </div>
+
+    <!-- Docker Configuration -->
+    <div class="card">
+        <h3>Docker Configuration</h3>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" @bind="useDocker" />
+                Enable Docker Isolation
+            </label>
+        </div>
+        <div class="form-group">
+            <label>Worker Image</label>
+            <input @bind="workerImage" class="form-input" />
+        </div>
+        <div class="form-group">
+            <label>Max Concurrent Containers</label>
+            <input type="number" @bind="maxContainers" min="1" max="20" class="form-input" />
+        </div>
+    </div>
+
+    <button @onclick="SaveSettings" class="btn btn-primary">Save Settings</button>
+    @if (saved)
+    {
+        <span class="save-notice">Settings saved (applied on next session).</span>
+    }
+</div>
+
+@code {
+    private string defaultAgent = "claude";
+    private string defaultModel = "sonnet";
+    private int maxTurns = 20;
+    private bool enableVerification = true;
+    private bool enableRepair = true;
+    private int maxRepairAttempts = 5;
+    private HashSet<string> enabledGates = new() { "compile", "test", "hallucination" };
+    private readonly string[] allGates = ["compile", "test", "coverage", "security", "lint", "hallucination", "quality"];
+    private bool useDocker = true;
+    private string workerImage = "magicpai-env:latest";
+    private int maxContainers = 5;
+    private bool saved;
+
+    private string[] GetModelsForAgent(string agent) => agent switch
+    {
+        "claude" => ["haiku", "sonnet", "opus"],
+        "codex" => ["o3", "o4-mini", "gpt-4o"],
+        "gemini" => ["gemini-2.5-pro", "gemini-2.5-flash"],
+        _ => ["auto"]
+    };
+
+    private void ToggleGate(string gate, bool enabled)
+    {
+        if (enabled) enabledGates.Add(gate);
+        else enabledGates.Remove(gate);
+    }
+
+    private Task SaveSettings()
+    {
+        // Settings would be persisted via API in production
+        saved = true;
+        return Task.CompletedTask;
+    }
+}

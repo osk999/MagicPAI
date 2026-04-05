@@ -1,0 +1,20 @@
+version: '3.8'
+
+# Development overrides — use with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: docker/server/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__MagicPai=Data Source=magicpai.db
+      - MagicPAI__UseDocker=false
+    volumes:
+      - ../:/src:ro
+    profiles: ["dev"]
+
+  # No PostgreSQL in dev — uses SQLite
+  # No worker-env in dev — uses local execution

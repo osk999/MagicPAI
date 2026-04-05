@@ -1,0 +1,106 @@
+@page "/magic/dashboard"
+@using MagicPAI.Core.Models
+@using MagicPAI.Studio.Services
+@using MagicPAI.Studio.Components
+@inject SessionHubClient Hub
+@inject SessionApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>MagicPAI Dashboard</PageTitle>
+
+<div class="dashboard">
+    <h2>MagicPAI Dashboard</h2>
+
+    <!-- Quick Start -->
+    <div class="quick-start card">
+        <h3>Start a New Session</h3>
+        <textarea @bind="prompt" placeholder="Describe your task..." rows="3" class="form-input" />
+        <div class="controls">
+            <AgentSelector @bind-Value="selectedAgent" />
+            <input @bind="workspacePath" placeholder="/path/to/project" class="form-input" />
+            <button @onclick="StartSession" disabled="@isStarting" class="btn btn-primary">
+                @(isStarting ? "Starting..." : "Start Session")
+            </button>
+        </div>
+    </div>
+
+    <!-- Session List -->
+    <div class="session-list">
+        <h3>Active Sessions</h3>
+        @if (sessions.Count == 0)
+        {
+            <p class="empty-state">No sessions yet. Start one above.</p>
+        }
+        else
+        {
+            @foreach (var session in sessions)
+            {
+                <div class="session-card @session.State.ToLowerInvariant()"
+                     @onclick="() => NavigateToSession(session.Id)">
+                    <span class="status-badge">@session.State</span>
+                    <span class="session-id">@(session.Id.Length > 8 ? session.Id[..8] : session.Id)...</span>
+                    <span class="session-agent">@session.Agent</span>
+                    <span class="session-cost">$@session.TotalCostUsd.ToString("F4")</span>
+                    <span class="session-time">@session.CreatedAt.ToString("HH:mm:ss")</span>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private string prompt = "";
+    private string selectedAgent = "claude";
+    private string workspacePath = "";
+    private bool isStarting;
+    private List<SessionInfo> sessions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Hub.OnSessionStateChanged += OnStateChanged;
+        try
+        {
+            await Hub.ConnectAsync();
+        }
+        catch
+        {
+            // Hub may not be available during development
+        }
+        sessions = await Api.ListSessionsAsync();
+    }
+
+    private async Task StartSession()
+    {
+        if (string.IsNullOrWhiteSpace(prompt)) return;
+
+        isStarting = true;
+        try
+        {
+            var sessionId = await Hub.CreateSessionAsync(
+                prompt, workspacePath, selectedAgent);
+            NavigateToSession(sessionId);
+        }
+        catch (Exception ex)
+        {
+            // Handle connection error gracefully
+            Console.WriteLine($"Failed to start session: {ex.Message}");
+        }
+        finally
+        {
+            isStarting = false;
+        }
+    }
+
+    private void OnStateChanged(SessionStateEvent e)
+    {
+        var session = sessions.FirstOrDefault(s => s.Id == e.SessionId);
+        if (session is not null)
+        {
+            session.State = e.State;
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void NavigateToSession(string id) =>
+        Navigation.NavigateTo($"magic/sessions/{id}");
+}
