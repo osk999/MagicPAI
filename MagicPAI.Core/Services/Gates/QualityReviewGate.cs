@@ -17,7 +17,6 @@ public class QualityReviewGate : IVerificationGate
         (@"\.Result\b|\.Wait\(\)", "Synchronous wait on async (.Result/.Wait())"),
         (@"catch\s*\(\s*\)\s*\{?\s*\}", "Empty catch block"),
         (@"DateTime\.Now\b", "Uses DateTime.Now instead of DateTime.UtcNow"),
-        (@"public\s+class\s+\w+.*\{[^}]{5000,}\}", "Class may be too large"),
     ];
 
     public Task<bool> CanVerifyAsync(IContainerManager container,

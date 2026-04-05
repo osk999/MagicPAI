@@ -44,6 +44,9 @@ public class SessionController : ControllerBase
     public async Task<ActionResult<CreateSessionResponse>> CreateSession(
         [FromBody] CreateSessionRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.Prompt))
+            return BadRequest(new { Message = "Prompt is required" });
+
         var instanceId = Guid.NewGuid().ToString("N");
 
         var dispatchRequest = new DispatchWorkflowDefinitionRequest
@@ -141,7 +144,11 @@ public class SessionController : ControllerBase
 
         var resumeRequest = new DispatchWorkflowInstanceRequest(id)
         {
-            BookmarkId = null // Will resume the first available bookmark
+            BookmarkId = null, // Will resume the first available bookmark
+            Input = new Dictionary<string, object>
+            {
+                ["Decision"] = request.Approved ? "approve" : "reject"
+            }
         };
 
         await _dispatcher.DispatchAsync(resumeRequest, CancellationToken.None);

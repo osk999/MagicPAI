@@ -34,23 +34,34 @@ public class TriageActivity : Activity
         var containerMgr = context.GetRequiredService<IContainerManager>();
         var agentFactory = context.GetRequiredService<ICliAgentFactory>();
 
-        var runner = agentFactory.Create("claude");
-        var triagePrompt = BuildTriagePrompt(Prompt.Get(context));
-        var command = runner.BuildCommand(triagePrompt, "haiku", 1, "/workspace");
+        try
+        {
+            var runner = agentFactory.Create("claude");
+            var triagePrompt = BuildTriagePrompt(Prompt.Get(context) ?? "");
+            var command = runner.BuildCommand(triagePrompt, "haiku", 1, "/workspace");
 
-        var result = await containerMgr.ExecAsync(
-            ContainerId.Get(context), command, "/workspace", context.CancellationToken);
+            var result = await containerMgr.ExecAsync(
+                ContainerId.Get(context), command, "/workspace", context.CancellationToken);
 
-        var parsed = ParseTriageResponse(result.Output);
-        Complexity.Set(context, parsed.Complexity);
-        Category.Set(context, parsed.Category);
-        RecommendedModel.Set(context, parsed.RecommendedModel);
+            var parsed = ParseTriageResponse(result.Output ?? "");
+            Complexity.Set(context, parsed.Complexity);
+            Category.Set(context, parsed.Category);
+            RecommendedModel.Set(context, parsed.RecommendedModel);
 
-        context.AddExecutionLogEntry("TriageResult",
-            $"Complexity={parsed.Complexity}, Category={parsed.Category}");
+            context.AddExecutionLogEntry("TriageResult",
+                $"Complexity={parsed.Complexity}, Category={parsed.Category}");
 
-        var outcome = parsed.Complexity >= 7 ? "Complex" : "Simple";
-        await context.CompleteActivityWithOutcomesAsync(outcome);
+            var outcome = parsed.Complexity >= 7 ? "Complex" : "Simple";
+            await context.CompleteActivityWithOutcomesAsync(outcome);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            context.AddExecutionLogEntry("TriageFailed", ex.Message);
+            Complexity.Set(context, 5);
+            Category.Set(context, "code_gen");
+            RecommendedModel.Set(context, "sonnet");
+            await context.CompleteActivityWithOutcomesAsync("Simple");
+        }
     }
 
     private static string BuildTriagePrompt(string userPrompt) =>

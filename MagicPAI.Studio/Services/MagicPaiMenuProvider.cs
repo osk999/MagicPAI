@@ -23,14 +23,6 @@ public class MagicPaiMenuProvider : IMenuProvider
             },
             new()
             {
-                Href = "magic/sessions",
-                Text = "Sessions",
-                Icon = "fa-solid fa-play-circle",
-                Order = -9,
-                GroupName = "MagicPAI"
-            },
-            new()
-            {
                 Href = "magic/costs",
                 Text = "Cost Analytics",
                 Icon = "fa-solid fa-dollar-sign",

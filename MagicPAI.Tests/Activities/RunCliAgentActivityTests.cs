@@ -125,4 +125,62 @@ public class RunCliAgentActivityTests
         Assert.Contains("--sandbox=false", cmd);
         Assert.Contains("--model gemini-3.1-pro-preview", cmd);
     }
+
+    [Fact]
+    public void Codex_DefaultModel_Is_Gpt54()
+    {
+        var runner = new CodexRunner();
+        Assert.Equal("gpt-5.4", runner.DefaultModel);
+        Assert.Contains("gpt-5.4", runner.AvailableModels);
+        Assert.Contains("gpt-5.4-mini", runner.AvailableModels);
+    }
+
+    [Fact]
+    public void Codex_ResolveModel_Aliases()
+    {
+        var runner = new CodexRunner();
+        var cmd = runner.BuildCommand("test", "gpt5", 1, "/w");
+        Assert.Contains("-m gpt-5.4", cmd);
+    }
+
+    [Fact]
+    public void Codex_ParseResponse_Detects_Error()
+    {
+        var runner = new CodexRunner();
+        var result = runner.ParseResponse("Something went wrong with error");
+        Assert.False(result.Success);
+    }
+
+    [Fact]
+    public void Codex_ParseResponse_Success_When_No_Error()
+    {
+        var runner = new CodexRunner();
+        var result = runner.ParseResponse("Task completed successfully");
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public void Gemini_DefaultModel_Is_31ProPreview()
+    {
+        var runner = new GeminiRunner();
+        Assert.Equal("gemini-3.1-pro-preview", runner.DefaultModel);
+        Assert.Contains("gemini-3-flash", runner.AvailableModels);
+    }
+
+    [Fact]
+    public void Gemini_ResolveModel_Aliases()
+    {
+        var runner = new GeminiRunner();
+        var cmd = runner.BuildCommand("test", "flash", 1, "/w");
+        Assert.Contains("--model gemini-3-flash", cmd);
+    }
+
+    [Fact]
+    public void Gemini_ParseResponse_Always_Succeeds()
+    {
+        var runner = new GeminiRunner();
+        var result = runner.ParseResponse("any output");
+        Assert.True(result.Success);
+        Assert.Equal("any output", result.Output);
+    }
 }

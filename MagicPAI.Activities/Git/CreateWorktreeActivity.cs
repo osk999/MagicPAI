@@ -27,8 +27,8 @@ public class CreateWorktreeActivity : Activity
     {
         var containerMgr = context.GetRequiredService<IContainerManager>();
         var containerId = ContainerId.Get(context);
-        var branchName = BranchName.Get(context);
-        var repoDir = RepoDirectory.Get(context);
+        var branchName = SanitizeBranchName(BranchName.Get(context) ?? "");
+        var repoDir = RepoDirectory.Get(context) ?? "/workspace";
         var worktreePath = $"/workspace/worktrees/{branchName}";
 
         try
@@ -58,5 +58,12 @@ public class CreateWorktreeActivity : Activity
             context.AddExecutionLogEntry("WorktreeCreateFailed", ex.Message);
             await context.CompleteActivityWithOutcomesAsync("Failed");
         }
+    }
+
+    /// <summary>Sanitize branch name to prevent shell injection.</summary>
+    public static string SanitizeBranchName(string name)
+    {
+        // Allow only alphanumeric, hyphens, underscores, dots, and slashes
+        return new string(name.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' or '/').ToArray());
     }
 }

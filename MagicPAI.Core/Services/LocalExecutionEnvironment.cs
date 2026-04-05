@@ -11,7 +11,6 @@ public class LocalExecutionEnvironment : IExecutionEnvironment
         var psi = new ProcessStartInfo
         {
             FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "bash",
-            Arguments = OperatingSystem.IsWindows() ? $"/c {command}" : $"-c \"{command}\"",
             WorkingDirectory = workDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -19,7 +18,19 @@ public class LocalExecutionEnvironment : IExecutionEnvironment
             CreateNoWindow = true
         };
 
-        var process = await StartProcessAsync(psi, ct);
+        // Use ArgumentList to avoid shell injection
+        if (OperatingSystem.IsWindows())
+        {
+            psi.ArgumentList.Add("/c");
+            psi.ArgumentList.Add(command);
+        }
+        else
+        {
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(command);
+        }
+
+        using var process = await StartProcessAsync(psi, ct);
         var output = await process.StandardOutput.ReadToEndAsync(ct);
         var error = await process.StandardError.ReadToEndAsync(ct);
         await process.WaitForExitAsync(ct);

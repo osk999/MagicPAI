@@ -67,4 +67,26 @@ public class MagicPaiConfig
     // --- Model Routing ---
     public bool EnableAdaptiveRouting { get; set; }
     public Dictionary<string, string> ModelOverrides { get; set; } = new();
+
+    /// <summary>Validate config values and return list of problems (empty = valid).</summary>
+    public IReadOnlyList<string> Validate()
+    {
+        var errors = new List<string>();
+
+        if (MaxConcurrentContainers < 1) errors.Add("MaxConcurrentContainers must be >= 1");
+        if (ContainerTimeoutMinutes < 1) errors.Add("ContainerTimeoutMinutes must be >= 1");
+        if (DefaultMemoryLimitMb < 256) errors.Add("DefaultMemoryLimitMb must be >= 256");
+        if (DefaultCpuCount < 1) errors.Add("DefaultCpuCount must be >= 1");
+        if (MaxTurnsPerTask < 1) errors.Add("MaxTurnsPerTask must be >= 1");
+        if (MaxRepairAttempts < 0) errors.Add("MaxRepairAttempts must be >= 0");
+        if (CoverageThreshold is < 0 or > 100) errors.Add("CoverageThreshold must be 0-100");
+        if (MaxBudgetUsd < 0) errors.Add("MaxBudgetUsd must be >= 0");
+        if (ComplexityThreshold is < 1 or > 10) errors.Add("ComplexityThreshold must be 1-10");
+        if (GuiPortRangeStart < 1024) errors.Add("GuiPortRangeStart must be >= 1024");
+        if (GuiPortRangeEnd <= GuiPortRangeStart) errors.Add("GuiPortRangeEnd must be > GuiPortRangeStart");
+        if (MaxParallelWorkers < 1) errors.Add("MaxParallelWorkers must be >= 1");
+        if (SignalRBufferSize < 10) errors.Add("SignalRBufferSize must be >= 10");
+
+        return errors;
+    }
 }

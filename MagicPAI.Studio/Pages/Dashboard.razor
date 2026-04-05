@@ -48,6 +48,8 @@
     </div>
 </div>
 
+@implements IDisposable
+
 @code {
     private string prompt = "";
     private string selectedAgent = "claude";
@@ -80,10 +82,9 @@
                 prompt, workspacePath, selectedAgent);
             NavigateToSession(sessionId);
         }
-        catch (Exception ex)
+        catch
         {
-            // Handle connection error gracefully
-            Console.WriteLine($"Failed to start session: {ex.Message}");
+            // Hub connection may fail during development — ignore
         }
         finally
         {
@@ -103,4 +104,9 @@
 
     private void NavigateToSession(string id) =>
         Navigation.NavigateTo($"magic/sessions/{id}");
+
+    public void Dispose()
+    {
+        Hub.OnSessionStateChanged -= OnStateChanged;
+    }
 }

@@ -30,9 +30,9 @@ public class RepairActivity : Activity
 
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
-        var failedGates = FailedGates.Get(context);
-        var originalPrompt = OriginalPrompt.Get(context);
-        var gateResultsJson = GateResultsJson.Get(context);
+        var failedGates = FailedGates.Get(context) ?? [];
+        var originalPrompt = OriginalPrompt.Get(context) ?? "";
+        var gateResultsJson = GateResultsJson.Get(context) ?? "[]";
 
         var prompt = BuildRepairPrompt(originalPrompt, failedGates, gateResultsJson);
         RepairPrompt.Set(context, prompt);

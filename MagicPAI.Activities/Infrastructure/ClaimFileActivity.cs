@@ -27,8 +27,8 @@ public class ClaimFileActivity : Activity
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
         var blackboard = context.GetRequiredService<SharedBlackboard>();
-        var filePath = FilePath.Get(context);
-        var taskId = TaskId.Get(context);
+        var filePath = FilePath.Get(context) ?? "";
+        var taskId = TaskId.Get(context) ?? "";
 
         var claimed = blackboard.ClaimFile(filePath, taskId);
         Claimed.Set(context, claimed);

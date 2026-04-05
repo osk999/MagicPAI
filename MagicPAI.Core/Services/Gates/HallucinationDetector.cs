@@ -45,7 +45,7 @@ public partial class HallucinationDetector : IVerificationGate
         foreach (var line in sourceResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var referencedFile = ExtractFileReference(line);
-            if (referencedFile is not null &&
+            if (!string.IsNullOrWhiteSpace(referencedFile) &&
                 referencedFile.Contains('.') &&
                 !existingFiles.Contains(referencedFile) &&
                 !IsStandardLibraryReference(referencedFile))

@@ -56,7 +56,8 @@ public class ClaudeRunner : ICliAgentRunner
     {
         try
         {
-            return JsonDocument.Parse(line).RootElement;
+            using var doc = JsonDocument.Parse(line);
+            return doc.RootElement.Clone();
         }
         catch
         {

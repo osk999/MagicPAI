@@ -64,38 +64,49 @@ public class RunCliAgentActivity : Activity
         var containerMgr = context.GetRequiredService<IContainerManager>();
         var agentFactory = context.GetRequiredService<ICliAgentFactory>();
 
-        var containerId = ContainerId.Get(context);
-        var agent = agentFactory.Create(Agent.Get(context));
-        var prompt = Prompt.Get(context);
-        var model = Model.Get(context);
-        var workDir = WorkingDirectory.Get(context);
-        var maxTurns = MaxTurns.Get(context);
+        try
+        {
+            var containerId = ContainerId.Get(context);
+            var agent = agentFactory.Create(Agent.Get(context) ?? "claude");
+            var prompt = Prompt.Get(context) ?? "";
+            var model = Model.Get(context) ?? "auto";
+            var workDir = WorkingDirectory.Get(context) ?? "/workspace";
+            var maxTurns = MaxTurns.Get(context);
 
-        var command = agent.BuildCommand(prompt, model, maxTurns, workDir);
+            var command = agent.BuildCommand(prompt, model, maxTurns, workDir);
 
-        var result = await containerMgr.ExecStreamingAsync(
-            containerId, command,
-            onOutput: chunk =>
-            {
-                context.AddExecutionLogEntry("OutputChunk",
-                    JsonSerializer.Serialize(new
-                    {
-                        activityId = context.Activity.Id,
-                        text = chunk
-                    }));
-            },
-            timeout: TimeSpan.FromMinutes(TimeoutMinutes.Get(context)),
-            ct: context.CancellationToken);
+            var result = await containerMgr.ExecStreamingAsync(
+                containerId, command,
+                onOutput: chunk =>
+                {
+                    context.AddExecutionLogEntry("OutputChunk",
+                        JsonSerializer.Serialize(new
+                        {
+                            activityId = context.Activity.Id,
+                            text = chunk
+                        }));
+                },
+                timeout: TimeSpan.FromMinutes(TimeoutMinutes.Get(context)),
+                ct: context.CancellationToken);
 
-        var parsed = agent.ParseResponse(result.Output);
+            var parsed = agent.ParseResponse(result.Output ?? "");
 
-        Response.Set(context, parsed.Output);
-        Success.Set(context, parsed.Success);
-        CostUsd.Set(context, parsed.CostUsd);
-        FilesModified.Set(context, parsed.FilesModified);
-        ExitCode.Set(context, result.ExitCode);
+            Response.Set(context, parsed.Output);
+            Success.Set(context, parsed.Success);
+            CostUsd.Set(context, parsed.CostUsd);
+            FilesModified.Set(context, parsed.FilesModified);
+            ExitCode.Set(context, result.ExitCode);
 
-        await context.CompleteActivityWithOutcomesAsync(
-            parsed.Success ? "Done" : "Failed");
+            await context.CompleteActivityWithOutcomesAsync(
+                parsed.Success ? "Done" : "Failed");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            context.AddExecutionLogEntry("AgentExecutionFailed", ex.Message);
+            Response.Set(context, ex.Message);
+            Success.Set(context, false);
+            ExitCode.Set(context, -1);
+            await context.CompleteActivityWithOutcomesAsync("Failed");
+        }
     }
 }

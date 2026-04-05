@@ -10,6 +10,12 @@ public class DockerContainerManager : IContainerManager, IDisposable
 {
     private readonly DockerClient _docker;
     private readonly ConcurrentDictionary<string, string?> _guiUrls = new();
+    private const int MaxRetries = 3;
+    private static readonly TimeSpan[] RetryDelays = [
+        TimeSpan.FromMilliseconds(200),
+        TimeSpan.FromMilliseconds(500),
+        TimeSpan.FromSeconds(1)
+    ];
 
     public DockerContainerManager()
     {
@@ -38,8 +44,8 @@ public class DockerContainerManager : IContainerManager, IDisposable
 
         if (config.EnableGui && config.GuiPort.HasValue)
         {
-            exposedPorts["6080/tcp"] = default;
-            portBindings["6080/tcp"] =
+            exposedPorts["7900/tcp"] = default;
+            portBindings["7900/tcp"] =
             [
                 new PortBinding { HostPort = config.GuiPort.Value.ToString() }
             ];
@@ -57,9 +63,11 @@ public class DockerContainerManager : IContainerManager, IDisposable
             OpenStdin = true
         };
 
-        var response = await _docker.Containers.CreateContainerAsync(createParams, ct);
-        await _docker.Containers.StartContainerAsync(response.ID,
-            new ContainerStartParameters(), ct);
+        var response = await RetryAsync(
+            () => _docker.Containers.CreateContainerAsync(createParams, ct), ct);
+        await RetryAsync(
+            () => _docker.Containers.StartContainerAsync(response.ID,
+                new ContainerStartParameters(), ct), ct);
 
         string? guiUrl = config.EnableGui && config.GuiPort.HasValue
             ? $"http://localhost:{config.GuiPort.Value}"
@@ -127,7 +135,7 @@ public class DockerContainerManager : IContainerManager, IDisposable
             }
         }
 
-        var inspect = await _docker.Exec.InspectContainerExecAsync(exec.ID, ct);
+        var inspect = await _docker.Exec.InspectContainerExecAsync(exec.ID, cts.Token);
         return new ExecResult((int)inspect.ExitCode, stdout.ToString(), stderr.ToString());
     }
 
@@ -138,9 +146,13 @@ public class DockerContainerManager : IContainerManager, IDisposable
             await _docker.Containers.StopContainerAsync(containerId,
                 new ContainerStopParameters { WaitBeforeKillSeconds = 5 }, ct);
         }
-        catch
+        catch (DockerApiException)
         {
-            // Container may already be stopped
+            // Container may already be stopped or removed
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation during stop is acceptable
         }
 
         await _docker.Containers.RemoveContainerAsync(containerId,
@@ -169,5 +181,38 @@ public class DockerContainerManager : IContainerManager, IDisposable
     {
         _docker.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Retry a Docker operation with exponential backoff for transient failures.</summary>
+    private static async Task<T> RetryAsync<T>(Func<Task<T>> operation, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (Exception) when (attempt < MaxRetries - 1 && !ct.IsCancellationRequested)
+            {
+                await Task.Delay(RetryDelays[attempt], ct);
+            }
+        }
+    }
+
+    /// <summary>Retry a Docker operation (void return) with exponential backoff.</summary>
+    private static async Task RetryAsync(Func<Task> operation, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await operation();
+                return;
+            }
+            catch (Exception) when (attempt < MaxRetries - 1 && !ct.IsCancellationRequested)
+            {
+                await Task.Delay(RetryDelays[attempt], ct);
+            }
+        }
     }
 }

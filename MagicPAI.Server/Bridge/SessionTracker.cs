@@ -26,10 +26,22 @@ public class SessionTracker
 
     public void UpdateState(string sessionId, string state)
     {
-        if (_sessions.TryGetValue(sessionId, out var session))
-        {
-            session.State = state;
-        }
+        _sessions.AddOrUpdate(sessionId,
+            _ => new SessionInfo { Id = sessionId, State = state },
+            (_, existing) =>
+            {
+                // Thread-safe: create new instance with updated state
+                return new SessionInfo
+                {
+                    Id = existing.Id,
+                    WorkflowId = existing.WorkflowId,
+                    State = state,
+                    TotalCostUsd = existing.TotalCostUsd,
+                    Agent = existing.Agent,
+                    PromptPreview = existing.PromptPreview,
+                    CreatedAt = existing.CreatedAt,
+                };
+            });
     }
 
     public void AppendOutput(string sessionId, string text)

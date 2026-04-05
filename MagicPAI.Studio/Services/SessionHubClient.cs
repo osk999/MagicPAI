@@ -48,7 +48,7 @@ public class SessionHubClient : IAsyncDisposable
             e => OnCostUpdate?.Invoke(e));
         _connection.On<SessionStateEvent>("sessionStateChanged",
             e => OnSessionStateChanged?.Invoke(e));
-        _connection.On<ContainerEvent>("containerSpawned",
+        _connection.On<ContainerEvent>("containerEvent",
             e => OnContainerSpawned?.Invoke(e));
         _connection.On<ErrorEvent>("error",
             e => OnError?.Invoke(e));
@@ -62,14 +62,20 @@ public class SessionHubClient : IAsyncDisposable
         _started = true;
     }
 
-    /// <summary>Create a new session and start its workflow.</summary>
+    /// <summary>Create a new session and start its workflow. Returns the session ID.</summary>
     public async Task<string> CreateSessionAsync(
         string prompt, string workspacePath,
         string agent = "claude", string model = "auto")
     {
-        return await _connection.InvokeAsync<string>(
+        // Hub returns CreateSessionResult { SessionId, WorkflowName }
+        // We extract just the SessionId for the client
+        var result = await _connection.InvokeAsync<CreateSessionResult>(
             "CreateSession", prompt, workspacePath, agent, model);
+        return result?.SessionId ?? "";
     }
+
+    // Mirror of server's CreateSessionResult for deserialization
+    private record CreateSessionResult(string SessionId, string WorkflowName);
 
     /// <summary>Stop a running session.</summary>
     public async Task StopSessionAsync(string sessionId)
@@ -78,9 +84,9 @@ public class SessionHubClient : IAsyncDisposable
     }
 
     /// <summary>Approve or reject a human approval gate.</summary>
-    public async Task ApproveAsync(string sessionId, string decision)
+    public async Task ApproveAsync(string sessionId, bool approve)
     {
-        await _connection.InvokeAsync("Approve", sessionId, decision);
+        await _connection.InvokeAsync("Approve", sessionId, approve);
     }
 
     public async ValueTask DisposeAsync()

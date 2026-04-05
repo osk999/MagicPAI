@@ -120,7 +120,11 @@ public class SessionHub : Hub
         // Resume the workflow by dispatching to the instance with approval input
         var request = new DispatchWorkflowInstanceRequest(sessionId)
         {
-            BookmarkId = null // Will resume the first available bookmark
+            BookmarkId = null, // Will resume the first available bookmark
+            Input = new Dictionary<string, object>
+            {
+                ["Decision"] = decision ? "approve" : "reject"
+            }
         };
 
         await _dispatcher.DispatchAsync(request, CancellationToken.None);

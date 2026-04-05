@@ -27,6 +27,10 @@
 17. [Configuration Tests](#17-configuration-tests)
 18. [Docker Infrastructure Tests](#18-docker-infrastructure-tests)
 19. [Blazor Studio Frontend Tests](#19-blazor-studio-frontend-tests)
+20. [Cross-Cutting Concerns & Advanced Scenarios](#20-cross-cutting-concerns--advanced-scenarios)
+21. [Production Readiness Tests](#21-production-readiness-tests)
+22. [Streaming Pipeline Tracing Tests](#22-streaming-pipeline-tracing-tests)
+23. [Classifier Reliability & JSON Schema Enforcement](#23-classifier-reliability--json-schema-enforcement)
 
 ---
 
@@ -512,6 +516,8 @@
 | 4.8 | `ExecResult_RecordEquality` | Two identical | Equal |
 | 4.9 | `PipelineResult_AllPassed_True` | All gates pass | true |
 | 4.10 | `PipelineResult_AllPassed_False` | Blocking gate fails | false |
+| 4.10b | `PipelineResult_IsInconclusive_EmptyGates` | Gates=[] | IsInconclusive=true |
+| 4.10c | `PipelineResult_IsInconclusive_WithGates` | Gates has entries | IsInconclusive=false |
 | 4.11 | `SessionInfo_DefaultState` | New instance | "idle" |
 | 4.12 | `SessionInfo_CreatedAtIsUtc` | New instance | Kind = Utc |
 | 4.13 | `MagicPaiConfig_AllDefaults` | New instance | All defaults match expected |
@@ -1590,6 +1596,378 @@
 
 ---
 
+## 20. Cross-Cutting Concerns & Advanced Scenarios
+
+### 20.1 Elsa Workflow Persistence & Resumption
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.1.1 | `Workflow_PersistsToSQLite` | Start workflow, check DB | Workflow instance in DB |
+| 20.1.2 | `Workflow_SurvivesServerRestart` | Start workflow, restart server, check | Workflow resumes |
+| 20.1.3 | `Bookmark_PersistsForHumanApproval` | HumanApproval suspends | Bookmark saved to DB |
+| 20.1.4 | `Bookmark_ResumesOnApproval` | Send approval after bookmark | Workflow continues |
+| 20.1.5 | `WorkflowVariables_PersistAcrossActivities` | Prompt variable | Available in all activities |
+| 20.1.6 | `WorkflowVariables_ContainerId_Flows` | SpawnContainer -> RunAgent | ContainerId passed correctly |
+| 20.1.7 | `WorkflowCancellation_StopsExecution` | Cancel mid-workflow | Activities stop, container cleaned |
+| 20.1.8 | `WorkflowFault_RecordsError` | Activity throws | Faulted state recorded |
+
+### 20.2 Parallel Sub-Task Execution
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.2.1 | `ContextGatherer_3BranchesRunParallel` | Real parallel execution | All 3 start before any finishes |
+| 20.2.2 | `ContextGatherer_MergeWaitsForAll` | Parallel fork-join | Merge runs after all branches |
+| 20.2.3 | `ContextGatherer_PartialFailure_StillMerges` | 1 of 3 fails | Merge proceeds with partial data |
+| 20.2.4 | `ParallelWorkers_FileClaimPreventsConflict` | 2 workers, same file | Only 1 claims |
+| 20.2.5 | `ParallelWorkers_DifferentWorktrees` | 2 parallel tasks | Each gets own git worktree |
+| 20.2.6 | `ParallelWorkers_MaxParallelRespected` | MaxParallelWorkers=2, 5 tasks | Only 2 run at once |
+
+### 20.3 Multi-Language Workspace Tests
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.3.1 | `CompileGate_PythonProject` | Python workspace with setup.py | Detects, runs build |
+| 20.3.2 | `CompileGate_RustProject` | Rust workspace with Cargo.toml | `cargo build` |
+| 20.3.3 | `CompileGate_GoProject` | Go workspace with go.mod | `go build ./...` |
+| 20.3.4 | `CompileGate_NodeProject` | Node workspace with package.json | `npm run build --if-present` |
+| 20.3.5 | `CompileGate_DotnetProject` | .NET workspace with .csproj | `dotnet build` |
+| 20.3.6 | `CompileGate_MixedProject` | .csproj + package.json | First match wins (dotnet) |
+| 20.3.7 | `TestGate_PythonPytest` | pytest.ini present | `pytest` |
+| 20.3.8 | `TestGate_NodeJest` | jest.config.js | `npm test` |
+| 20.3.9 | `TestGate_RustCargo` | Cargo.toml | `cargo test` |
+| 20.3.10 | `TestGate_GoTest` | go.mod | `go test ./...` |
+| 20.3.11 | `SecurityGate_PythonCode` | .py with hardcoded secret | Detected |
+| 20.3.12 | `SecurityGate_JavaScriptCode` | .js with eval() | Detected |
+| 20.3.13 | `SecurityGate_GoCode` | .go with exec | Detected |
+| 20.3.14 | `SecurityGate_RustCode` | .rs with unsafe patterns | Detected |
+
+### 20.4 Cost Budget Enforcement
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.4.1 | `Budget_ZeroIsUnlimited` | MaxBudgetUsd=0 | No limit enforced |
+| 20.4.2 | `Budget_WarnAt80Percent` | WarnAtBudgetPercent=80, spend 81% | Warning emitted |
+| 20.4.3 | `Budget_StopsAtLimit` | MaxBudgetUsd=1.00, agent costs $1.50 | Execution stops |
+| 20.4.4 | `Budget_AccumulatesAcrossActivities` | Triage + Agent + Repair | Total summed |
+| 20.4.5 | `Budget_TrackCosts_False_Disables` | TrackCosts=false | No cost tracking |
+| 20.4.6 | `Budget_MultiAgent_AllCounted` | Claude triage + Codex exec | Both costs counted |
+
+### 20.5 Real Verification Gate Integration (in Container)
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.5.1 | `CompileGate_RealDotnetBuild_InContainer` | .csproj in workspace | dotnet build runs, passes |
+| 20.5.2 | `CompileGate_RealBuildFailure_InContainer` | Broken .cs file | Gate fails, errors extracted |
+| 20.5.3 | `TestGate_RealDotnetTest_InContainer` | Test project | dotnet test runs |
+| 20.5.4 | `TestGate_RealTestFailure_InContainer` | Failing test | Gate fails, test names extracted |
+| 20.5.5 | `SecurityGate_RealScan_InContainer` | Code with hardcoded API key | Issue detected |
+| 20.5.6 | `HallucinationDetector_RealScan_InContainer` | Import of phantom.js | Phantom detected |
+| 20.5.7 | `LintGate_RealLint_InContainer` | eslint config + messy JS | Lint issues found |
+| 20.5.8 | `QualityGate_RealScan_InContainer` | Code with TODO + .Wait() | Issues reported |
+| 20.5.9 | `Pipeline_AllGates_RealExecution` | Full project in container | All 7 gates run |
+| 20.5.10 | `Pipeline_GateOrder_Respected` | compile before test | compile runs first |
+
+### 20.6 Elsa Studio Visual Designer Integration
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.6.1 | `ElsaStudio_CustomActivities_InPalette` | Open designer | All MagicPAI activities visible |
+| 20.6.2 | `ElsaStudio_ActivityCategory_MagicPAI` | Filter by MagicPAI | 17 activities grouped correctly |
+| 20.6.3 | `ElsaStudio_RunCliAgent_DragDrop` | Add to canvas | Activity configurable |
+| 20.6.4 | `ElsaStudio_RunCliAgent_DropdownOptions` | Agent dropdown | claude, codex, gemini |
+| 20.6.5 | `ElsaStudio_TriageActivity_Outcomes` | Triage on canvas | Simple, Complex outcomes |
+| 20.6.6 | `ElsaStudio_FlowNode_Connections` | Connect activities | Connections saveable |
+| 20.6.7 | `ElsaStudio_WorkflowSave_Load` | Create workflow, reload | Persists correctly |
+| 20.6.8 | `ElsaStudio_WorkflowExecute_FromDesigner` | Run built-in workflow | Executes |
+| 20.6.9 | `ElsaStudio_CustomPages_Accessible` | Navigate to /magic/dashboard | Page loads |
+| 20.6.10 | `ElsaStudio_Menu_HasMagicPAIItems` | Sidebar | Dashboard, Sessions, Costs, Settings |
+
+### 20.7 Graceful Degradation
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.7.1 | `Server_StartsWithoutDocker` | Docker not running | Server starts, UseDocker=false works |
+| 20.7.2 | `Server_StartsWithoutPostgres` | No DB, SQLite fallback | Uses SQLite |
+| 20.7.3 | `Studio_LoadsWithoutServer` | Server unreachable | Studio shows error, doesn't crash |
+| 20.7.4 | `Hub_DisconnectReconnect_SessionSurvives` | Temporary network drop | Auto-reconnect, output resumes |
+| 20.7.5 | `Agent_Unavailable_WorkflowFails_Cleanly` | Claude not installed | Clear error, container cleaned |
+| 20.7.6 | `Container_OOM_WorkflowHandles` | 128MB limit, large build | OOM captured as gate failure |
+| 20.7.7 | `Database_Full_GracefulError` | SQLite disk full | Error logged, no crash |
+| 20.7.8 | `SignalR_ClientDisconnect_NoServerCrash` | 100 clients disconnect | Server continues normally |
+
+### 20.8 Repair Loop Behavior
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.8.1 | `RepairLoop_FixesCompileError` | Missing semicolon | Repair adds it, compile passes |
+| 20.8.2 | `RepairLoop_FixesTestFailure` | Wrong assertion | Repair fixes code, test passes |
+| 20.8.3 | `RepairLoop_MaxAttempts_Stops` | Unfixable error | Stops after MaxRepairAttempts |
+| 20.8.4 | `RepairLoop_PromptIncludesPriorErrors` | Second repair | Prompt has first failure details |
+| 20.8.5 | `RepairLoop_DoesNotBreakPassingGates` | Repair for test failure | compile gate still passes |
+| 20.8.6 | `RepairLoop_CounterIncrements` | Each iteration | Counter tracks attempts |
+| 20.8.7 | `RepairLoop_StopsOnSuccess` | First repair succeeds | No further iterations |
+| 20.8.8 | `RepairLoop_CostAccumulates` | 3 repair iterations | All 3 costs summed |
+
+### 20.9 Real End-to-End Scenarios (Acceptance Tests)
+
+> These are the ultimate "does it actually work?" tests on a real machine.
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 20.9.1 | `E2E_Claude_CreatePythonScript_Verify` | "Create a Python fizzbuzz script" | Script created, runs, passes verification |
+| 20.9.2 | `E2E_Claude_FixBug_InExistingCode` | Pre-seed broken code, "Fix the bug" | Bug fixed, tests pass |
+| 20.9.3 | `E2E_Claude_AddFeature_WithTests` | "Add search endpoint with tests" | Feature + tests added, all pass |
+| 20.9.4 | `E2E_Codex_CreateNodeProject` | "Create Express API with 2 endpoints" | Project created, npm test passes |
+| 20.9.5 | `E2E_Codex_RefactorCode` | Pre-seed messy code, "Refactor" | Code improved, still compiles |
+| 20.9.6 | `E2E_ComplexTask_Decomposition` | "Build full CRUD API with auth" | Architect decomposes, sub-tasks execute |
+| 20.9.7 | `E2E_FullPipeline_WithRepair` | Task that causes compile error | Agent creates, verify fails, repair fixes |
+| 20.9.8 | `E2E_MultiAgent_Claude_Then_Codex` | Claude triage, Codex executes | Pipeline completes cross-agent |
+| 20.9.9 | `E2E_StreamingOutput_Visible` | Connect SignalR, start session | Output chunks arrive in real-time |
+| 20.9.10 | `E2E_SessionLifecycle_Complete` | Create -> Monitor -> Stop | Full lifecycle via API + SignalR |
+| 20.9.11 | `E2E_HumanApproval_RealFlow` | Workflow with approval gate | Pauses, user approves via API, resumes |
+| 20.9.12 | `E2E_CostTracking_Accurate` | Run Claude task | Cost in SessionInfo matches real cost |
+| 20.9.13 | `E2E_WebsiteAudit_RealWebsite` | "Audit https://example.com" | Phases execute, report generated |
+| 20.9.14 | `E2E_Classifier_NeverFails` | 50 random prompts through triage | 50/50 valid JSON responses |
+| 20.9.15 | `E2E_DockerCleanup_AllContainersRemoved` | Run 10 workflows | 0 orphaned containers after |
+
+---
+
+## 21. Production Readiness Tests
+
+### 21.1 Network & Timeout Handling
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.1.1 | `Container_ExecTimeout_ReturnsError` | Container exec takes > AgentTimeoutMinutes | CancellationToken fires, error returned |
+| 21.1.2 | `Container_NetworkPartition_ExecFails` | Container loses network mid-exec | Timeout or error, no hang |
+| 21.1.3 | `SignalR_SlowClient_NoBackpressure` | Client reads slowly | Server doesn't OOM, buffer trims |
+| 21.1.4 | `SignalR_MessageQueuing_UnderLoad` | 1000 messages/sec | Messages delivered, order preserved |
+| 21.1.5 | `DockerApi_Timeout_SpawnAsync` | Docker daemon slow | Reasonable timeout, error |
+| 21.1.6 | `DockerApi_Timeout_ExecAsync` | Docker daemon slow | Reasonable timeout, error |
+| 21.1.7 | `Agent_NetworkTimeout_DuringExec` | AI API unreachable mid-run | Agent exits, error captured |
+
+### 21.2 Concurrent Workflow Isolation
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.2.1 | `TwoWorkflows_SeparateContainers` | Run 2 simultaneously | Each gets own container |
+| 21.2.2 | `TwoWorkflows_SeparateOutputBuffers` | Run 2, check output | No output cross-contamination |
+| 21.2.3 | `TwoWorkflows_SeparateSignalRGroups` | 2 clients, 2 sessions | Events don't leak |
+| 21.2.4 | `TwoWorkflows_IndependentCancellation` | Cancel one | Other continues |
+| 21.2.5 | `TwoWorkflows_IndependentVerification` | Both verify | Separate gate results |
+| 21.2.6 | `TwoWorkflows_SharedBlackboard_Isolated` | Both claim files | Claims are per-task independent |
+| 21.2.7 | `TenConcurrentWorkflows_AllComplete` | 10 simultaneous | All finish or timeout gracefully |
+
+### 21.3 Character Encoding & Internationalization
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.3.1 | `Prompt_UTF8_Japanese` | Japanese characters in prompt | Correct through entire pipeline |
+| 21.3.2 | `Prompt_UTF8_Chinese` | Chinese characters | Correct through pipeline |
+| 21.3.3 | `Prompt_UTF8_Arabic` | RTL text | No corruption |
+| 21.3.4 | `Prompt_Emoji` | Emoji in prompt | Correct through pipeline |
+| 21.3.5 | `Output_UTF8_FromAgent` | Agent returns unicode | Streamed correctly |
+| 21.3.6 | `Output_UTF8_InSignalR` | Unicode via SignalR | Received correctly by client |
+| 21.3.7 | `FilePath_Unicode` | File with unicode name | Blackboard claims work |
+| 21.3.8 | `Prompt_Newlines_Preserved` | Multi-line prompt | Not mangled by shell escaping |
+| 21.3.9 | `Prompt_Tabs_Preserved` | Tab characters | Not mangled |
+| 21.3.10 | `BuildCommand_NoShellInjection_Unicode` | Prompt with unicode + shell chars | Safe escaping |
+
+### 21.4 Container Image Management
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.4.1 | `SpawnAsync_ImageNotLocal_PullsFirst` | Image not cached | Pulled before spawn (or error) |
+| 21.4.2 | `SpawnAsync_ImagePullTimeout` | Slow registry | Reasonable timeout |
+| 21.4.3 | `SpawnAsync_InvalidImageTag` | Non-existent tag | Clear error message |
+| 21.4.4 | `SpawnAsync_PrivateRegistry_AuthRequired` | Private image | Auth error or success |
+| 21.4.5 | `CustomWorkerImage_ViaConfig` | WorkerImage="custom:v2" | Custom image used |
+
+### 21.5 Database & Persistence
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.5.1 | `SQLite_CreatesTables_OnFirstRun` | Fresh DB | Elsa tables created |
+| 21.5.2 | `SQLite_PersistsWorkflowDefinitions` | Register workflow | Found after restart |
+| 21.5.3 | `SQLite_PersistsWorkflowInstances` | Run workflow | Instance in DB |
+| 21.5.4 | `SQLite_ConcurrentWrites_Safe` | 10 simultaneous sessions | No DB lock errors |
+| 21.5.5 | `SQLite_LargeOutput_Stored` | 1MB workflow output | Stored and retrievable |
+| 21.5.6 | `PostgreSQL_Compose_MigratesOnStart` | docker-compose up | Tables created |
+| 21.5.7 | `PostgreSQL_ConnectionString_FromEnv` | Env var set | Uses PostgreSQL, not SQLite |
+
+### 21.6 Logging & Observability
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.6.1 | `Server_LogsSessionCreation` | Create session | Log entry with session ID |
+| 21.6.2 | `Server_LogsSessionStop` | Stop session | Log entry |
+| 21.6.3 | `Server_LogsApproval` | Approve gate | Log entry with decision |
+| 21.6.4 | `Server_LogsActivityProgress` | Activity completes | Debug log with activity type |
+| 21.6.5 | `Server_LogsContainerSpawn` | Container spawned | Log with container ID |
+| 21.6.6 | `Server_SuppressesElsaVerboseLog` | Elsa internal events | Only Warning level |
+| 21.6.7 | `Config_EnableDetailedLogging_True` | EnableDetailedLogging=true | Debug level everywhere |
+| 21.6.8 | `Config_LogAgentOutput_True` | LogAgentOutput=true | Agent output in logs |
+| 21.6.9 | `Config_LogTokenUsage_True` | LogTokenUsage=true | Token counts logged |
+
+### 21.7 Workflow Timeout & Resource Cleanup
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.7.1 | `ContainerTimeout_KillsContainer` | ContainerTimeoutMinutes=1 | Container killed after 1 min |
+| 21.7.2 | `OrphanedContainer_CleanedUp` | Workflow crashes | Container eventually removed |
+| 21.7.3 | `OrphanedWorktree_CleanedUp` | Workflow crashes | Worktree removed |
+| 21.7.4 | `MaxConcurrentContainers_Enforced` | MaxConcurrentContainers=2 | Third spawn waits or fails |
+| 21.7.5 | `WorkflowCancellation_CleanupChain` | Cancel mid-complex | Container + worktree cleaned |
+| 21.7.6 | `ServerShutdown_CleanupContainers` | Server stops gracefully | All containers destroyed |
+| 21.7.7 | `ContainerGuiPort_Released` | Container destroyed | Port available for reuse |
+| 21.7.8 | `GuiPortRange_Exhaustion` | All ports in range used | Clear error or wait |
+
+### 21.8 Elsa Workflow Versioning & Registration
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.8.1 | `All17Workflows_RegisteredOnStartup` | Server starts | All workflows in Elsa registry |
+| 21.8.2 | `Workflow_DispatchByName` | "full-orchestrate" | Correct workflow executes |
+| 21.8.3 | `Workflow_DispatchByName_SimpleAgent` | "simple-agent" | SimpleAgentWorkflow runs |
+| 21.8.4 | `Workflow_DispatchByName_VerifyRepair` | "verify-repair" | VerifyAndRepairWorkflow runs |
+| 21.8.5 | `Workflow_UnknownName_Fails` | "nonexistent" | Clear error, not 500 |
+| 21.8.6 | `Workflow_InputVariables_PassedCorrectly` | Prompt, WorkspacePath, Agent, Model | All accessible in activities |
+| 21.8.7 | `Workflow_CustomFromDesigner_Executes` | User-built workflow via Studio | Executes like built-in |
+
+### 21.9 Smoke Tests (Quick Validation Suite)
+
+> Minimal tests to run in CI on every commit. Must pass in < 2 minutes.
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 21.9.1 | `Smoke_ServerStarts` | dotnet run | Listens on port |
+| 21.9.2 | `Smoke_HealthCheck` | GET / | 200 or redirect |
+| 21.9.3 | `Smoke_ApiListSessions` | GET /api/sessions | 200 + [] |
+| 21.9.4 | `Smoke_SignalRConnect` | Connect to /hub | Connected |
+| 21.9.5 | `Smoke_ElsaApiAlive` | GET /elsa/api | Responds |
+| 21.9.6 | `Smoke_CustomActivitiesRegistered` | Elsa activity list | MagicPAI activities present |
+| 21.9.7 | `Smoke_WorkflowsRegistered` | Elsa workflow list | 17 workflows |
+| 21.9.8 | `Smoke_DotnetBuild_Succeeds` | dotnet build | Exit code 0 |
+| 21.9.9 | `Smoke_DotnetTest_Succeeds` | dotnet test | Exit code 0 |
+| 21.9.10 | `Smoke_DockerImageBuilds` | docker build server | Exit code 0 |
+
+---
+
+## 22. Streaming Pipeline Tracing Tests
+
+> **CRITICAL**: These tests trace a single output chunk through the ENTIRE pipeline:
+> Docker exec stdout -> onOutput callback -> AddExecutionLogEntry -> ElsaEventBridge -> SignalR -> Client.
+> Every hop must be verified to ensure streaming is never blocked or buffered.
+
+### 22.1 Full Pipeline Trace — Single Chunk
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 22.1.1 | `Trace_DockerExec_ToOnOutput` | ExecStreamingAsync stdout | onOutput callback fires |
+| 22.1.2 | `Trace_OnOutput_ToLogEntry` | RunCliAgentActivity.onOutput | AddExecutionLogEntry("OutputChunk") called |
+| 22.1.3 | `Trace_LogEntry_ToEventBridge` | Elsa notification fires | ElsaEventBridge.HandleAsync called |
+| 22.1.4 | `Trace_EventBridge_ToTracker` | ElsaEventBridge handles | SessionTracker.AppendOutput called |
+| 22.1.5 | `Trace_EventBridge_ToSignalR` | ElsaEventBridge handles | HubContext.SendAsync("outputChunk") called |
+| 22.1.6 | `Trace_SignalR_ToClient` | Hub sends message | Client OnOutputChunk event fires |
+| 22.1.7 | `Trace_Client_ToOutputPanel` | SessionView receives chunk | OutputPanel.AppendText called |
+| 22.1.8 | `Trace_FullPipeline_Under100ms` | End-to-end latency | < 100ms from Docker stdout to client display |
+
+### 22.2 Streaming Pipeline — No Buffering Verification
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 22.2.1 | `NoBuf_Docker_4KBuffer` | Buffer is 4096 bytes | Chunk emitted when buffer fills or newline |
+| 22.2.2 | `NoBuf_OnOutput_Immediate` | Callback fires | No batching delay |
+| 22.2.3 | `NoBuf_LogEntry_Synchronous` | AddExecutionLogEntry | Not queued for later |
+| 22.2.4 | `NoBuf_EventBridge_NoAggregation` | Each log entry | Individual SignalR message per chunk |
+| 22.2.5 | `NoBuf_SignalR_NoCoalescing` | Messages to group | Each chunk sent separately |
+| 22.2.6 | `NoBuf_10Chunks_10Events` | 10 distinct chunks | Client receives exactly 10 outputChunk events |
+| 22.2.7 | `NoBuf_SlowAgent_ChunksStillStream` | Agent thinking 30s between outputs | Each line streams immediately when available |
+| 22.2.8 | `NoBuf_FastAgent_NoDrops` | Agent outputs 100 lines/sec | All 100 delivered |
+
+### 22.3 Claude stream-json Pipeline Verification
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 22.3.1 | `StreamJson_FirstLine_IsSystem` | --output-format stream-json | First JSON has type != result |
+| 22.3.2 | `StreamJson_IntermediateLines_AreAssistant` | Mid-stream | type=assistant or tool_use events |
+| 22.3.3 | `StreamJson_LastLine_IsResult` | End of stream | type=result |
+| 22.3.4 | `StreamJson_EachLine_IndependentlyParseable` | Each line | JsonDocument.Parse succeeds per line |
+| 22.3.5 | `StreamJson_Streaming_NotWaitForResult` | Long task | Assistant messages visible BEFORE result |
+| 22.3.6 | `StreamJson_ToolUse_VisibleBeforeResult` | Task with file edits | Tool use events stream before result |
+| 22.3.7 | `StreamJson_PartialLine_HandledGracefully` | Line split across buffers | Reassembled correctly |
+| 22.3.8 | `StreamJson_EmptyLines_Filtered` | Blank lines in output | Not sent as chunks |
+
+---
+
+## 23. Classifier Reliability & JSON Schema Enforcement
+
+> **CRITICAL**: The classifier must ALWAYS return parseable JSON. These tests run the
+> actual triage classifier on real prompts and verify 100% JSON validity.
+> Tests use both Claude and Codex to ensure cross-agent reliability.
+
+### 23.1 Classifier Stress Test — Diverse Prompt Corpus
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 23.1.1 | `Classifier_SimpleCodeGen` | "Write a hello world in Python" | Valid JSON, complexity <= 3 |
+| 23.1.2 | `Classifier_SimpleBugFix` | "Fix the typo on line 5" | Valid JSON, category=bug_fix |
+| 23.1.3 | `Classifier_MediumRefactor` | "Extract the validation logic into a helper method" | Valid JSON, complexity 4-6 |
+| 23.1.4 | `Classifier_ComplexArchitecture` | "Design a microservice architecture with event sourcing, CQRS, and saga orchestration" | Valid JSON, complexity >= 7 |
+| 23.1.5 | `Classifier_AmbiguousPrompt` | "make it better" | Valid JSON (uses defaults) |
+| 23.1.6 | `Classifier_SingleWord` | "test" | Valid JSON |
+| 23.1.7 | `Classifier_VeryLong_5000Words` | 5000-word detailed spec | Valid JSON |
+| 23.1.8 | `Classifier_ContainsJsonInPrompt` | "Parse this JSON: {\"key\": \"value\"}" | Valid JSON, not confused by embedded JSON |
+| 23.1.9 | `Classifier_ContainsCodeBlock` | "Fix this: ```python\nprint('hello')\n```" | Valid JSON |
+| 23.1.10 | `Classifier_ContainsMarkdown` | "# Title\n- item\n- item" | Valid JSON |
+| 23.1.11 | `Classifier_ContainsSQL` | "Write: SELECT * FROM users WHERE..." | Valid JSON |
+| 23.1.12 | `Classifier_ContainsHTML` | "<div><script>alert('xss')</script></div>" | Valid JSON |
+| 23.1.13 | `Classifier_ContainsShellCommands` | "Run: rm -rf / && echo pwned" | Valid JSON |
+| 23.1.14 | `Classifier_AllCapsYelling` | "FIX THE DAMN LOGIN BUG NOW!!!" | Valid JSON |
+| 23.1.15 | `Classifier_OnlyNumbers` | "42" | Valid JSON |
+| 23.1.16 | `Classifier_OnlyPunctuation` | "!!??...,,,---" | Valid JSON |
+| 23.1.17 | `Classifier_Unicode_Japanese` | "ログイン機能のバグを修正してください" | Valid JSON |
+| 23.1.18 | `Classifier_Unicode_Korean` | "사용자 인증 시스템을 구현하세요" | Valid JSON |
+| 23.1.19 | `Classifier_Unicode_Hindi` | "एपीआई एंडपॉइंट बनाएं" | Valid JSON |
+| 23.1.20 | `Classifier_Mixed_Languages` | "Create 一个 REST API with authentication 认证" | Valid JSON |
+| 23.1.21 | `Classifier_StackOverflowError` | Paste of a real stack trace + "fix this" | Valid JSON |
+| 23.1.22 | `Classifier_GitDiffPaste` | Large git diff + "review this" | Valid JSON |
+| 23.1.23 | `Classifier_DocsProse` | "Write comprehensive API documentation covering all endpoints, request/response schemas, authentication..." | Valid JSON, category=docs |
+| 23.1.24 | `Classifier_TestingRequest` | "Write integration tests for the payment flow, including edge cases for declined cards, expired tokens, and partial refunds" | Valid JSON, category=testing |
+| 23.1.25 | `Classifier_SecurityTask` | "Audit the codebase for SQL injection, XSS, and CSRF vulnerabilities" | Valid JSON |
+
+### 23.2 Classifier Fallback Chain
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 23.2.1 | `Fallback_ProseResponse_DefaultsApplied` | AI returns "This is a simple task" | complexity=5, category=code_gen, model=sonnet |
+| 23.2.2 | `Fallback_EmptyResponse_DefaultsApplied` | AI returns "" | Defaults, no crash |
+| 23.2.3 | `Fallback_TruncatedJson_DefaultsApplied` | `{"complexity": 3, "cate` | complexity=3, rest defaults |
+| 23.2.4 | `Fallback_JsonInMarkdown_Extracted` | ````json\n{"complexity": 8}\n`````` | complexity=8 extracted |
+| 23.2.5 | `Fallback_JsonWithExtraText_Extracted` | "Here's the analysis:\n{...}\nHope that helps!" | JSON portion extracted |
+| 23.2.6 | `Fallback_NestedJson_OuterExtracted` | `{"complexity": 5, "inner": {"key": "val"}}` | Outer parsed correctly |
+| 23.2.7 | `Fallback_ComplexityOutOfRange_Clamped` | complexity=15 | Accepted (or clamped to 10) |
+| 23.2.8 | `Fallback_ComplexityNegative_Defaults` | complexity=-1 | Default=5 |
+| 23.2.9 | `Fallback_ComplexityString_Defaults` | complexity="high" | Default=5 |
+| 23.2.10 | `Fallback_CategoryUnknown_Defaults` | category="hacking" | Default=code_gen |
+| 23.2.11 | `Fallback_NeedsDecompString_Defaults` | needs_decomposition="yes" | Default=false |
+| 23.2.12 | `Fallback_NullFields_Defaults` | {"complexity": null} | Default=5 |
+
+### 23.3 Classifier Cross-Agent Reliability
+
+| # | Test Name | Description | Expected |
+|---|-----------|-------------|----------|
+| 23.3.1 | `Claude_Haiku_50Calls_JsonValid` | 50 diverse prompts via Claude Haiku | 50/50 valid JSON |
+| 23.3.2 | `Claude_Sonnet_50Calls_JsonValid` | 50 diverse prompts via Claude Sonnet | 50/50 valid JSON |
+| 23.3.3 | `Codex_50Calls_TriageParseable` | 50 diverse prompts via Codex | >= 45/50 parseable (fallback catches rest) |
+| 23.3.4 | `Gemini_50Calls_TriageParseable` | 50 diverse prompts via Gemini | >= 45/50 parseable |
+| 23.3.5 | `CrossAgent_SamePrompt_SimilarClassification` | Same prompt, Claude vs Codex | Both classify to same category |
+| 23.3.6 | `Classifier_NeverThrows_1000Calls` | 1000 random strings | 0 unhandled exceptions |
+| 23.3.7 | `Classifier_DefaultsValid_Always` | Any failure | Defaults (5, code_gen, sonnet, false) are all valid |
+| 23.3.8 | `Classifier_Latency_Under5s` | Triage call | Completes in < 5 seconds |
+
+---
+
 ## Test Execution Matrix
 
 | Test Category | Count | Type | Docker Required | Agent Required |
@@ -1598,11 +1976,11 @@
 | 2. Verification Gates | ~50 | Unit | No | No |
 | 3. Activities | ~65 | Unit | No | No |
 | 4. Models & DTOs | ~14 | Unit | No | No |
-| 5. Server Components | ~80 | Unit | No | No |
+| 5. Server Components | ~84 | Unit | No | No |
 | 6. Workflows | ~85 | Unit | No | No |
 | 7. Docker Integration | ~21 | Integration | Yes | No |
 | 8. Real Agent Execution | ~35 | Integration | Yes | Yes (Claude + Codex) |
-| 9. Structured Output | ~36 | Integration | Yes | Yes |
+| 9. Structured Output | ~64 | Integration | Yes | Yes |
 | 10. Streaming | ~22 | Integration | Yes | Yes |
 | 11. SignalR Real-Time | ~14 | Integration | No | No |
 | 12. REST API | ~17 | Integration | No | No |
@@ -1611,9 +1989,13 @@
 | 15. Performance | ~14 | Stress | Yes | Yes |
 | 16. Security | ~11 | Security | Yes | No |
 | 17. Configuration | ~19 | Unit/Integration | No | No |
-| 18. Docker Infrastructure | ~38 | Integration | Yes | No |
+| 18. Docker Infrastructure | ~55 | Integration | Yes | No |
 | 19. Blazor Studio Frontend | ~110 | Unit/bUnit | No | No |
-| **TOTAL** | **~791** | | | |
+| 20. Cross-Cutting & Advanced | ~97 | Mixed | Yes | Yes |
+| 21. Production Readiness | ~75 | Mixed | Yes | No |
+| 22. Streaming Pipeline Tracing | ~24 | Integration | Yes | Yes |
+| 23. Classifier Reliability | ~45 | Integration | Yes | Yes |
+| **TOTAL** | **~1235** | | | |
 
 ---
 
@@ -1626,6 +2008,7 @@
 - Real Claude agent execution (8.1)
 - Real Codex agent execution (8.2)
 - Core API tests (section 12)
+- Smoke tests (section 21.9) — must pass on every commit
 
 ### P1 — Must Pass Before Production
 - Docker integration (section 7)
@@ -1636,6 +2019,12 @@
 - Docker infrastructure / worker image (section 18)
 - DI registration (section 5.6)
 - WorkflowProgressTracker (section 5.5)
+- Real verification gates in containers (section 20.5)
+- Repair loop behavior (section 20.8)
+- Acceptance tests (section 20.9)
+- Cost budget enforcement (section 20.4)
+- Parallel execution (section 20.2)
+- Workflow persistence (section 20.1)
 
 ### P2 — Should Pass
 - Performance tests (section 15)
@@ -1643,6 +2032,12 @@
 - Gemini tests (8.3)
 - Event model tests (section 18.3)
 - Blazor Studio frontend tests (section 19)
+- Elsa Studio visual designer (section 20.6)
+- Multi-language workspace (section 20.3)
+- Graceful degradation (section 20.7)
+- Character encoding (section 21.3)
+- Container image management (section 21.4)
+- Logging & observability (section 21.6)
 
 ---
 

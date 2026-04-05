@@ -47,26 +47,37 @@ public class RunVerificationActivity : Activity
         var containerMgr = context.GetRequiredService<IContainerManager>();
         var pipeline = context.GetRequiredService<VerificationPipeline>();
 
-        var containerId = ContainerId.Get(context);
-        var workDir = WorkingDirectory.Get(context);
-        var gates = Gates.Get(context);
-        var workerOutput = WorkerOutput.GetOrDefault(context, () => null);
+        try
+        {
+            var containerId = ContainerId.Get(context);
+            var workDir = WorkingDirectory.Get(context) ?? "/workspace";
+            var gates = Gates.Get(context) ?? ["compile", "test", "hallucination"];
+            var workerOutput = WorkerOutput.GetOrDefault(context, () => null);
 
-        var result = await pipeline.RunAsync(
-            containerMgr, containerId, workDir, gates,
-            workerOutput, context.CancellationToken);
+            var result = await pipeline.RunAsync(
+                containerMgr, containerId, workDir, gates,
+                workerOutput, context.CancellationToken);
 
-        AllPassed.Set(context, result.AllPassed);
-        FailedGates.Set(context,
-            result.Gates.Where(g => !g.Passed).Select(g => g.Name).ToArray());
-        GateResultsJson.Set(context,
-            JsonSerializer.Serialize(result.Gates));
+            AllPassed.Set(context, result.AllPassed);
+            FailedGates.Set(context,
+                result.Gates.Where(g => !g.Passed).Select(g => g.Name).ToArray());
+            GateResultsJson.Set(context,
+                JsonSerializer.Serialize(result.Gates));
 
-        context.AddExecutionLogEntry("VerificationComplete",
-            $"AllPassed={result.AllPassed}, Gates={result.Gates.Count}");
+            context.AddExecutionLogEntry("VerificationComplete",
+                $"AllPassed={result.AllPassed}, Gates={result.Gates.Count}");
 
-        var outcome = result.IsInconclusive ? "Inconclusive"
-            : result.AllPassed ? "Passed" : "Failed";
-        await context.CompleteActivityWithOutcomesAsync(outcome);
+            var outcome = result.IsInconclusive ? "Inconclusive"
+                : result.AllPassed ? "Passed" : "Failed";
+            await context.CompleteActivityWithOutcomesAsync(outcome);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            context.AddExecutionLogEntry("VerificationFailed", ex.Message);
+            AllPassed.Set(context, false);
+            FailedGates.Set(context, ["pipeline-error"]);
+            GateResultsJson.Set(context, "[]");
+            await context.CompleteActivityWithOutcomesAsync("Failed");
+        }
     }
 }

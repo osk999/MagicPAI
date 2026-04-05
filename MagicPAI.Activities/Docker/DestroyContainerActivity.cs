@@ -17,10 +17,17 @@ public class DestroyContainerActivity : Activity
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
         var docker = context.GetRequiredService<IContainerManager>();
-        var containerId = ContainerId.Get(context);
+        var containerId = ContainerId.Get(context) ?? "";
 
         try
         {
+            if (string.IsNullOrEmpty(containerId))
+            {
+                context.AddExecutionLogEntry("ContainerDestroySkipped", "No container ID provided");
+                await context.CompleteActivityWithOutcomesAsync("Done");
+                return;
+            }
+
             await docker.DestroyAsync(containerId, context.CancellationToken);
 
             context.AddExecutionLogEntry("ContainerDestroyed",

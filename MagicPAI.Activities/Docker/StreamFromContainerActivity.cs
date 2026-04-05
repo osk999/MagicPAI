@@ -34,26 +34,36 @@ public class StreamFromContainerActivity : Activity
         var docker = context.GetRequiredService<IContainerManager>();
         var outputBuilder = new StringBuilder();
 
-        var result = await docker.ExecStreamingAsync(
-            ContainerId.Get(context),
-            Command.Get(context),
-            onOutput: chunk =>
-            {
-                outputBuilder.Append(chunk);
-                context.AddExecutionLogEntry("StreamChunk",
-                    JsonSerializer.Serialize(new
-                    {
-                        activityId = context.Activity.Id,
-                        text = chunk
-                    }));
-            },
-            timeout: TimeSpan.FromMinutes(TimeoutMinutes.Get(context)),
-            ct: context.CancellationToken);
+        try
+        {
+            var result = await docker.ExecStreamingAsync(
+                ContainerId.Get(context),
+                Command.Get(context) ?? "",
+                onOutput: chunk =>
+                {
+                    outputBuilder.Append(chunk);
+                    context.AddExecutionLogEntry("StreamChunk",
+                        JsonSerializer.Serialize(new
+                        {
+                            activityId = context.Activity.Id,
+                            text = chunk
+                        }));
+                },
+                timeout: TimeSpan.FromMinutes(TimeoutMinutes.Get(context)),
+                ct: context.CancellationToken);
 
-        FullOutput.Set(context, outputBuilder.ToString());
-        ExitCode.Set(context, result.ExitCode);
+            FullOutput.Set(context, outputBuilder.ToString());
+            ExitCode.Set(context, result.ExitCode);
 
-        await context.CompleteActivityWithOutcomesAsync(
-            result.ExitCode == 0 ? "Done" : "Failed");
+            await context.CompleteActivityWithOutcomesAsync(
+                result.ExitCode == 0 ? "Done" : "Failed");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            context.AddExecutionLogEntry("StreamFailed", ex.Message);
+            FullOutput.Set(context, outputBuilder.ToString());
+            ExitCode.Set(context, -1);
+            await context.CompleteActivityWithOutcomesAsync("Failed");
+        }
     }
 }

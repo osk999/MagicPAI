@@ -28,9 +28,11 @@ public class CleanupWorktreeActivity : Activity
     {
         var containerMgr = context.GetRequiredService<IContainerManager>();
         var containerId = ContainerId.Get(context);
-        var worktreePath = WorktreePath.Get(context);
-        var repoDir = RepoDirectory.Get(context);
+        var worktreePath = WorktreePath.Get(context) ?? "";
+        var repoDir = RepoDirectory.Get(context) ?? "/workspace";
         var branchName = BranchName.GetOrDefault(context, () => null);
+        if (!string.IsNullOrEmpty(branchName))
+            branchName = CreateWorktreeActivity.SanitizeBranchName(branchName);
 
         try
         {

@@ -30,6 +30,9 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
 
     public async Task HandleAsync(ActivityExecutionLogUpdated notification, CancellationToken ct)
     {
+        if (notification.WorkflowExecutionContext is null)
+            return;
+
         var workflowInstanceId = notification.WorkflowExecutionContext.Id;
 
         foreach (var record in notification.Records)
@@ -98,27 +101,30 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
     private async Task HandleVerificationUpdate(
         string sessionId, string message, CancellationToken ct)
     {
+        // Send typed event matching VerificationUpdateEvent record
         await _hubContext.Clients.Group(sessionId).SendAsync(
             "verificationUpdate",
-            new { SessionId = sessionId, Details = message },
+            new VerificationUpdateEvent(sessionId, "verification", true, message, []),
             ct);
     }
 
     private async Task HandleContainerEvent(
         string sessionId, string eventName, string message, CancellationToken ct)
     {
+        // Send typed event matching ContainerEvent record
         await _hubContext.Clients.Group(sessionId).SendAsync(
             "containerEvent",
-            new { SessionId = sessionId, Event = eventName, Details = message },
+            new ContainerEvent(sessionId, message, null),
             ct);
     }
 
     private async Task HandleTaskEvent(
         string sessionId, string eventName, string message, CancellationToken ct)
     {
+        // Task events use workflowProgress channel
         await _hubContext.Clients.Group(sessionId).SendAsync(
-            "taskEvent",
-            new { SessionId = sessionId, Event = eventName, Details = message },
+            "workflowProgress",
+            new WorkflowProgressEvent(sessionId, eventName, "completed", 0, 0),
             ct);
     }
 }

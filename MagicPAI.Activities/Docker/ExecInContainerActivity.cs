@@ -31,19 +31,29 @@ public class ExecInContainerActivity : Activity
     {
         var docker = context.GetRequiredService<IContainerManager>();
 
-        var result = await docker.ExecAsync(
-            ContainerId.Get(context),
-            Command.Get(context),
-            WorkingDirectory.Get(context),
-            context.CancellationToken);
+        try
+        {
+            var result = await docker.ExecAsync(
+                ContainerId.Get(context),
+                Command.Get(context) ?? "",
+                WorkingDirectory.Get(context) ?? "/workspace",
+                context.CancellationToken);
 
-        Output.Set(context, result.Output);
-        ExitCode.Set(context, result.ExitCode);
+            Output.Set(context, result.Output);
+            ExitCode.Set(context, result.ExitCode);
 
-        context.AddExecutionLogEntry("ExecComplete",
-            $"Exit code: {result.ExitCode}");
+            context.AddExecutionLogEntry("ExecComplete",
+                $"Exit code: {result.ExitCode}");
 
-        await context.CompleteActivityWithOutcomesAsync(
-            result.ExitCode == 0 ? "Done" : "Failed");
+            await context.CompleteActivityWithOutcomesAsync(
+                result.ExitCode == 0 ? "Done" : "Failed");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            context.AddExecutionLogEntry("ExecFailed", ex.Message);
+            Output.Set(context, ex.Message);
+            ExitCode.Set(context, -1);
+            await context.CompleteActivityWithOutcomesAsync("Failed");
+        }
     }
 }

@@ -14,12 +14,21 @@ var builder = WebApplication.CreateBuilder(args);
 
 // --- Configuration ---
 var config = builder.Configuration.GetSection("MagicPAI").Get<MagicPaiConfig>() ?? new MagicPaiConfig();
+var configErrors = config.Validate();
+if (configErrors.Count > 0)
+{
+    foreach (var error in configErrors)
+        Console.Error.WriteLine($"Config error: {error}");
+    throw new InvalidOperationException($"MagicPAI configuration invalid: {string.Join("; ", configErrors)}");
+}
 builder.Services.AddSingleton(config);
 
 // --- Core Services ---
 builder.Services.AddSingleton<SharedBlackboard>();
 builder.Services.AddSingleton<IContainerManager, DockerContainerManager>();
 builder.Services.AddSingleton<ICliAgentFactory, CliAgentFactory>();
+builder.Services.AddSingleton<IExecutionEnvironment, LocalExecutionEnvironment>();
+builder.Services.AddSingleton<WorktreeManager>();
 
 // --- Verification Gates ---
 builder.Services.AddSingleton<IVerificationGate, CompileGate>();

@@ -21,12 +21,22 @@ public class VerificationPipeline
             .Where(g => gateFilter.Contains(g.Name))
             .ToList();
 
+        if (gates.Count == 0)
+        {
+            return new PipelineResult { Gates = results, AllPassed = true };
+        }
+
         foreach (var gate in gates)
         {
+            ct.ThrowIfCancellationRequested();
+
             if (!await gate.CanVerifyAsync(container, containerId, workDir, ct))
                 continue;
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var result = await gate.VerifyAsync(container, containerId, workDir, ct);
+            sw.Stop();
+
             results.Add(result);
 
             // Early stop on blocking gate failure

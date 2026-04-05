@@ -37,6 +37,8 @@
     </div>
 </div>
 
+@implements IDisposable
+
 @code {
     [Parameter] public string SessionId { get; set; } = "";
 
@@ -113,4 +115,14 @@
 
     private async Task Stop() =>
         await Hub.StopSessionAsync(SessionId);
+
+    public void Dispose()
+    {
+        Hub.OnOutputChunk -= OnChunk;
+        Hub.OnSessionStateChanged -= OnState;
+        Hub.OnVerificationUpdate -= OnVerification;
+        Hub.OnWorkflowProgress -= OnProgress;
+        Hub.OnContainerSpawned -= OnContainer;
+        Hub.OnError -= OnError;
+    }
 }

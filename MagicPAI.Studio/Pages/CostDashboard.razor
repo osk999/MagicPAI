@@ -58,6 +58,8 @@
     </div>
 </div>
 
+@implements IDisposable
+
 @code {
     private List<SessionInfo> sessions = new();
     private decimal totalCost;
@@ -82,5 +84,10 @@
         totalInputTokens += e.InputTokens;
         totalOutputTokens += e.OutputTokens;
         InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Hub.OnCostUpdate -= OnCostUpdate;
     }
 }

@@ -11,7 +11,10 @@ public class SharedBlackboard
         => _fileClaims.TryAdd(filePath, taskId);
 
     public bool ReleaseFile(string filePath, string taskId)
-        => _fileClaims.TryRemove(filePath, out var owner) && owner == taskId;
+    {
+        // Use TryRemove with KeyValuePair to atomically check owner AND remove
+        return _fileClaims.TryRemove(new KeyValuePair<string, string>(filePath, taskId));
+    }
 
     public string? GetFileOwner(string filePath)
         => _fileClaims.TryGetValue(filePath, out var owner) ? owner : null;

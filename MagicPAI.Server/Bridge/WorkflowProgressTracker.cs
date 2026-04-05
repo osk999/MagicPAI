@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Elsa.Mediator.Contracts;
 using Elsa.Workflows.Runtime.Notifications;
 using MagicPAI.Core.Models;
@@ -15,6 +16,7 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
     private readonly IHubContext<SessionHub> _hubContext;
     private readonly SessionTracker _tracker;
     private readonly ILogger<WorkflowProgressTracker> _logger;
+    private readonly ConcurrentDictionary<string, int> _completedCounts = new();
 
     public WorkflowProgressTracker(
         IHubContext<SessionHub> hubContext,
@@ -38,6 +40,13 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
         // Determine if activity completed or started
         var status = record.CompletedAt.HasValue ? "completed" : "running";
 
+        // Track completed activity count per session
+        var completed = 0;
+        if (record.CompletedAt.HasValue)
+            completed = _completedCounts.AddOrUpdate(sessionId, 1, (_, count) => count + 1);
+        else
+            _completedCounts.TryGetValue(sessionId, out completed);
+
         // Send progress update
         await _hubContext.Clients.Group(sessionId).SendAsync(
             "workflowProgress",
@@ -45,8 +54,8 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
                 SessionId: sessionId,
                 ActivityName: record.ActivityName ?? record.ActivityType,
                 Status: status,
-                CompletedSteps: 0, // TODO: compute from workflow graph
-                TotalSteps: 0),
+                CompletedSteps: completed,
+                TotalSteps: 0), // Total unknown without graph introspection
             ct);
 
         // Update session state based on activity status

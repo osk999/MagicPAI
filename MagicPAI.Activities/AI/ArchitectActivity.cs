@@ -36,27 +36,37 @@ public class ArchitectActivity : Activity
         var containerMgr = context.GetRequiredService<IContainerManager>();
         var agentFactory = context.GetRequiredService<ICliAgentFactory>();
 
-        var runner = agentFactory.Create("claude");
-        var prompt = Prompt.Get(context);
-        var gapContext = GapContext.GetOrDefault(context, () => null);
+        try
+        {
+            var runner = agentFactory.Create("claude");
+            var prompt = Prompt.Get(context) ?? "";
+            var gapContext = GapContext.GetOrDefault(context, () => null);
 
-        var architectPrompt = BuildArchitectPrompt(prompt, gapContext);
-        var command = runner.BuildCommand(architectPrompt, "opus", 1, "/workspace");
+            var architectPrompt = BuildArchitectPrompt(prompt, gapContext);
+            var command = runner.BuildCommand(architectPrompt, "opus", 1, "/workspace");
 
-        var result = await containerMgr.ExecAsync(
-            ContainerId.Get(context), command, "/workspace", context.CancellationToken);
+            var result = await containerMgr.ExecAsync(
+                ContainerId.Get(context), command, "/workspace", context.CancellationToken);
 
-        var parsed = runner.ParseResponse(result.Output);
-        var tasks = ParseTaskList(parsed.Output);
+            var parsed = runner.ParseResponse(result.Output ?? "");
+            var tasks = ParseTaskList(parsed.Output ?? "");
 
-        TaskListJson.Set(context, tasks);
-        TaskCount.Set(context, tasks.Length);
+            TaskListJson.Set(context, tasks);
+            TaskCount.Set(context, tasks.Length);
 
-        context.AddExecutionLogEntry("ArchitectResult",
-            $"Decomposed into {tasks.Length} sub-tasks");
+            context.AddExecutionLogEntry("ArchitectResult",
+                $"Decomposed into {tasks.Length} sub-tasks");
 
-        await context.CompleteActivityWithOutcomesAsync(
-            tasks.Length > 0 ? "Done" : "Failed");
+            await context.CompleteActivityWithOutcomesAsync(
+                tasks.Length > 0 ? "Done" : "Failed");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            context.AddExecutionLogEntry("ArchitectFailed", ex.Message);
+            TaskListJson.Set(context, []);
+            TaskCount.Set(context, 0);
+            await context.CompleteActivityWithOutcomesAsync("Failed");
+        }
     }
 
     private static string BuildArchitectPrompt(string userPrompt, string? gapContext)
