@@ -39,14 +39,24 @@ public class ArchitectActivity : Activity
         try
         {
             var runner = agentFactory.Create("claude");
-            var prompt = Prompt.Get(context) ?? "";
+            var prompt = context.GetWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
+            var workDir = context.GetWorkflowInput<string>("WorkspacePath") ?? "/workspace";
             var gapContext = GapContext.GetOrDefault(context, () => null);
 
             var architectPrompt = BuildArchitectPrompt(prompt, gapContext);
-            var command = runner.BuildCommand(architectPrompt, "opus", 1, "/workspace");
+            var command = runner.BuildCommand(new AgentRequest
+            {
+                Prompt = architectPrompt,
+                Model = "opus",
+                WorkDir = workDir
+            });
+
+            var cid = ContainerId.Get(context);
+            if (string.IsNullOrEmpty(cid))
+                cid = context.GetVariable<string>("ContainerId") ?? "";
 
             var result = await containerMgr.ExecAsync(
-                ContainerId.Get(context), command, "/workspace", context.CancellationToken);
+                cid, command, workDir, context.CancellationToken);
 
             var parsed = runner.ParseResponse(result.Output ?? "");
             var tasks = ParseTaskList(parsed.Output ?? "");

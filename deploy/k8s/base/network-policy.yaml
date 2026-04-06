@@ -1,0 +1,64 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: magicpai-worker-isolation
+  namespace: magicpai
+  labels:
+    app.kubernetes.io/part-of: magicpai
+spec:
+  podSelector:
+    matchLabels:
+      app: magicpai-worker
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only the server can reach worker pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: magicpai-server
+  egress:
+    # Workers can reach the internet (for package installs, git clone, etc.)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              # Block access to cluster-internal services except DNS
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: magicpai-postgres-isolation
+  namespace: magicpai
+  labels:
+    app.kubernetes.io/part-of: magicpai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: magicpai-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    # Only the server can reach PostgreSQL
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: magicpai-server
+      ports:
+        - protocol: TCP
+          port: 5432

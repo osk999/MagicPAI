@@ -1,0 +1,42 @@
+{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "definitionId": "OrchestrateSimplePathWorkflow",
+  "name": "Orchestrate Simple Path",
+  "description": "Single-agent execution with prompt assembly, context, and verification",
+  "version": 1,
+  "isLatest": true,
+  "isPublished": true,
+  "variables": [
+    { "name": "Prompt", "typeName": "String", "value": "" },
+    { "name": "ContainerId", "typeName": "String", "value": "" },
+    { "name": "Agent", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "sonnet" }
+  ],
+  "root": {
+    "type": "Elsa.Flowchart",
+    "id": "orchestrate-simple-path-flow",
+    "start": "assemble-prompt",
+    "activities": [
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "assemble-prompt",
+        "name": "Assemble Prompt"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "simple-execute",
+        "name": "Simple Execute"
+      },
+      {
+        "type": "MagicPAI.RunVerificationActivity",
+        "id": "simple-verify",
+        "name": "Verify"
+      }
+    ],
+    "connections": [
+      { "source": { "activity": "assemble-prompt", "port": "Done" }, "target": { "activity": "simple-execute" } },
+      { "source": { "activity": "assemble-prompt", "port": "Failed" }, "target": { "activity": "simple-execute" } },
+      { "source": { "activity": "simple-execute", "port": "Done" }, "target": { "activity": "simple-verify" } }
+    ]
+  }
+}

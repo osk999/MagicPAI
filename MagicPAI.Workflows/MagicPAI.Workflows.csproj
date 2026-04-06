@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Elsa.Workflows.Core" Version="3.5.3" />
+    <PackageReference Include="Elsa.Workflows.Core" Version="3.*" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />

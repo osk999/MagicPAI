@@ -50,7 +50,9 @@ public class RunVerificationActivity : Activity
         try
         {
             var containerId = ContainerId.Get(context);
-            var workDir = WorkingDirectory.Get(context) ?? "/workspace";
+            if (string.IsNullOrEmpty(containerId))
+                containerId = context.GetVariable<string>("ContainerId") ?? "";
+            var workDir = context.GetWorkflowInput<string>("WorkspacePath") ?? WorkingDirectory.Get(context) ?? "/workspace";
             var gates = Gates.Get(context) ?? ["compile", "test", "hallucination"];
             var workerOutput = WorkerOutput.GetOrDefault(context, () => null);
 

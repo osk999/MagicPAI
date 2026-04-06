@@ -1,0 +1,52 @@
+{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "definitionId": "SimpleAgentWorkflow",
+  "name": "Simple Agent",
+  "description": "Execute a single AI agent task with verification",
+  "version": 1,
+  "isLatest": true,
+  "isPublished": true,
+  "variables": [
+    { "name": "Prompt", "typeName": "String", "value": "" },
+    { "name": "WorkspacePath", "typeName": "String", "value": "/workspace" },
+    { "name": "Agent", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "sonnet" },
+    { "name": "ContainerId", "typeName": "String", "value": "" }
+  ],
+  "root": {
+    "type": "Elsa.Flowchart",
+    "id": "simple-agent-flow",
+    "start": "spawn-container",
+    "activities": [
+      {
+        "type": "MagicPAI.SpawnContainerActivity",
+        "id": "spawn-container",
+        "name": "Spawn Container"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "run-agent",
+        "name": "Run Agent"
+      },
+      {
+        "type": "MagicPAI.RunVerificationActivity",
+        "id": "run-verification",
+        "name": "Run Verification"
+      },
+      {
+        "type": "MagicPAI.DestroyContainerActivity",
+        "id": "destroy-container",
+        "name": "Destroy Container"
+      }
+    ],
+    "connections": [
+      { "source": { "activity": "spawn-container", "port": "Done" }, "target": { "activity": "run-agent" } },
+      { "source": { "activity": "spawn-container", "port": "Failed" }, "target": { "activity": "destroy-container" } },
+      { "source": { "activity": "run-agent", "port": "Done" }, "target": { "activity": "run-verification" } },
+      { "source": { "activity": "run-agent", "port": "Failed" }, "target": { "activity": "destroy-container" } },
+      { "source": { "activity": "run-verification", "port": "Passed" }, "target": { "activity": "destroy-container" } },
+      { "source": { "activity": "run-verification", "port": "Failed" }, "target": { "activity": "destroy-container" } },
+      { "source": { "activity": "run-verification", "port": "Inconclusive" }, "target": { "activity": "destroy-container" } }
+    ]
+  }
+}

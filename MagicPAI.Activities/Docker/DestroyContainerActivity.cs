@@ -18,6 +18,8 @@ public class DestroyContainerActivity : Activity
     {
         var docker = context.GetRequiredService<IContainerManager>();
         var containerId = ContainerId.Get(context) ?? "";
+        if (string.IsNullOrEmpty(containerId))
+            containerId = context.GetVariable<string>("ContainerId") ?? "";
 
         try
         {

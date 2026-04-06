@@ -9,14 +9,24 @@ public class GeminiRunner : ICliAgentRunner
     public string[] AvailableModels =>
         ["gemini-3.1-pro-preview", "gemini-3-flash", "gemini-3.1-flash-lite-preview",
          "gemini-2.5-pro", "gemini-2.5-flash"];
+    public bool SupportsNativeSchema => false; // no CLI flag, schema embedded in prompt
 
-    public string BuildCommand(string prompt, string model, int maxTurns, string workDir)
+    public string BuildCommand(AgentRequest request)
     {
-        var escaped = prompt.Replace("'", "'\\''");
-        return $"cd {workDir} && gemini " +
-               $"--model {ResolveModel(model)} " +
-               $"--sandbox=false " +
-               $"'{escaped}'";
+        var prompt = request.Prompt;
+
+        // Gemini CLI has no native --json-schema; embed in prompt
+        if (!string.IsNullOrEmpty(request.OutputSchema))
+            prompt = $"Respond with ONLY valid JSON matching this schema (no markdown, no explanation):\n{request.OutputSchema}\n\nTask: {prompt}";
+
+        var escaped = Escape(prompt);
+        var model = ResolveModel(request.Model ?? DefaultModel);
+
+        return $"cd {request.WorkDir} && gemini" +
+               $" -p '{escaped}'" +
+               $" --model {model}" +
+               $" --yolo" +
+               $" --output-format json";
     }
 
     public CliAgentResponse ParseResponse(string rawOutput) =>
@@ -29,4 +39,6 @@ public class GeminiRunner : ICliAgentRunner
         "flash-lite" => "gemini-3.1-flash-lite-preview",
         _ => alias
     };
+
+    private static string Escape(string value) => value.Replace("'", "'\\''");
 }

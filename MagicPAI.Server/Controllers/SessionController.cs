@@ -1,5 +1,6 @@
 using Elsa.Workflows.Runtime;
 using Elsa.Workflows.Runtime.Contracts;
+using Elsa.Workflows.Runtime.Parameters;
 using Elsa.Workflows.Runtime.Requests;
 using MagicPAI.Core.Models;
 using MagicPAI.Server.Bridge;
@@ -18,6 +19,7 @@ namespace MagicPAI.Server.Controllers;
 public class SessionController : ControllerBase
 {
     private readonly IWorkflowDispatcher _dispatcher;
+    private readonly IWorkflowRuntime _runtime;
     private readonly IWorkflowCancellationDispatcher _cancellationDispatcher;
     private readonly SessionTracker _tracker;
     private readonly IHubContext<SessionHub> _hubContext;
@@ -25,12 +27,14 @@ public class SessionController : ControllerBase
 
     public SessionController(
         IWorkflowDispatcher dispatcher,
+        IWorkflowRuntime runtime,
         IWorkflowCancellationDispatcher cancellationDispatcher,
         SessionTracker tracker,
         IHubContext<SessionHub> hubContext,
         ILogger<SessionController> logger)
     {
         _dispatcher = dispatcher;
+        _runtime = runtime;
         _cancellationDispatcher = cancellationDispatcher;
         _tracker = tracker;
         _hubContext = hubContext;
@@ -49,9 +53,13 @@ public class SessionController : ControllerBase
 
         var instanceId = Guid.NewGuid().ToString("N");
 
-        var dispatchRequest = new DispatchWorkflowDefinitionRequest
+        var definitionId = WorkflowPublisher.ResolveDefinitionId(
+            request.WorkflowName ?? "full-orchestrate");
+
+        // Use IWorkflowRuntime which builds workflow from CLR code directly,
+        // preserving flowchart activities and connections properly
+        var runtimeParams = new StartWorkflowRuntimeParams
         {
-            DefinitionVersionId = request.WorkflowName ?? "full-orchestrate",
             InstanceId = instanceId,
             Input = new Dictionary<string, object>
             {
@@ -60,10 +68,12 @@ public class SessionController : ControllerBase
                 ["Agent"] = request.Agent ?? "claude",
                 ["Model"] = request.Model ?? "sonnet"
             },
-            CorrelationId = instanceId
+            CorrelationId = instanceId,
         };
 
-        await _dispatcher.DispatchAsync(dispatchRequest, CancellationToken.None);
+        var startResult = await _runtime.TryStartWorkflowAsync(definitionId, runtimeParams);
+        if (startResult is null)
+            return NotFound(new { Message = $"Workflow '{request.WorkflowName}' could not start" });
 
         var sessionInfo = new SessionInfo
         {

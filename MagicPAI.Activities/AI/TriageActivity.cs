@@ -37,11 +37,24 @@ public class TriageActivity : Activity
         try
         {
             var runner = agentFactory.Create("claude");
-            var triagePrompt = BuildTriagePrompt(Prompt.Get(context) ?? "");
-            var command = runner.BuildCommand(triagePrompt, "haiku", 1, "/workspace");
+            var prompt = context.GetWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
+            var workDir = context.GetWorkflowInput<string>("WorkspacePath") ?? "/workspace";
+            var triagePrompt = BuildTriagePrompt(prompt);
+            var triageSchema = SchemaGenerator.FromType<TriageResult>();
+            var command = runner.BuildCommand(new AgentRequest
+            {
+                Prompt = triagePrompt,
+                Model = "haiku",
+                OutputSchema = triageSchema,
+                WorkDir = workDir
+            });
+
+            var cid = ContainerId.Get(context);
+            if (string.IsNullOrEmpty(cid))
+                cid = context.GetVariable<string>("ContainerId") ?? "";
 
             var result = await containerMgr.ExecAsync(
-                ContainerId.Get(context), command, "/workspace", context.CancellationToken);
+                cid, command, workDir, context.CancellationToken);
 
             var parsed = ParseTriageResponse(result.Output ?? "");
             Complexity.Set(context, parsed.Complexity);

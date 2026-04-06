@@ -5,15 +5,20 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Elsa" Version="3.5.3" />
+    <!-- Core Elsa 3.6.0 packages -->
+    <PackageReference Include="Elsa" Version="3.6.0" />
+    <PackageReference Include="Elsa.Http" Version="3.6.0" />
+    <PackageReference Include="Elsa.Identity" Version="3.6.0" />
+    <PackageReference Include="Elsa.Scheduling" Version="3.6.0" />
+    <PackageReference Include="Elsa.Workflows.Api" Version="3.6.0" />
+    <!-- Sub-packages still at 3.5.3 (no 3.6.0 released yet) -->
+    <PackageReference Include="Elsa.CSharp" Version="3.5.3" />
+    <PackageReference Include="Elsa.Liquid" Version="3.5.3" />
+    <PackageReference Include="Elsa.EntityFrameworkCore.PostgreSql" Version="3.5.3" />
     <PackageReference Include="Elsa.EntityFrameworkCore.Sqlite" Version="3.5.3" />
-    <PackageReference Include="Elsa.Http" Version="3.5.3" />
-    <PackageReference Include="Elsa.Identity" Version="3.5.3" />
-    <PackageReference Include="Elsa.Workflows.Api" Version="3.5.3" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />
     <ProjectReference Include="..\MagicPAI.Activities\MagicPAI.Activities.csproj" />
-    <ProjectReference Include="..\MagicPAI.Workflows\MagicPAI.Workflows.csproj" />
   </ItemGroup>
 </Project>

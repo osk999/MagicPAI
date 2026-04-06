@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: magicpai-server
+  namespace: magicpai
+  labels:
+    app.kubernetes.io/name: magicpai-server
+    app.kubernetes.io/part-of: magicpai
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # WebSocket support for SignalR
+    nginx.ingress.kubernetes.io/websocket-services: "magicpai-server"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: magicpai.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: magicpai-server
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - magicpai.example.com
+      secretName: magicpai-tls

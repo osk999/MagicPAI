@@ -1,5 +1,5 @@
 using Elsa.Workflows;
-using MagicPAI.Workflows;
+using MagicPAI.Server.Workflows;
 
 namespace MagicPAI.Tests.Workflows;
 
@@ -51,7 +51,7 @@ public class FullOrchestrateWorkflowTests
     [MemberData(nameof(AllWorkflowTypes))]
     public void Workflow_IsInCorrectNamespace(Type workflowType)
     {
-        Assert.Equal("MagicPAI.Workflows", workflowType.Namespace);
+        Assert.Equal("MagicPAI.Server.Workflows", workflowType.Namespace);
     }
 
     [Theory]

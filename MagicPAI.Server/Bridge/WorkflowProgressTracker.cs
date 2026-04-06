@@ -17,6 +17,7 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
     private readonly SessionTracker _tracker;
     private readonly ILogger<WorkflowProgressTracker> _logger;
     private readonly ConcurrentDictionary<string, int> _completedCounts = new();
+    private readonly ConcurrentDictionary<string, int> _seenActivities = new();
 
     public WorkflowProgressTracker(
         IHubContext<SessionHub> hubContext,
@@ -47,6 +48,11 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
         else
             _completedCounts.TryGetValue(sessionId, out completed);
 
+        // Track total distinct activities seen (approximates total steps)
+        var activityKey = $"{sessionId}:{record.ActivityId}";
+        _seenActivities.TryAdd(activityKey, 0);
+        var totalSeen = _seenActivities.Keys.Count(k => k.StartsWith($"{sessionId}:"));
+
         // Send progress update
         await _hubContext.Clients.Group(sessionId).SendAsync(
             "workflowProgress",
@@ -55,7 +61,7 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
                 ActivityName: record.ActivityName ?? record.ActivityType,
                 Status: status,
                 CompletedSteps: completed,
-                TotalSteps: 0), // Total unknown without graph introspection
+                TotalSteps: totalSeen),
             ct);
 
         // Update session state based on activity status
@@ -70,10 +76,12 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
         }
 
         _logger.LogDebug(
-            "Activity {ActivityType} ({ActivityName}) {Status} for session {SessionId}",
+            "Activity {ActivityType} ({ActivityName}) {Status} for session {SessionId} [{Completed}/{Total}]",
             record.ActivityType,
             record.ActivityName,
             status,
-            sessionId);
+            sessionId,
+            completed,
+            totalSeen);
     }
 }

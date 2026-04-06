@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: magicpai-server
+  namespace: magicpai
+  labels:
+    app.kubernetes.io/name: magicpai-server
+    app.kubernetes.io/part-of: magicpai
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: magicpai-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

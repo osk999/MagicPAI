@@ -478,6 +478,181 @@ textarea.form-input {
     padding: 1rem 0;
 }
 
+/* Live Output Panel */
+.live-output-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.live-output-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+}
+
+.live-output-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.live-output-filter {
+    width: auto !important;
+    min-width: 120px;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+    margin-bottom: 0 !important;
+}
+
+.live-output-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    color: #e2e8f0;
+}
+
+/* Activity Status Badge */
+.activity-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.activity-badge-icon {
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 0.8rem;
+}
+
+.badge-running {
+    background: rgba(79, 70, 229, 0.15);
+    color: var(--primary);
+}
+
+.badge-running .activity-badge-icon {
+    animation: pulse-spin 1s ease-in-out infinite;
+}
+
+@keyframes pulse-spin {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
+.badge-completed {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--success);
+}
+
+.badge-faulted {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+}
+
+.badge-pending {
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--text-muted);
+}
+
+/* Workflow Execution View */
+.workflow-execution-view {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 1rem;
+    height: calc(100vh - 3rem);
+}
+
+.wfv-info {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.wfv-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.wfv-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.wfv-meta {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-bottom: 0.75rem;
+}
+
+.wfv-progress {
+    margin-bottom: 1rem;
+}
+
+.wfv-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-input);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.25rem;
+}
+
+.wfv-progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.wfv-progress-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.wfv-timeline {
+    flex: 1;
+    margin-top: 0.5rem;
+}
+
+.wfv-timeline h4 {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.wfv-timeline-entry {
+    margin-bottom: 0.35rem;
+}
+
+.wfv-output {
+    min-height: 0;
+    overflow: hidden;
+}
+
 #blazor-error-ui {
     background: lightyellow;
     bottom: 0;

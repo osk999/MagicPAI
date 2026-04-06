@@ -66,14 +66,23 @@ public class RunCliAgentActivity : Activity
 
         try
         {
+            // Read containerId from activity input, falling back to workflow variable
             var containerId = ContainerId.Get(context);
-            var agent = agentFactory.Create(Agent.Get(context) ?? "claude");
-            var prompt = Prompt.Get(context) ?? "";
-            var model = Model.Get(context) ?? "auto";
-            var workDir = WorkingDirectory.Get(context) ?? "/workspace";
+            if (string.IsNullOrEmpty(containerId))
+                containerId = context.GetVariable<string>("ContainerId") ?? "";
+            var agentName = context.GetWorkflowInput<string>("Agent") ?? Agent.Get(context) ?? "claude";
+            var agent = agentFactory.Create(agentName);
+            var prompt = context.GetWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
+            var model = context.GetWorkflowInput<string>("Model") ?? Model.Get(context) ?? "auto";
+            var workDir = context.GetWorkflowInput<string>("WorkspacePath") ?? WorkingDirectory.Get(context) ?? "/workspace";
             var maxTurns = MaxTurns.Get(context);
 
-            var command = agent.BuildCommand(prompt, model, maxTurns, workDir);
+            var command = agent.BuildCommand(new AgentRequest
+            {
+                Prompt = prompt,
+                Model = model == "auto" ? null : model,
+                WorkDir = workDir
+            });
 
             var result = await containerMgr.ExecStreamingAsync(
                 containerId, command,

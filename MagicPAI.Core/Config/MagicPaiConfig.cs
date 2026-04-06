@@ -64,6 +64,17 @@ public class MagicPaiConfig
     public bool EnableSecurityScan { get; set; } = true;
     public bool BlockOnSecurityIssues { get; set; }
 
+    // --- Execution Backend ---
+    public string ExecutionBackend { get; set; } = "docker"; // "docker" or "kubernetes"
+
+    // --- Kubernetes ---
+    public string KubernetesNamespace { get; set; } = "magicpai";
+    public string KubernetesServiceAccount { get; set; } = "magicpai-server";
+
+    // --- Container Pool ---
+    public int ContainerPoolSize { get; set; } = 3;
+    public bool EnableContainerPool { get; set; }
+
     // --- Model Routing ---
     public bool EnableAdaptiveRouting { get; set; }
     public Dictionary<string, string> ModelOverrides { get; set; } = new();
@@ -86,6 +97,9 @@ public class MagicPaiConfig
         if (GuiPortRangeEnd <= GuiPortRangeStart) errors.Add("GuiPortRangeEnd must be > GuiPortRangeStart");
         if (MaxParallelWorkers < 1) errors.Add("MaxParallelWorkers must be >= 1");
         if (SignalRBufferSize < 10) errors.Add("SignalRBufferSize must be >= 10");
+        if (ExecutionBackend is not ("docker" or "kubernetes")) errors.Add("ExecutionBackend must be 'docker' or 'kubernetes'");
+        if (ContainerPoolSize < 1) errors.Add("ContainerPoolSize must be >= 1");
+        if (string.IsNullOrWhiteSpace(KubernetesNamespace)) errors.Add("KubernetesNamespace must not be empty");
 
         return errors;
     }

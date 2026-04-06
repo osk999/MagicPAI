@@ -44,7 +44,7 @@ public class SpawnContainerActivity : Activity
         var config = new ContainerConfig
         {
             Image = Image.Get(context) ?? "magicpai-env:latest",
-            WorkspacePath = WorkspacePath.Get(context) ?? "",
+            WorkspacePath = context.GetWorkflowInput<string>("WorkspacePath") ?? WorkspacePath.Get(context) ?? "",
             MemoryLimitMb = MemoryLimitMb.Get(context),
             EnableGui = EnableGui.Get(context),
             Env = EnvVars.GetOrDefault(context, () => null) ?? new Dictionary<string, string>()
@@ -57,8 +57,11 @@ public class SpawnContainerActivity : Activity
             ContainerId.Set(context, result.ContainerId);
             GuiUrl.Set(context, result.GuiUrl);
 
+            // Also set as workflow variable so downstream activities can access it
+            context.SetVariable("ContainerId", result.ContainerId);
+
             context.AddExecutionLogEntry("ContainerSpawned",
-                $"Container {result.ContainerId[..Math.Min(12, result.ContainerId.Length)]} started");
+                $"Container {result.ContainerId[..Math.Min(12, result.ContainerId.Length)]} started (workspace={config.WorkspacePath})");
 
             await context.CompleteActivityWithOutcomesAsync("Done");
         }

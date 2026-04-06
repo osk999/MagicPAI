@@ -43,6 +43,7 @@ public class SessionInfo
     public string State { get; set; } = "idle";
     public decimal TotalCostUsd { get; set; }
     public string Agent { get; set; } = "claude";
+    public string? ContainerId { get; set; }
     public string? PromptPreview { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

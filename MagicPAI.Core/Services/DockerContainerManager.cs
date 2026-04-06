@@ -56,7 +56,7 @@ public class DockerContainerManager : IContainerManager, IDisposable
         {
             Image = config.Image,
             WorkingDir = config.ContainerWorkDir,
-            Env = config.Env.Select(kv => $"{kv.Key}={kv.Value}").ToList(),
+            Env = BuildEnv(config),
             ExposedPorts = exposedPorts,
             HostConfig = hostConfig,
             Tty = true,
@@ -176,6 +176,26 @@ public class DockerContainerManager : IContainerManager, IDisposable
 
     public string? GetGuiUrl(string containerId) =>
         _guiUrls.TryGetValue(containerId, out var url) ? url : null;
+
+    /// <summary>
+    /// Build container env vars, auto-injecting host API keys for CLI agents.
+    /// </summary>
+    private static List<string> BuildEnv(ContainerConfig config)
+    {
+        var env = config.Env.Select(kv => $"{kv.Key}={kv.Value}").ToList();
+
+        // Auto-inject API keys from host if not already set
+        string[] autoPassKeys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"];
+        foreach (var key in autoPassKeys)
+        {
+            if (config.Env.ContainsKey(key)) continue;
+            var val = Environment.GetEnvironmentVariable(key);
+            if (!string.IsNullOrEmpty(val))
+                env.Add($"{key}={val}");
+        }
+
+        return env;
+    }
 
     public void Dispose()
     {

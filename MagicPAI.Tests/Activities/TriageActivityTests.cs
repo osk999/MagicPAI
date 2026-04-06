@@ -14,10 +14,21 @@ public class TriageActivityTests
     public void Triage_Uses_Haiku_Model_For_Cheap_Classification()
     {
         var runner = new ClaudeRunner();
-        var cmd = runner.BuildCommand("Classify this task", "haiku", 1, "/workspace");
+        var cmd = runner.BuildCommand(new AgentRequest { Prompt = "Classify this task", Model = "haiku" });
 
-        Assert.Contains("--max-turns 1", cmd);
         Assert.Contains("haiku", cmd);
+        Assert.Contains("--dangerously-skip-permissions", cmd);
+    }
+
+    [Fact]
+    public void Triage_SchemaGenerator_Produces_Valid_TriageResult_Schema()
+    {
+        var schema = SchemaGenerator.FromType<TriageResult>();
+        Assert.Contains("complexity", schema);
+        Assert.Contains("category", schema);
+        Assert.Contains("recommended_model", schema);
+        Assert.Contains("needs_decomposition", schema);
+        Assert.Contains("additionalProperties", schema);
     }
 
     [Fact]

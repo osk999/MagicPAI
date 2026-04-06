@@ -1,3 +1,4 @@
+using FastEndpoints;
 using Elsa.EntityFrameworkCore.Extensions;
 using Elsa.EntityFrameworkCore.Modules.Management;
 using Elsa.EntityFrameworkCore.Modules.Runtime;
@@ -6,26 +7,27 @@ using MagicPAI.Activities.AI;
 using MagicPAI.Core.Config;
 using MagicPAI.Core.Services;
 using MagicPAI.Core.Services.Gates;
+using Elsa.Workflows;
 using MagicPAI.Server.Bridge;
 using MagicPAI.Server.Hubs;
-using MagicPAI.Workflows;
+using MagicPAI.Server.Providers;
+using MagicPAI.Server.Services;
+using MagicPAI.Server.Workflows;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // --- Configuration ---
 var config = builder.Configuration.GetSection("MagicPAI").Get<MagicPaiConfig>() ?? new MagicPaiConfig();
-var configErrors = config.Validate();
-if (configErrors.Count > 0)
-{
-    foreach (var error in configErrors)
-        Console.Error.WriteLine($"Config error: {error}");
-    throw new InvalidOperationException($"MagicPAI configuration invalid: {string.Join("; ", configErrors)}");
-}
 builder.Services.AddSingleton(config);
 
 // --- Core Services ---
 builder.Services.AddSingleton<SharedBlackboard>();
-builder.Services.AddSingleton<IContainerManager, DockerContainerManager>();
+if (!config.UseDocker)
+    builder.Services.AddSingleton<IContainerManager, LocalContainerManager>();
+else if (config.ExecutionBackend == "kubernetes")
+    builder.Services.AddSingleton<IContainerManager, KubernetesContainerManager>();
+else
+    builder.Services.AddSingleton<IContainerManager, DockerContainerManager>();
 builder.Services.AddSingleton<ICliAgentFactory, CliAgentFactory>();
 builder.Services.AddSingleton<IExecutionEnvironment, LocalExecutionEnvironment>();
 builder.Services.AddSingleton<WorktreeManager>();
@@ -46,21 +48,27 @@ builder.Services.AddSignalR();
 // --- Event Bridge Services ---
 builder.Services.AddSingleton<SessionTracker>();
 
-// --- Elsa Workflows ---
+// --- Elsa Workflows (following official reference app pattern) ---
+var pgConn = builder.Configuration.GetConnectionString("MagicPai");
+
 builder.Services.AddElsa(elsa =>
 {
-    // Workflow Management with SQLite persistence
+    // Workflow Management — PostgreSQL if connection string provided, else SQLite
     elsa.UseWorkflowManagement(management =>
     {
-        management.UseEntityFrameworkCore(ef =>
-            ef.UseSqlite());
+        if (!string.IsNullOrEmpty(pgConn))
+            management.UseEntityFrameworkCore(ef => ef.UsePostgreSql(pgConn));
+        else
+            management.UseEntityFrameworkCore(ef => ef.UseSqlite());
     });
 
-    // Workflow Runtime with SQLite persistence
+    // Workflow Runtime — same conditional persistence
     elsa.UseWorkflowRuntime(runtime =>
     {
-        runtime.UseEntityFrameworkCore(ef =>
-            ef.UseSqlite());
+        if (!string.IsNullOrEmpty(pgConn))
+            runtime.UseEntityFrameworkCore(ef => ef.UsePostgreSql(pgConn));
+        else
+            runtime.UseEntityFrameworkCore(ef => ef.UseSqlite());
 
         // Register built-in workflows
         runtime.AddWorkflow<FullOrchestrateWorkflow>();
@@ -95,60 +103,95 @@ builder.Services.AddElsa(elsa =>
     });
 
     // Default Authentication
-    elsa.UseDefaultAuthentication(auth =>
+    elsa.UseDefaultAuthentication(auth => auth.UseAdminApiKey());
+
+    // HTTP activities (with configurable base URL for bookmark resume URLs)
+    elsa.UseHttp(http => http.ConfigureHttpOptions = options =>
     {
-        auth.UseAdminApiKey();
+        var baseUrl = builder.Configuration["Elsa:Http:BaseUrl"] ?? "https://localhost:5001";
+        options.BaseUrl = new Uri(baseUrl);
     });
 
-    // HTTP activities (for webhook triggers, etc.)
-    elsa.UseHttp();
+    // Scheduling (timers, delays, cron)
+    elsa.UseScheduling();
 
-    // Workflows API endpoints (FastEndpoints-based)
+    // Expression languages
+    elsa.UseJavaScript(options => options.AllowClrAccess = true);
+    elsa.UseCSharp();
+    elsa.UseLiquid((Elsa.Liquid.Features.LiquidFeature liquid) => { });
+
+    // Workflows API (handles FastEndpoints + serialization internally)
     elsa.UseWorkflowsApi();
 
     // Register all custom activities from MagicPAI.Activities assembly
     elsa.AddActivitiesFrom<RunCliAgentActivity>();
 });
 
-// --- Notification handlers for Elsa event bridge ---
+// --- Notification handlers ---
 builder.Services.AddNotificationHandler<ElsaEventBridge>();
 builder.Services.AddNotificationHandler<WorkflowProgressTracker>();
+builder.Services.AddNotificationHandler<WorkflowCompletionHandler>();
+
+// --- Activity descriptor customization (icons/colors in Studio) ---
+builder.Services.AddSingleton<IActivityDescriptorModifier, MagicPaiActivityDescriptorModifier>();
+
+// --- FastEndpoints (required for Elsa API in 3.6) ---
+builder.Services.AddFastEndpoints();
+
+// --- Workflow publisher (materializes code-first workflows for Studio) ---
+builder.Services.AddHostedService<WorkflowPublisher>();
+
+// --- Worker pod/container garbage collector ---
+builder.Services.AddHostedService<WorkerPodGarbageCollector>();
 
 // --- Controllers ---
 builder.Services.AddControllers();
 
-// --- CORS (for Blazor WASM client) ---
+// --- CORS ---
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
         policy.AllowAnyOrigin()
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .WithExposedHeaders("*");
     });
 });
 
 var app = builder.Build();
 
-// --- Middleware ---
+// --- Middleware (order follows official Elsa reference app) ---
+if (app.Environment.IsDevelopment())
+    app.UseDeveloperExceptionPage();
+
 app.UseCors();
 
-// Static files (Blazor WASM will be served if published alongside)
-app.UseStaticFiles();
+// Static files with Blazor WASM types
+var provider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+provider.Mappings[".dat"] = "application/octet-stream";
+provider.Mappings[".blat"] = "application/octet-stream";
+app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = provider });
 
-// Routing
 app.UseRouting();
-
-// Authentication & Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Elsa HTTP workflow middleware
+// Elsa API via FastEndpoints
+app.UseFastEndpoints(cfg =>
+{
+    // Handle System.Type/RuntimeType serialization for Elsa descriptors
+    cfg.Serializer.Options.Converters.Insert(0, new MagicPAI.Server.Bridge.TypeJsonConverter());
+});
+
+// JSON error handler
+app.UseJsonSerializationErrorHandler();
+
+// Elsa HTTP workflow endpoint activities
 app.UseWorkflows();
 
-// Map endpoints
+// Custom endpoints
 app.MapControllers();
 app.MapHub<SessionHub>("/hub");
-app.MapFallbackToFile("index.html");
 
 app.Run();

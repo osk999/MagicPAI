@@ -16,6 +16,6 @@
   <ItemGroup>
     <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />
     <ProjectReference Include="..\MagicPAI.Activities\MagicPAI.Activities.csproj" />
-    <ProjectReference Include="..\MagicPAI.Workflows\MagicPAI.Workflows.csproj" />
+    <ProjectReference Include="..\MagicPAI.Server\MagicPAI.Server.csproj" />
   </ItemGroup>
 </Project>

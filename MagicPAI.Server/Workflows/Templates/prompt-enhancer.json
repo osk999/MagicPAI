@@ -1,0 +1,48 @@
+{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "definitionId": "PromptEnhancerWorkflow",
+  "name": "Prompt Enhancer",
+  "description": "Classify prompt vagueness and enhance using Sonnet, escalating to Opus if needed",
+  "version": 1,
+  "isLatest": true,
+  "isPublished": true,
+  "variables": [
+    { "name": "Prompt", "typeName": "String", "value": "" },
+    { "name": "ContainerId", "typeName": "String", "value": "" },
+    { "name": "EnhancedPrompt", "typeName": "String", "value": "" }
+  ],
+  "root": {
+    "type": "Elsa.Flowchart",
+    "id": "prompt-enhancer-flow",
+    "start": "classify-vagueness",
+    "activities": [
+      {
+        "type": "MagicPAI.TriageActivity",
+        "id": "classify-vagueness",
+        "name": "Classify Vagueness"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "enhance-sonnet",
+        "name": "Enhance with Sonnet"
+      },
+      {
+        "type": "MagicPAI.TriageActivity",
+        "id": "quality-check",
+        "name": "Quality Check"
+      },
+      {
+        "type": "MagicPAI.RunCliAgentActivity",
+        "id": "enhance-opus",
+        "name": "Enhance with Opus"
+      }
+    ],
+    "connections": [
+      { "source": { "activity": "classify-vagueness", "port": "Complex" }, "target": { "activity": "enhance-sonnet" } },
+      { "source": { "activity": "classify-vagueness", "port": "Simple" }, "target": { "activity": "enhance-sonnet" } },
+      { "source": { "activity": "enhance-sonnet", "port": "Done" }, "target": { "activity": "quality-check" } },
+      { "source": { "activity": "quality-check", "port": "Complex" }, "target": { "activity": "enhance-opus" } },
+      { "source": { "activity": "enhance-sonnet", "port": "Failed" }, "target": { "activity": "enhance-opus" } }
+    ]
+  }
+}

@@ -6,6 +6,7 @@ using MagicPAI.Core.Models;
 using MagicPAI.Server.Bridge;
 using Microsoft.AspNetCore.SignalR;
 
+
 namespace MagicPAI.Server.Hubs;
 
 /// <summary>
@@ -48,9 +49,11 @@ public class SessionHub : Hub
     {
         var instanceId = Guid.NewGuid().ToString("N");
 
+        var versionId = WorkflowPublisher.ResolveDefinitionVersionId(workflowName);
+
         var request = new DispatchWorkflowDefinitionRequest
         {
-            DefinitionVersionId = workflowName,
+            DefinitionVersionId = versionId,
             InstanceId = instanceId,
             Input = new Dictionary<string, object>
             {
