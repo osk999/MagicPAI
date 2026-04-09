@@ -13,21 +13,48 @@ using MagicPAI.Server.Hubs;
 using MagicPAI.Server.Providers;
 using MagicPAI.Server.Services;
 using MagicPAI.Server.Workflows;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Disable Elsa API security in Development (per Elsa docs)
+if (builder.Environment.IsDevelopment())
+{
+    // Try both old and new type locations
+    var secType = Type.GetType("Elsa.Api.Common.Options.EndpointSecurityOptions, Elsa.Api.Common")
+        ?? AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(a => { try { return a.GetTypes(); } catch { return []; } })
+            .FirstOrDefault(t => t.Name == "EndpointSecurityOptions");
+    secType?.GetMethod("DisableSecurity", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.Invoke(null, null);
+    if (secType is not null)
+        Console.WriteLine($"Elsa security disabled via {secType.FullName}");
+    else
+        Console.WriteLine("WARNING: Could not find EndpointSecurityOptions to disable Elsa API security");
+}
+
 // --- Configuration ---
 var config = builder.Configuration.GetSection("MagicPAI").Get<MagicPaiConfig>() ?? new MagicPaiConfig();
+var configErrors = config.Validate();
+if (configErrors.Count > 0)
+    throw new InvalidOperationException(
+        "Invalid MagicPAI configuration:" + Environment.NewLine + string.Join(Environment.NewLine, configErrors.Select(x => $"- {x}")));
 builder.Services.AddSingleton(config);
+
+var pgConn = builder.Configuration.GetConnectionString("MagicPai");
+var useKubernetesBackend = string.Equals(config.ExecutionBackend, "kubernetes", StringComparison.OrdinalIgnoreCase);
+
+if (string.IsNullOrWhiteSpace(pgConn))
+    throw new InvalidOperationException(
+        "ConnectionStrings:MagicPai is required. MagicPAI uses PostgreSQL for Elsa workflow persistence.");
 
 // --- Core Services ---
 builder.Services.AddSingleton<SharedBlackboard>();
-if (!config.UseDocker)
-    builder.Services.AddSingleton<IContainerManager, LocalContainerManager>();
-else if (config.ExecutionBackend == "kubernetes")
+if (useKubernetesBackend)
     builder.Services.AddSingleton<IContainerManager, KubernetesContainerManager>();
-else
+else if (config.UseDocker)
     builder.Services.AddSingleton<IContainerManager, DockerContainerManager>();
+else
+    builder.Services.AddSingleton<IContainerManager, LocalContainerManager>();
 builder.Services.AddSingleton<ICliAgentFactory, CliAgentFactory>();
 builder.Services.AddSingleton<IExecutionEnvironment, LocalExecutionEnvironment>();
 builder.Services.AddSingleton<WorktreeManager>();
@@ -44,31 +71,33 @@ builder.Services.AddSingleton<VerificationPipeline>();
 
 // --- SignalR ---
 builder.Services.AddSignalR();
+builder.Services.AddHealthChecks();
 
 // --- Event Bridge Services ---
 builder.Services.AddSingleton<SessionTracker>();
-
-// --- Elsa Workflows (following official reference app pattern) ---
-var pgConn = builder.Configuration.GetConnectionString("MagicPai");
+builder.Services.AddSingleton<SessionHistoryReader>();
 
 builder.Services.AddElsa(elsa =>
 {
-    // Workflow Management — PostgreSQL if connection string provided, else SQLite
+    // Workflow Management — PostgreSQL
     elsa.UseWorkflowManagement(management =>
     {
-        if (!string.IsNullOrEmpty(pgConn))
-            management.UseEntityFrameworkCore(ef => ef.UsePostgreSql(pgConn));
-        else
-            management.UseEntityFrameworkCore(ef => ef.UseSqlite());
+        management.UseEntityFrameworkCore(ef => ef.UsePostgreSql(pgConn));
     });
 
-    // Workflow Runtime — same conditional persistence
+    // Workflow Runtime — PostgreSQL
     elsa.UseWorkflowRuntime(runtime =>
     {
-        if (!string.IsNullOrEmpty(pgConn))
-            runtime.UseEntityFrameworkCore(ef => ef.UsePostgreSql(pgConn));
-        else
-            runtime.UseEntityFrameworkCore(ef => ef.UseSqlite());
+        runtime.UseEntityFrameworkCore(ef => ef.UsePostgreSql(pgConn));
+
+        if (useKubernetesBackend)
+        {
+            runtime.DistributedLockProvider = _ => PostgresDistributedLockFactory.Create(pgConn!);
+            runtime.DistributedLockingOptions = options =>
+            {
+                options.LockAcquisitionTimeout = TimeSpan.FromSeconds(30);
+            };
+        }
 
         // Register built-in workflows
         runtime.AddWorkflow<FullOrchestrateWorkflow>();
@@ -105,11 +134,15 @@ builder.Services.AddElsa(elsa =>
     // Default Authentication
     elsa.UseDefaultAuthentication(auth => auth.UseAdminApiKey());
 
-    // HTTP activities (with configurable base URL for bookmark resume URLs)
-    elsa.UseHttp(http => http.ConfigureHttpOptions = options =>
+    // HTTP activities (with configurable base URL and prefixed path to avoid SPA route conflicts)
+    elsa.UseHttp(http =>
     {
-        var baseUrl = builder.Configuration["Elsa:Http:BaseUrl"] ?? "https://localhost:5001";
-        options.BaseUrl = new Uri(baseUrl);
+        http.ConfigureHttpOptions = options =>
+        {
+            var baseUrl = builder.Configuration["Elsa:Http:BaseUrl"] ?? "https://localhost:5001";
+            options.BaseUrl = new Uri(baseUrl);
+            options.BasePath = "/elsa/workflows";
+        };
     });
 
     // Scheduling (timers, delays, cron)
@@ -167,20 +200,25 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 
+// Blazor WASM framework files (from MagicPAI.Studio project)
+app.UseBlazorFrameworkFiles();
+
 // Static files with Blazor WASM types
+app.UseDefaultFiles();
 var provider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
 provider.Mappings[".dat"] = "application/octet-stream";
 provider.Mappings[".blat"] = "application/octet-stream";
+provider.Mappings[".pdb"] = "application/octet-stream";
 app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = provider });
 
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Elsa API via FastEndpoints
+// Elsa API via FastEndpoints — prefix all Elsa endpoints to avoid clashing with Blazor SPA routes
 app.UseFastEndpoints(cfg =>
 {
-    // Handle System.Type/RuntimeType serialization for Elsa descriptors
+    cfg.Endpoints.RoutePrefix = "elsa/api";
     cfg.Serializer.Options.Converters.Insert(0, new MagicPAI.Server.Bridge.TypeJsonConverter());
 });
 
@@ -191,7 +229,14 @@ app.UseJsonSerializationErrorHandler();
 app.UseWorkflows();
 
 // Custom endpoints
+app.MapHealthChecks("/health", new HealthCheckOptions());
+app.MapHealthChecks("/health/live", new HealthCheckOptions());
+app.MapHealthChecks("/health/ready", new HealthCheckOptions());
 app.MapControllers();
 app.MapHub<SessionHub>("/hub");
+app.MapFallbackToFile("index.html");
 
 app.Run();
+
+// Expose Program class for WebApplicationFactory<Program> in integration tests
+public partial class Program { }

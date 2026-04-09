@@ -1,0 +1,48 @@
+version: '3.8'
+
+# Test-specific compose file.
+# Runs the server with PostgreSQL, no Docker container execution,
+# and no external agent dependencies. Suitable for E2E tests.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.test.yml up -d --wait
+#   BASE_URL=http://localhost:5099 dotnet test MagicPAI.Tests.E2E
+#   docker compose -f docker/docker-compose.test.yml down
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: docker/server/Dockerfile
+    ports:
+      - "5099:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__MagicPai=Host=db;Database=magicpai_test;Username=magicpai;Password=magicpai
+      - MagicPAI__UseDocker=false
+      - MagicPAI__RequireContainerizedAgentExecution=false
+      - MagicPAI__EnableContainerPool=false
+      - MagicPAI__EnableWorktreeIsolation=false
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    restart: "no"
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: magicpai_test
+      POSTGRES_USER: magicpai
+      POSTGRES_PASSWORD: magicpai
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U magicpai -d magicpai_test"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+    restart: "no"

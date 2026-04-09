@@ -4,4 +4,7 @@
   <Project Path="MagicPAI.Server/MagicPAI.Server.csproj" />
   <Project Path="MagicPAI.Studio/MagicPAI.Studio.csproj" />
   <Project Path="MagicPAI.Tests/MagicPAI.Tests.csproj" />
+  <Project Path="MagicPAI.Tests.Integration/MagicPAI.Tests.Integration.csproj" />
+  <Project Path="MagicPAI.Tests.UI/MagicPAI.Tests.UI.csproj" />
+  <Project Path="MagicPAI.Tests.E2E/MagicPAI.Tests.E2E.csproj" />
 </Solution>
