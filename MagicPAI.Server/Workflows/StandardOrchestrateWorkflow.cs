@@ -1,7 +1,9 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
+using Elsa.Workflows.Runtime.Activities;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Docker;
 using MagicPAI.Activities.Verification;
@@ -21,65 +23,85 @@ public class StandardOrchestrateWorkflow : WorkflowBase
         builder.Description =
             "Balanced pipeline: prompt enhancement, context, triage, complex/simple routing, verification";
 
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var workspacePath = builder.WithVariable<string>("WorkspacePath", "/workspace");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
         var containerId = builder.WithVariable<string>("ContainerId", "");
+        var enhancedPrompt = builder.WithVariable<string>("EnhancedPrompt", "");
+        var elaboratedPrompt = builder.WithVariable<string>("ElaboratedPrompt", "");
+        var gatheredContext = builder.WithVariable<string>("GatheredContext", "");
+        var complexWorkerOutput = builder.WithVariable<string>("ComplexWorkerOutput", "");
+        Input<string> resolveContainerId() => new(ctx =>
+            ctx.GetVariable<string>("ContainerId")
+            ?? ctx.GetInput<string>("ContainerId")
+            ?? "");
 
         // --- Setup ---
         var spawn = new SpawnContainerActivity
         {
-            WorkspacePath = new Input<string>(workspacePath),
+            WorkspacePath = new Input<string>("/workspace"),
             ContainerId = new Output<string>(containerId),
             Id = "std-spawn"
         };
 
         // --- Prompt Enhancement Phase ---
-        var enhancePrompt = new RunCliAgentActivity
+        var enhancePrompt = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(""),
+            Prompt = new Input<string>(""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
+            Response = new Output<string>(enhancedPrompt),
             Id = "std-enhance"
         };
 
         // --- Elaboration Phase ---
-        var elaborate = new RunCliAgentActivity
+        var elaborate = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(""),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("EnhancedPrompt"))
+                    ? ctx.GetInput<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("EnhancedPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
+            Response = new Output<string>(elaboratedPrompt),
             Id = "std-elaborate"
         };
 
         // --- Context Gathering ---
-        var gatherContext = new RunCliAgentActivity
+        var gatherContext = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(""),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ElaboratedPrompt"))
+                    ? ctx.GetInput<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("ElaboratedPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
+            Response = new Output<string>(gatheredContext),
             Id = "std-context"
         };
 
         // --- Triage ---
         var triage = new TriageActivity
         {
-            Prompt = new Input<string>(prompt),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("GatheredContext"))
+                    ? ctx.GetInput<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("GatheredContext") ?? ""),
             ContainerId = new Input<string>(containerId),
             Id = "std-triage"
         };
 
         // --- Simple Path ---
-        var simpleAgent = new RunCliAgentActivity
+        var simpleAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(""),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("GatheredContext"))
+                    ? ctx.GetInput<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("GatheredContext") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
+            Model = new Input<string>(""),
+            ModelPower = new Input<int>(0),
             Id = "std-simple-agent"
         };
 
@@ -92,48 +114,48 @@ public class StandardOrchestrateWorkflow : WorkflowBase
         // --- Complex Path ---
         var architect = new ArchitectActivity
         {
-            Prompt = new Input<string>(prompt),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("GatheredContext"))
+                    ? ctx.GetInput<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("GatheredContext") ?? ""),
             ContainerId = new Input<string>(containerId),
             Id = "std-architect"
         };
 
-        var complexAgent = new RunCliAgentActivity
+        var complexAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(""),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("GatheredContext"))
+                    ? ctx.GetInput<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("GatheredContext") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("opus"),
+            ModelPower = new Input<int>(1),
+            Response = new Output<string>(complexWorkerOutput),
             Id = "std-complex-agent"
         };
 
-        var complexVerify = new RunVerificationActivity
+        var complexVerifyAndRepair = new DispatchWorkflow
         {
-            ContainerId = new Input<string>(containerId),
-            Id = "std-complex-verify"
-        };
-
-        var repair = new RepairActivity
-        {
-            ContainerId = new Input<string>(containerId),
-            FailedGates = new Input<string[]>([]),
-            OriginalPrompt = new Input<string>(prompt),
-            GateResultsJson = new Input<string>(""),
-            Id = "std-repair"
-        };
-
-        var repairAgent = new RunCliAgentActivity
-        {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
-            Id = "std-repair-agent"
+            WorkflowDefinitionId = new Input<string>(nameof(VerifyAndRepairWorkflow)),
+            WaitForCompletion = new Input<bool>(true),
+            Input = new Input<IDictionary<string, object>?>(ctx => new Dictionary<string, object>
+            {
+                ["ContainerId"] = ctx.GetVariable<string>("ContainerId") ?? "",
+                ["Prompt"] = ctx.GetInput<string>("Prompt") ?? "",
+                ["AiAssistant"] = ctx.GetInput<string>("AiAssistant") ?? "",
+                ["Agent"] = ctx.GetInput<string>("Agent") ?? "",
+                ["Model"] = ctx.GetInput<string>("Model") ?? "auto",
+                ["ModelPower"] = ctx.GetInput<int>("ModelPower"),
+                ["WorkerOutput"] = ctx.GetVariable<string>("ComplexWorkerOutput") ?? ""
+            }),
+            Id = "std-complex-verify-repair"
         };
 
         // --- Cleanup ---
         var destroy = new DestroyContainerActivity
         {
-            ContainerId = new Input<string>(containerId),
+            ContainerId = resolveContainerId(),
             Id = "std-destroy"
         };
 
@@ -141,6 +163,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
         {
             Id = "standard-orchestrate-flow",
             Start = spawn,
+            Activities = { spawn, enhancePrompt, elaborate, gatherContext, triage, simpleAgent, simpleVerify, architect, complexAgent, complexVerifyAndRepair, destroy },
             Connections =
             {
                 // Spawn -> Enhance
@@ -209,31 +232,16 @@ public class StandardOrchestrateWorkflow : WorkflowBase
                     new Endpoint(destroy)),
                 new Connection(
                     new Endpoint(complexAgent, "Done"),
-                    new Endpoint(complexVerify)),
+                    new Endpoint(complexVerifyAndRepair)),
                 new Connection(
                     new Endpoint(complexAgent, "Failed"),
                     new Endpoint(destroy)),
                 new Connection(
-                    new Endpoint(complexVerify, "Passed"),
-                    new Endpoint(destroy)),
-                new Connection(
-                    new Endpoint(complexVerify, "Inconclusive"),
-                    new Endpoint(destroy)),
-                new Connection(
-                    new Endpoint(complexVerify, "Failed"),
-                    new Endpoint(repair)),
-                new Connection(
-                    new Endpoint(repair, "Done"),
-                    new Endpoint(repairAgent)),
-                new Connection(
-                    new Endpoint(repairAgent, "Done"),
-                    new Endpoint(complexVerify)),
-                new Connection(
-                    new Endpoint(repairAgent, "Failed"),
+                    new Endpoint(complexVerifyAndRepair),
                     new Endpoint(destroy)),
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

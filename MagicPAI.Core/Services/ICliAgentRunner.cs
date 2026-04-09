@@ -21,6 +21,12 @@ public record AgentRequest
     public decimal MaxBudgetUsd { get; init; }
 
     /// <summary>
+    /// Existing assistant conversation session to resume.
+    /// When null, the runner should start a new session.
+    /// </summary>
+    public string? SessionId { get; init; }
+
+    /// <summary>
     /// JSON Schema string for structured output. When set, the agent is
     /// instructed to return JSON matching this schema.
     /// Use <see cref="AgentRequest.ForStructuredOutput{T}"/> to auto-generate from a C# type.
@@ -51,6 +57,11 @@ public interface ICliAgentRunner
     /// model resolution, and structured output per-agent automatically.
     /// </summary>
     string BuildCommand(AgentRequest request);
+
+    /// <summary>
+    /// Build a structured execution plan for safe argv-based execution.
+    /// </summary>
+    CliAgentExecutionPlan BuildExecutionPlan(AgentRequest request);
 
     /// <summary>Parse the raw CLI output into a structured response.</summary>
     CliAgentResponse ParseResponse(string rawOutput);

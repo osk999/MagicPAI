@@ -5,6 +5,8 @@ using Elsa.Workflows.Activities.Flowchart.Attributes;
 using Elsa.Workflows.Attributes;
 using Elsa.Workflows.Models;
 using Elsa.Workflows.UIHints;
+using MagicPAI.Activities;
+using MagicPAI.Core.Config;
 using MagicPAI.Core.Models;
 using MagicPAI.Core.Services;
 
@@ -29,42 +31,91 @@ public class TriageActivity : Activity
     [Output(DisplayName = "Recommended Model")]
     public Output<string> RecommendedModel { get; set; } = default!;
 
+    [Output(DisplayName = "Recommended Model Power")]
+    public Output<int> RecommendedModelPower { get; set; } = default!;
+
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
         var containerMgr = context.GetRequiredService<IContainerManager>();
         var agentFactory = context.GetRequiredService<ICliAgentFactory>();
+        var config = context.GetRequiredService<MagicPaiConfig>();
 
         try
         {
-            var runner = agentFactory.Create("claude");
-            var prompt = context.GetWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
-            var workDir = context.GetWorkflowInput<string>("WorkspacePath") ?? "/workspace";
+            if (config.RequireContainerizedAgentExecution && !config.UseWorkerContainers)
+                throw new InvalidOperationException("AI agent execution is configured to run only inside worker containers, but no worker-container backend is enabled.");
+
+            var assistantName = AiAssistantResolver.NormalizeAssistant(
+                context.GetOptionalWorkflowInput<string>("AiAssistant")
+                ?? context.GetOptionalWorkflowInput<string>("Agent")
+                ?? config.DefaultAgent,
+                config.DefaultAgent);
+            var runner = agentFactory.Create(assistantName);
+            var prompt = context.GetOptionalWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
+            var workDir = config.UseWorkerContainers
+                ? config.ContainerWorkDir ?? "/workspace"
+                : context.GetOptionalWorkflowInput<string>("WorkspacePath")
+                    ?? config.WorkspacePath
+                    ?? ".";
             var triagePrompt = BuildTriagePrompt(prompt);
             var triageSchema = SchemaGenerator.FromType<TriageResult>();
-            var command = runner.BuildCommand(new AgentRequest
+            var request = new AgentRequest
             {
                 Prompt = triagePrompt,
-                Model = "haiku",
+                Model = AiAssistantResolver.ResolveModelForPower(runner, config, 3),
                 OutputSchema = triageSchema,
-                WorkDir = workDir
-            });
+                WorkDir = workDir,
+                SessionId = AssistantSessionState.GetOrCreateSessionId(context, assistantName)
+            };
+            var plan = runner.BuildExecutionPlan(request);
 
-            var cid = ContainerId.Get(context);
+            var cid = ContainerId.GetOrDefault(context, () => "");
             if (string.IsNullOrEmpty(cid))
-                cid = context.GetVariable<string>("ContainerId") ?? "";
+                cid = TryGetVariable<string>(context, "ContainerId") ?? "";
+            if (string.IsNullOrEmpty(cid))
+                cid = context.GetOptionalWorkflowInput<string>("ContainerId") ?? "";
+            if (string.IsNullOrWhiteSpace(cid))
+                throw new InvalidOperationException("Container ID is required. Triage runs inside the spawned worker container.");
+
+            foreach (var setupRequest in plan.SetupRequests)
+                await containerMgr.ExecAsync(cid, setupRequest, context.CancellationToken);
 
             var result = await containerMgr.ExecAsync(
-                cid, command, workDir, context.CancellationToken);
+                cid, plan.MainRequest, context.CancellationToken);
 
-            var parsed = ParseTriageResponse(result.Output ?? "");
+            if (result.ExitCode != 0)
+            {
+                context.AddExecutionLogEntry("TriageCommandFailed",
+                    JsonSerializer.Serialize(new
+                    {
+                        exitCode = result.ExitCode,
+                        output = Truncate(result.Output),
+                        error = Truncate(result.Error)
+                    }));
+                throw new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(result.Error)
+                        ? $"Triage agent exited with code {result.ExitCode}."
+                        : result.Error);
+            }
+
+            var parsedResponse = runner.ParseResponse(result.Output ?? "");
+            if (!string.IsNullOrWhiteSpace(parsedResponse.SessionId))
+                AssistantSessionState.SetSessionId(context, assistantName, parsedResponse.SessionId!);
+            var parsed = ParseTriageResponse(parsedResponse.Output ?? result.Output ?? "");
+            var recommendedModel = AiAssistantResolver.ResolveModelForPower(
+                runner,
+                config,
+                parsed.RecommendedModelPower);
             Complexity.Set(context, parsed.Complexity);
             Category.Set(context, parsed.Category);
-            RecommendedModel.Set(context, parsed.RecommendedModel);
+            RecommendedModel.Set(context, recommendedModel);
+            RecommendedModelPower.Set(context, parsed.RecommendedModelPower);
 
             context.AddExecutionLogEntry("TriageResult",
                 $"Complexity={parsed.Complexity}, Category={parsed.Category}");
 
-            var outcome = parsed.Complexity >= 7 ? "Complex" : "Simple";
+            var threshold = config.ComplexityThreshold;
+            var outcome = parsed.Complexity >= threshold ? "Complex" : "Simple";
             await context.CompleteActivityWithOutcomesAsync(outcome);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -72,9 +123,32 @@ public class TriageActivity : Activity
             context.AddExecutionLogEntry("TriageFailed", ex.Message);
             Complexity.Set(context, 5);
             Category.Set(context, "code_gen");
-            RecommendedModel.Set(context, "sonnet");
+            RecommendedModel.Set(context, AiAssistantResolver.ResolveModelForPower(
+                agentFactory.Create(AiAssistantResolver.NormalizeAssistant(config.DefaultAgent, config.DefaultAgent)),
+                config,
+                2));
+            RecommendedModelPower.Set(context, 2);
             await context.CompleteActivityWithOutcomesAsync("Simple");
         }
+    }
+
+    private static T? TryGetVariable<T>(ActivityExecutionContext context, string name)
+    {
+        try
+        {
+            return context.GetVariable<T>(name);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    private static string Truncate(string? value, int maxLength = 4000)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        return value.Length <= maxLength ? value : value[..maxLength];
     }
 
     private static string BuildTriagePrompt(string userPrompt) =>
@@ -84,10 +158,13 @@ public class TriageActivity : Activity
           "complexity": <1-10>,
           "category": "<code_gen|bug_fix|refactor|architecture|testing|docs>",
           "needs_decomposition": <true|false>,
-          "recommended_model": "<haiku|sonnet|opus>",
-          "estimated_tasks": <number if decomposition needed>,
-          "reasoning": "<brief explanation>"
+          "recommended_model_power": <1|2|3>
         }
+
+        Model power guide:
+        1 = strongest / deepest reasoning
+        2 = balanced default
+        3 = fastest / cheapest
 
         Task: {{userPrompt}}
         """;
@@ -101,12 +178,12 @@ public class TriageActivity : Activity
             return new TriageResult(
                 Complexity: root.TryGetProperty("complexity", out var c) ? c.GetInt32() : 5,
                 Category: root.TryGetProperty("category", out var cat) ? cat.GetString() ?? "code_gen" : "code_gen",
-                RecommendedModel: root.TryGetProperty("recommended_model", out var m) ? m.GetString() ?? "sonnet" : "sonnet",
+                RecommendedModelPower: root.TryGetProperty("recommended_model_power", out var m) ? m.GetInt32() : 2,
                 NeedsDecomposition: root.TryGetProperty("needs_decomposition", out var nd) && nd.GetBoolean());
         }
         catch
         {
-            return new TriageResult(5, "code_gen", "sonnet", false);
+            return new TriageResult(5, "code_gen", 2, false);
         }
     }
 }

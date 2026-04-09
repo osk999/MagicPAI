@@ -1,3 +1,4 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
@@ -19,6 +20,7 @@ public class PromptEnhancerWorkflow : WorkflowBase
             "Classify prompt vagueness and enhance using Sonnet, escalating to Opus if needed";
 
         var prompt = builder.WithVariable<string>("Prompt", "");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
         var containerId = builder.WithVariable<string>("ContainerId", "");
         var enhancedPrompt = builder.WithVariable<string>("EnhancedPrompt", "");
 
@@ -31,12 +33,13 @@ public class PromptEnhancerWorkflow : WorkflowBase
         };
 
         // Step 2: Enhance with Sonnet (for vague/complex prompts)
-        var enhanceSonnet = new RunCliAgentActivity
+        var enhanceSonnet = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
+            Response = new Output<string>(enhancedPrompt),
             Id = "enhance-sonnet"
         };
 
@@ -49,12 +52,16 @@ public class PromptEnhancerWorkflow : WorkflowBase
         };
 
         // Step 4: Escalate to Opus if quality check shows still complex
-        var enhanceOpus = new RunCliAgentActivity
+        var enhanceOpus = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(enhancedPrompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("EnhancedPrompt"))
+                    ? ctx.GetVariable<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("EnhancedPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("opus"),
+            ModelPower = new Input<int>(1),
+            Response = new Output<string>(enhancedPrompt),
             Id = "enhance-opus"
         };
 
@@ -63,6 +70,7 @@ public class PromptEnhancerWorkflow : WorkflowBase
         {
             Id = "prompt-enhancer-flow",
             Start = classifyVagueness,
+            Activities = { classifyVagueness, enhanceSonnet, qualityCheck, enhanceOpus },
             Connections =
             {
                 // Vague/Complex -> Sonnet enhancement
@@ -95,6 +103,6 @@ public class PromptEnhancerWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

@@ -10,7 +10,7 @@ RUN apt-get update \
     ca-certificates curl git gnupg unzip xz-utils \
     build-essential cmake python3 python3-pip \
     xvfb fluxbox x11vnc novnc websockify \
-    fonts-liberation netcat-openbsd sudo jq \
+    fonts-liberation netcat-openbsd sudo jq ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
 # Node.js 24 LTS
@@ -55,8 +55,9 @@ RUN install -m 0755 -d /etc/apt/keyrings \
 # Claude Code
 RUN npm install -g @anthropic-ai/claude-code @playwright/mcp
 
-# OpenAI Codex CLI (may not be public yet)
-RUN npm install -g @openai/codex 2>/dev/null || echo "Codex CLI not yet public"
+# OpenAI Codex CLI
+RUN npm install -g @openai/codex \
+  && codex --version
 
 # Google Gemini CLI (may not be available yet)
 RUN pip3 install --no-cache-dir google-genai --break-system-packages 2>/dev/null \

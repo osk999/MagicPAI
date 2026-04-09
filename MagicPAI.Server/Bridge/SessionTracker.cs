@@ -11,6 +11,7 @@ public class SessionTracker
 {
     private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _outputBuffers = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _activityStates = new();
     private readonly int _maxBufferSize;
 
     public SessionTracker(int maxBufferSize = 1000)
@@ -22,6 +23,7 @@ public class SessionTracker
     {
         _sessions[sessionId] = info;
         _outputBuffers.TryAdd(sessionId, new ConcurrentQueue<string>());
+        _activityStates.TryAdd(sessionId, new ConcurrentDictionary<string, string>());
     }
 
     public void UpdateState(string sessionId, string state)
@@ -38,6 +40,27 @@ public class SessionTracker
                     State = state,
                     TotalCostUsd = existing.TotalCostUsd,
                     Agent = existing.Agent,
+                    ContainerId = existing.ContainerId,
+                    PromptPreview = existing.PromptPreview,
+                    CreatedAt = existing.CreatedAt,
+                };
+            });
+    }
+
+    public void UpdateContainer(string sessionId, string? containerId)
+    {
+        _sessions.AddOrUpdate(sessionId,
+            _ => new SessionInfo { Id = sessionId, ContainerId = containerId },
+            (_, existing) =>
+            {
+                return new SessionInfo
+                {
+                    Id = existing.Id,
+                    WorkflowId = existing.WorkflowId,
+                    State = existing.State,
+                    TotalCostUsd = existing.TotalCostUsd,
+                    Agent = existing.Agent,
+                    ContainerId = containerId,
                     PromptPreview = existing.PromptPreview,
                     CreatedAt = existing.CreatedAt,
                 };
@@ -46,11 +69,8 @@ public class SessionTracker
 
     public void AppendOutput(string sessionId, string text)
     {
-        if (!_outputBuffers.TryGetValue(sessionId, out var buffer))
-        {
-            buffer = new ConcurrentQueue<string>();
-            _outputBuffers.TryAdd(sessionId, buffer);
-        }
+        // GetOrAdd is atomic — avoids race between TryGetValue and TryAdd
+        var buffer = _outputBuffers.GetOrAdd(sessionId, _ => new ConcurrentQueue<string>());
 
         buffer.Enqueue(text);
 
@@ -70,6 +90,23 @@ public class SessionTracker
         return [];
     }
 
+    public void UpdateActivity(string sessionId, string activityName, string status)
+    {
+        var activities = _activityStates.GetOrAdd(sessionId, _ => new ConcurrentDictionary<string, string>());
+        activities[activityName] = status;
+    }
+
+    public IReadOnlyList<ActivityState> GetActivities(string sessionId)
+    {
+        if (!_activityStates.TryGetValue(sessionId, out var activities))
+            return [];
+
+        return activities
+            .Select(x => new ActivityState(x.Key, x.Value))
+            .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public SessionInfo? GetSession(string sessionId)
     {
         _sessions.TryGetValue(sessionId, out var info);
@@ -85,5 +122,8 @@ public class SessionTracker
     {
         _sessions.TryRemove(sessionId, out _);
         _outputBuffers.TryRemove(sessionId, out _);
+        _activityStates.TryRemove(sessionId, out _);
     }
 }
+
+public record ActivityState(string Name, string Status);

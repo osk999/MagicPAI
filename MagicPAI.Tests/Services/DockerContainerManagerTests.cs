@@ -141,4 +141,31 @@ public class DockerContainerManagerTests
         Assert.Empty(config.Env);
         Assert.Equal(TimeSpan.FromMinutes(30), config.Timeout);
     }
+
+    [Fact]
+    public void BuildCredentialBinds_Mounts_HostCredentialFiles_ReadOnly()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        Directory.CreateDirectory(Path.Combine(tempRoot, ".claude"));
+        Directory.CreateDirectory(Path.Combine(tempRoot, ".codex"));
+        File.WriteAllText(Path.Combine(tempRoot, ".claude.json"), "{}");
+        File.WriteAllText(Path.Combine(tempRoot, ".claude", ".credentials.json"), "{}");
+        File.WriteAllText(Path.Combine(tempRoot, ".codex", "auth.json"), "{}");
+        File.WriteAllText(Path.Combine(tempRoot, ".codex", "cap_sid"), "sid");
+
+        try
+        {
+            var binds = DockerContainerManager.BuildCredentialBinds(tempRoot);
+
+            Assert.Contains(binds, bind => bind.EndsWith(":/tmp/magicpai-host-claude.json:ro"));
+            Assert.Contains(binds, bind => bind.EndsWith(":/tmp/magicpai-host-claude-credentials.json:ro"));
+            Assert.Contains(binds, bind => bind.EndsWith(":/tmp/magicpai-host-codex-auth.json:ro"));
+            Assert.Contains(binds, bind => bind.EndsWith(":/tmp/magicpai-host-codex-cap-sid:ro"));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, true);
+        }
+    }
 }

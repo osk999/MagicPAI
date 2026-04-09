@@ -68,6 +68,34 @@ public class LocalContainerManager : IContainerManager
         }
     }
 
+    public async Task<ExecResult> ExecAsync(string containerId, ContainerExecRequest request,
+        CancellationToken ct)
+    {
+        _logger.LogInformation("Local exec in {WorkDir}: {FileName}", request.WorkingDirectory, request.FileName);
+
+        var psi = CreateProcessStartInfo(request);
+
+        using var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start process");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromMinutes(5));
+
+        try
+        {
+            var output = await process.StandardOutput.ReadToEndAsync(cts.Token);
+            var stderr = await process.StandardError.ReadToEndAsync(cts.Token);
+            await process.WaitForExitAsync(cts.Token);
+            return new ExecResult(process.ExitCode, output, stderr);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            return new ExecResult(-1, "", "Process timed out");
+        }
+    }
+
     public async Task<ExecResult> ExecStreamingAsync(string containerId, string command,
         Action<string> onOutput, TimeSpan timeout, CancellationToken ct)
     {
@@ -79,46 +107,176 @@ public class LocalContainerManager : IContainerManager
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start process");
 
+        var idleTimeout = ExecutionTimeoutPolicy.NormalizeIdleTimeout(timeout);
+        var hardTimeout = ExecutionTimeoutPolicy.GetHardTimeout(idleTimeout);
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
+        cts.CancelAfter(hardTimeout);
 
         var outputBuilder = new System.Text.StringBuilder();
         var stderrBuilder = new System.Text.StringBuilder();
+        var lastActivity = DateTimeOffset.UtcNow;
 
-        // Read stdout streaming
-        var stdoutTask = Task.Run(async () =>
-        {
-            var buffer = new char[256];
-            int read;
-            while ((read = await process.StandardOutput.ReadAsync(buffer, cts.Token)) > 0)
+        void RecordActivity() => lastActivity = DateTimeOffset.UtcNow;
+
+        var stdoutTask = ReadStreamAsync(
+            process.StandardOutput,
+            chunk =>
             {
-                var chunk = new string(buffer, 0, read);
+                RecordActivity();
                 outputBuilder.Append(chunk);
                 onOutput(chunk);
-            }
-        }, cts.Token);
+            },
+            cts.Token);
 
-        // Read stderr
-        var stderrTask = Task.Run(async () =>
-        {
-            stderrBuilder.Append(await process.StandardError.ReadToEndAsync(cts.Token));
-        }, cts.Token);
+        var stderrTask = ReadStreamAsync(
+            process.StandardError,
+            chunk =>
+            {
+                RecordActivity();
+                stderrBuilder.Append(chunk);
+                onOutput(chunk);
+            },
+            cts.Token);
+
+        var exitTask = process.WaitForExitAsync(cts.Token);
 
         try
         {
-            await Task.WhenAll(stdoutTask, stderrTask);
-            await process.WaitForExitAsync(cts.Token);
+            while (true)
+            {
+                var completedTask = await Task.WhenAny(exitTask, Task.Delay(TimeSpan.FromSeconds(1)));
+
+                if (completedTask == exitTask)
+                    break;
+
+                cts.Token.ThrowIfCancellationRequested();
+                ExecutionTimeoutPolicy.ThrowIfIdle(lastActivity, idleTimeout);
+            }
+
+            await exitTask;
+            await DrainStreamTaskAsync(stdoutTask);
+            await DrainStreamTaskAsync(stderrTask);
+            return new ExecResult(process.ExitCode, outputBuilder.ToString(), stderrBuilder.ToString());
+        }
+        catch (IdleCommandTimeoutException ex)
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await WaitForProcessExitAsync(process);
+            await DrainStreamTaskAsync(stdoutTask);
+            await DrainStreamTaskAsync(stderrTask);
+            stderrBuilder.AppendLine(ex.Message);
+            return new ExecResult(124, outputBuilder.ToString(), stderrBuilder.ToString());
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await WaitForProcessExitAsync(process);
+            await DrainStreamTaskAsync(stdoutTask);
+            await DrainStreamTaskAsync(stderrTask);
+            stderrBuilder.AppendLine(ExecutionTimeoutPolicy.FormatHardTimeoutMessage(hardTimeout));
+            return new ExecResult(124, outputBuilder.ToString(), stderrBuilder.ToString());
         }
         catch (OperationCanceledException)
         {
             if (!process.HasExited)
                 process.Kill(entireProcessTree: true);
+            await WaitForProcessExitAsync(process);
+            throw;
         }
+    }
 
-        return new ExecResult(
-            process.HasExited ? process.ExitCode : -1,
-            outputBuilder.ToString(),
-            stderrBuilder.ToString());
+    public async Task<ExecResult> ExecStreamingAsync(string containerId, ContainerExecRequest request,
+        Action<string> onOutput, TimeSpan timeout, CancellationToken ct)
+    {
+        _logger.LogDebug("Local exec (streaming): {FileName}", request.FileName);
+
+        var psi = CreateProcessStartInfo(request);
+
+        using var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start process");
+
+        var idleTimeout = ExecutionTimeoutPolicy.NormalizeIdleTimeout(timeout);
+        var hardTimeout = ExecutionTimeoutPolicy.GetHardTimeout(idleTimeout);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(hardTimeout);
+
+        var outputBuilder = new System.Text.StringBuilder();
+        var stderrBuilder = new System.Text.StringBuilder();
+        var lastActivity = DateTimeOffset.UtcNow;
+
+        void RecordActivity() => lastActivity = DateTimeOffset.UtcNow;
+
+        var stdoutTask = ReadStreamAsync(
+            process.StandardOutput,
+            chunk =>
+            {
+                RecordActivity();
+                outputBuilder.Append(chunk);
+                onOutput(chunk);
+            },
+            cts.Token);
+
+        var stderrTask = ReadStreamAsync(
+            process.StandardError,
+            chunk =>
+            {
+                RecordActivity();
+                stderrBuilder.Append(chunk);
+                onOutput(chunk);
+            },
+            cts.Token);
+
+        var exitTask = process.WaitForExitAsync(cts.Token);
+
+        try
+        {
+            while (true)
+            {
+                var completedTask = await Task.WhenAny(exitTask, Task.Delay(TimeSpan.FromSeconds(1)));
+
+                if (completedTask == exitTask)
+                    break;
+
+                cts.Token.ThrowIfCancellationRequested();
+                ExecutionTimeoutPolicy.ThrowIfIdle(lastActivity, idleTimeout);
+            }
+
+            await exitTask;
+            await DrainStreamTaskAsync(stdoutTask);
+            await DrainStreamTaskAsync(stderrTask);
+            return new ExecResult(process.ExitCode, outputBuilder.ToString(), stderrBuilder.ToString());
+        }
+        catch (IdleCommandTimeoutException ex)
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await WaitForProcessExitAsync(process);
+            await DrainStreamTaskAsync(stdoutTask);
+            await DrainStreamTaskAsync(stderrTask);
+            stderrBuilder.AppendLine(ex.Message);
+            return new ExecResult(124, outputBuilder.ToString(), stderrBuilder.ToString());
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await WaitForProcessExitAsync(process);
+            await DrainStreamTaskAsync(stdoutTask);
+            await DrainStreamTaskAsync(stderrTask);
+            stderrBuilder.AppendLine(ExecutionTimeoutPolicy.FormatHardTimeoutMessage(hardTimeout));
+            return new ExecResult(124, outputBuilder.ToString(), stderrBuilder.ToString());
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await WaitForProcessExitAsync(process);
+            throw;
+        }
     }
 
     public Task DestroyAsync(string containerId, CancellationToken ct)
@@ -161,5 +319,78 @@ public class LocalContainerManager : IContainerManager
         }
 
         return psi;
+    }
+
+    private static ProcessStartInfo CreateProcessStartInfo(ContainerExecRequest request)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = request.FileName,
+            WorkingDirectory = request.WorkingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var argument in request.Arguments)
+            psi.ArgumentList.Add(argument);
+
+        if (request.Environment is not null)
+        {
+            foreach (var pair in request.Environment)
+                psi.Environment[pair.Key] = pair.Value;
+        }
+
+        return psi;
+    }
+
+    private static async Task ReadStreamAsync(StreamReader reader, Action<string> onChunk,
+        CancellationToken ct)
+    {
+        var buffer = new char[256];
+
+        try
+        {
+            while (true)
+            {
+                var read = await reader.ReadAsync(buffer, ct);
+                if (read == 0)
+                    break;
+
+                onChunk(new string(buffer, 0, read));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Process was cancelled or killed. Return collected output only.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Stream disposed as part of process teardown.
+        }
+    }
+
+    private static async Task DrainStreamTaskAsync(Task task)
+    {
+        try
+        {
+            await task;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private static async Task WaitForProcessExitAsync(Process process)
+    {
+        try
+        {
+            await process.WaitForExitAsync(CancellationToken.None);
+        }
+        catch (InvalidOperationException)
+        {
+            // Process already exited.
+        }
     }
 }

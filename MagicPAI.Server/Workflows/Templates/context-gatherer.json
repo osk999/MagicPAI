@@ -16,22 +16,22 @@
     "start": "research-context",
     "activities": [
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "research-context",
         "name": "Research Context"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "repo-map-context",
         "name": "Repo Map Context"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "memory-context",
         "name": "Memory Context"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "merge-context",
         "name": "Merge Context"
       }

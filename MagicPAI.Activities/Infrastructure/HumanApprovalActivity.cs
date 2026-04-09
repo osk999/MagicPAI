@@ -4,6 +4,7 @@ using Elsa.Workflows.Activities.Flowchart.Attributes;
 using Elsa.Workflows.Attributes;
 using Elsa.Workflows.Models;
 using Elsa.Workflows.UIHints;
+using MagicPAI.Activities;
 
 namespace MagicPAI.Activities.Infrastructure;
 
@@ -40,8 +41,8 @@ public class HumanApprovalActivity : Activity
 
     private async ValueTask OnResumed(ActivityExecutionContext context)
     {
-        var decision = context.GetWorkflowInput<string>("Decision") ?? "reject";
-        var comment = context.GetWorkflowInput<string>("Comment");
+        var decision = context.GetOptionalWorkflowInput<string>("Decision") ?? "reject";
+        var comment = context.GetOptionalWorkflowInput<string>("Comment");
 
         Decision.Set(context, decision);
         Comment.Set(context, comment);

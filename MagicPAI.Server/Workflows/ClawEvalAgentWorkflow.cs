@@ -21,8 +21,9 @@ public class ClawEvalAgentWorkflow : WorkflowBase
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
+        var model = builder.WithVariable<string>("Model", "auto");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
 
         // Step 1: Triage to classify task difficulty
         var triage = new TriageActivity
@@ -33,32 +34,33 @@ public class ClawEvalAgentWorkflow : WorkflowBase
         };
 
         // Step 2: Context gathering
-        var gatherContext = new RunCliAgentActivity
+        var gatherContext = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
             Id = "eval-context"
         };
 
         // Step 3a: Simple execution
-        var simpleExec = new RunCliAgentActivity
+        var simpleExec = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
+            ModelPower = new Input<int>(modelPower),
             Id = "eval-simple-exec"
         };
 
         // Step 3b: Complex execution (uses Opus)
-        var complexExec = new RunCliAgentActivity
+        var complexExec = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("opus"),
+            ModelPower = new Input<int>(1),
             Id = "eval-complex-exec"
         };
 
@@ -66,6 +68,7 @@ public class ClawEvalAgentWorkflow : WorkflowBase
         {
             Id = "claw-eval-agent-flow",
             Start = triage,
+            Activities = { triage, gatherContext, simpleExec, complexExec },
             Connections =
             {
                 // Triage Simple -> context gathering -> simple exec
@@ -90,6 +93,6 @@ public class ClawEvalAgentWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

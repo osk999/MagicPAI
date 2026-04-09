@@ -9,8 +9,8 @@
   "variables": [
     { "name": "Prompt", "typeName": "String", "value": "" },
     { "name": "WorkspacePath", "typeName": "String", "value": "/workspace" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" },
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" },
     { "name": "ContainerId", "typeName": "String", "value": "" }
   ],
   "root": {
@@ -29,7 +29,7 @@
         "name": "Triage"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "simple-agent",
         "name": "Simple Agent"
       },
@@ -44,7 +44,7 @@
         "name": "Architect"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "complex-agent",
         "name": "Complex Agent"
       },
@@ -59,7 +59,7 @@
         "name": "Repair"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "repair-agent",
         "name": "Repair Agent"
       },

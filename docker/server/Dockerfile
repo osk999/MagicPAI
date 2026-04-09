@@ -5,7 +5,6 @@ WORKDIR /src
 # Copy solution and project files for restore
 COPY MagicPAI.Core/MagicPAI.Core.csproj MagicPAI.Core/
 COPY MagicPAI.Activities/MagicPAI.Activities.csproj MagicPAI.Activities/
-COPY MagicPAI.Workflows/MagicPAI.Workflows.csproj MagicPAI.Workflows/
 COPY MagicPAI.Server/MagicPAI.Server.csproj MagicPAI.Server/
 COPY MagicPAI.Studio/MagicPAI.Studio.csproj MagicPAI.Studio/
 RUN dotnet restore MagicPAI.Server/MagicPAI.Server.csproj

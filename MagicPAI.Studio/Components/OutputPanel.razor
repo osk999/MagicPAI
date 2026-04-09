@@ -20,6 +20,14 @@
         InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>Replace the entire output content.</summary>
+    public void SetText(string text)
+    {
+        _sb.Clear();
+        _sb.Append(text);
+        InvokeAsync(StateHasChanged);
+    }
+
     /// <summary>Clear the output panel.</summary>
     public void Clear()
     {

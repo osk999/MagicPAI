@@ -3,5 +3,5 @@ namespace MagicPAI.Core.Models;
 public record TriageResult(
     int Complexity,
     string Category,
-    string RecommendedModel,
+    int RecommendedModelPower,
     bool NeedsDecomposition);

@@ -1,3 +1,4 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
@@ -22,39 +23,50 @@ public class VerifyAndRepairWorkflow : WorkflowBase
         // Variables (populated from dispatch input or parent workflow)
         var containerId = builder.WithVariable<string>("ContainerId", "");
         var prompt = builder.WithVariable<string>("Prompt", "");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
+        var model = builder.WithVariable<string>("Model", "auto");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
         var workerOutput = builder.WithVariable<string>("WorkerOutput", "");
+        var failedGates = builder.WithVariable<string[]>("FailedGates", []);
+        var gateResultsJson = builder.WithVariable<string>("GateResultsJson", "[]");
+        var repairPrompt = builder.WithVariable<string>("RepairPrompt", "");
+        var repairAttempts = builder.WithVariable<int>("RepairAttempts", 0);
 
         // Activities
         var initialVerify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
             WorkerOutput = new Input<string?>(workerOutput),
+            FailedGates = new Output<string[]>(failedGates),
+            GateResultsJson = new Output<string>(gateResultsJson),
             Id = "initial-verify"
         };
 
         var repair = new RepairActivity
         {
             ContainerId = new Input<string>(containerId),
-            FailedGates = new Input<string[]>([]),
+            FailedGates = new Input<string[]>(failedGates),
             OriginalPrompt = new Input<string>(prompt),
-            GateResultsJson = new Input<string>(""),
+            GateResultsJson = new Input<string>(gateResultsJson),
+            RepairPrompt = new Output<string>(repairPrompt),
             Id = "repair"
         };
 
-        var repairAgent = new RunCliAgentActivity
+        var repairAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(repairPrompt),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
+            ModelPower = new Input<int>(modelPower),
             Id = "repair-agent"
         };
 
         var retryVerify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
+            FailedGates = new Output<string[]>(failedGates),
+            GateResultsJson = new Output<string>(gateResultsJson),
             Id = "retry-verify"
         };
 
@@ -63,6 +75,7 @@ public class VerifyAndRepairWorkflow : WorkflowBase
         {
             Id = "verify-repair-flow",
             Start = initialVerify,
+            Activities = { initialVerify, repair, repairAgent, retryVerify },
             Connections =
             {
                 // Initial verify fails -> repair
@@ -92,6 +105,6 @@ public class VerifyAndRepairWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

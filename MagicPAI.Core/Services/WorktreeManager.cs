@@ -16,7 +16,7 @@ public class WorktreeManager
         var safeBranch = SanitizeName(branchName);
         var safePath = SanitizePath(worktreePath);
         await _env.RunCommandAsync(
-            $"git worktree add -b {safeBranch} {safePath}", repoDir, ct);
+            $"git worktree add -b '{safeBranch}' '{safePath}'", repoDir, ct);
         return worktreePath;
     }
 
@@ -27,7 +27,7 @@ public class WorktreeManager
         var safeBranch = SanitizeName(branchName);
         var safeTarget = SanitizeName(targetBranch);
         var output = await _env.RunCommandAsync(
-            $"git checkout {safeTarget} && git merge {safeBranch} --no-edit", repoDir, ct);
+            $"git checkout '{safeTarget}' && git merge '{safeBranch}' --no-edit", repoDir, ct);
         return output;
     }
 
@@ -38,9 +38,9 @@ public class WorktreeManager
         var safePath = SanitizePath(worktreePath);
         var safeBranch = SanitizeName(branchName);
         await _env.RunCommandAsync(
-            $"git worktree remove {safePath} --force", repoDir, ct);
+            $"git worktree remove '{safePath}' --force", repoDir, ct);
         await _env.RunCommandAsync(
-            $"git branch -D {safeBranch}", repoDir, ct);
+            $"git branch -D '{safeBranch}'", repoDir, ct);
     }
 
     /// <summary>Sanitize branch name to prevent shell injection.</summary>

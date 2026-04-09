@@ -1,6 +1,7 @@
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
-using MagicPAI.Core.Models;
+using MagicPAI.Shared.Models;
 
 namespace MagicPAI.Studio.Services;
 
@@ -13,7 +14,6 @@ public class SessionHubClient : IAsyncDisposable
     private readonly HubConnection _connection;
     private bool _started;
 
-    // Type-safe events
     public event Action<OutputChunkEvent>? OnOutputChunk;
     public event Action<WorkflowProgressEvent>? OnWorkflowProgress;
     public event Action<VerificationUpdateEvent>? OnVerificationUpdate;
@@ -24,9 +24,9 @@ public class SessionHubClient : IAsyncDisposable
 
     public HubConnectionState State => _connection.State;
 
-    public SessionHubClient(IConfiguration config)
+    public SessionHubClient(IConfiguration config, NavigationManager navigation)
     {
-        var hubUrl = config["MagicPAI:HubUrl"] ?? "http://localhost:5000/hub";
+        var hubUrl = ResolveHubUrl(config, navigation);
         _connection = new HubConnectionBuilder()
             .WithUrl(hubUrl)
             .WithAutomaticReconnect([
@@ -37,7 +37,6 @@ public class SessionHubClient : IAsyncDisposable
             ])
             .Build();
 
-        // Register event handlers with strong types
         _connection.On<OutputChunkEvent>("outputChunk",
             e => OnOutputChunk?.Invoke(e));
         _connection.On<WorkflowProgressEvent>("workflowProgress",
@@ -54,36 +53,61 @@ public class SessionHubClient : IAsyncDisposable
             e => OnError?.Invoke(e));
     }
 
-    /// <summary>Connect to the SignalR hub if not already connected.</summary>
+    private static string ResolveHubUrl(IConfiguration config, NavigationManager navigation)
+        => BackendUrlResolver.ResolveHubUrl(config, navigation);
+
     public async Task ConnectAsync()
     {
-        if (_started) return;
+        if (_started)
+            return;
+
         await _connection.StartAsync();
         _started = true;
     }
 
-    /// <summary>Create a new session and start its workflow. Returns the session ID.</summary>
     public async Task<string> CreateSessionAsync(
-        string prompt, string workspacePath,
-        string agent = "claude", string model = "auto")
+        string prompt,
+        string workspacePath,
+        string aiAssistant = "claude",
+        string model = "auto",
+        int modelPower = 0,
+        string structuredOutputSchema = "",
+        string workflowName = "full-orchestrate")
     {
-        // Hub returns CreateSessionResult { SessionId, WorkflowName }
-        // We extract just the SessionId for the client
         var result = await _connection.InvokeAsync<CreateSessionResult>(
-            "CreateSession", prompt, workspacePath, agent, model);
+            "CreateSession",
+            prompt,
+            workspacePath,
+            aiAssistant,
+            model,
+            modelPower,
+            aiAssistant,
+            structuredOutputSchema,
+            workflowName);
         return result?.SessionId ?? "";
     }
 
-    // Mirror of server's CreateSessionResult for deserialization
     private record CreateSessionResult(string SessionId, string WorkflowName);
 
-    /// <summary>Stop a running session.</summary>
     public async Task StopSessionAsync(string sessionId)
     {
         await _connection.InvokeAsync("StopSession", sessionId);
     }
 
-    /// <summary>Approve or reject a human approval gate.</summary>
+    public async Task JoinSessionAsync(string sessionId)
+    {
+        await ConnectAsync();
+        await _connection.InvokeAsync("JoinSession", sessionId);
+    }
+
+    public async Task LeaveSessionAsync(string sessionId)
+    {
+        if (!_started)
+            return;
+
+        await _connection.InvokeAsync("LeaveSession", sessionId);
+    }
+
     public async Task ApproveAsync(string sessionId, bool approve)
     {
         await _connection.InvokeAsync("Approve", sessionId, approve);
@@ -92,8 +116,6 @@ public class SessionHubClient : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (_started)
-        {
             await _connection.DisposeAsync();
-        }
     }
 }

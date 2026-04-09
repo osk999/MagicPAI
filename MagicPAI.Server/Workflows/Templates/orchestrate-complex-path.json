@@ -9,8 +9,8 @@
   "variables": [
     { "name": "Prompt", "typeName": "String", "value": "" },
     { "name": "ContainerId", "typeName": "String", "value": "" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" }
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" }
   ],
   "root": {
     "type": "Elsa.Flowchart",
@@ -28,7 +28,7 @@
         "name": "Model Router"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "complex-worker",
         "name": "Complex Worker"
       },
@@ -43,12 +43,12 @@
         "name": "Repair"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "complex-repair-agent",
         "name": "Repair Agent"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "merge-results",
         "name": "Merge Results"
       }

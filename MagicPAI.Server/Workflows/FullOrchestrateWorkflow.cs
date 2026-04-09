@@ -1,3 +1,4 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
@@ -21,18 +22,30 @@ public class FullOrchestrateWorkflow : WorkflowBase
         builder.Description =
             "Complete AI orchestration: triage, agent execution, verification, and repair";
 
-        // Workflow-level variables (populated from dispatch input)
         var prompt = builder.WithVariable<string>("Prompt", "");
-        var workspacePath = builder.WithVariable<string>("WorkspacePath", "/workspace");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
         var containerId = builder.WithVariable<string>("ContainerId", "");
+        var assistant = builder.WithVariable<string>("AiAssistant", "");
+        var model = builder.WithVariable<string>("Model", "");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
+        Input<string> resolveAssistant() => new(ctx =>
+            ctx.GetInput<string>("AiAssistant")
+            ?? ctx.GetInput<string>("Agent")
+            ?? ctx.GetVariable<string>("AiAssistant")
+            ?? "");
+        Input<string> resolveModel() => new(ctx =>
+            ctx.GetInput<string>("Model")
+            ?? ctx.GetVariable<string>("Model")
+            ?? "");
+        Input<string> resolveContainerId() => new(ctx =>
+            ctx.GetVariable<string>("ContainerId")
+            ?? ctx.GetInput<string>("ContainerId")
+            ?? "");
 
         // --- Define Activities ---
 
         var spawn = new SpawnContainerActivity
         {
-            WorkspacePath = new Input<string>(workspacePath),
+            WorkspacePath = new Input<string>(""),
             ContainerId = new Output<string>(containerId),
             Id = "spawn-container"
         };
@@ -45,12 +58,14 @@ public class FullOrchestrateWorkflow : WorkflowBase
         };
 
         // Simple path: single agent run
-        var simpleAgent = new RunCliAgentActivity
+        var simpleAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
+            AiAssistant = resolveAssistant(),
+            Agent = resolveAssistant(),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
+            Model = resolveModel(),
+            ModelPower = new Input<int>(modelPower),
             Id = "simple-agent"
         };
 
@@ -72,46 +87,50 @@ public class FullOrchestrateWorkflow : WorkflowBase
         // Complex path: run agent for decomposed tasks
         // TODO: In a full implementation, use ForEach/ParallelForEach to iterate
         // over architect's task list. For now, runs a single agent with full prompt.
-        var complexAgent = new RunCliAgentActivity
+        var complexAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
+            AiAssistant = resolveAssistant(),
+            Agent = resolveAssistant(),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("opus"),
+            Model = resolveModel(),
+            ModelPower = new Input<int>(modelPower),
             Id = "complex-agent"
         };
 
-        // Complex path: verify
         var complexVerify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
             Id = "complex-verify"
         };
 
-        // Complex path: repair on failure
-        var repair = new RepairActivity
+        var complexRepair = new RepairActivity
         {
             ContainerId = new Input<string>(containerId),
-            FailedGates = new Input<string[]>([]),
             OriginalPrompt = new Input<string>(prompt),
-            GateResultsJson = new Input<string>(""),
-            Id = "repair"
+            Id = "complex-repair"
         };
 
-        // Complex path: repair agent
-        var repairAgent = new RunCliAgentActivity
+        var repairAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = resolveAssistant(),
+            Agent = resolveAssistant(),
+            Prompt = new Input<string>(ctx =>
+                ctx.GetVariable<string>("RepairPrompt")
+                ?? ctx.GetInput<string>("RepairPrompt")
+                ?? ctx.GetVariable<string>("Prompt")
+                ?? ctx.GetInput<string>("Prompt")
+                ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
+            Model = resolveModel(),
+            ModelPower = new Input<int>(modelPower),
             Id = "repair-agent"
         };
 
         // Cleanup
         var destroy = new DestroyContainerActivity
         {
-            ContainerId = new Input<string>(containerId),
+            ContainerId = resolveContainerId(),
             Id = "destroy-container"
         };
 
@@ -120,7 +139,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
         {
             Id = "full-orchestrate-flow",
             Start = spawn,
-            Activities = { spawn, triage, simpleAgent, simpleVerify, architect, complexAgent, complexVerify, repair, repairAgent, destroy },
+            Activities = { spawn, triage, simpleAgent, simpleVerify, architect, complexAgent, complexVerify, complexRepair, repairAgent, destroy },
             Connections =
             {
                 // Spawn -> Triage (on Done)
@@ -181,38 +200,36 @@ public class FullOrchestrateWorkflow : WorkflowBase
                     new Endpoint(complexAgent, "Failed"),
                     new Endpoint(destroy)),
 
-                // Complex verify passed -> destroy
                 new Connection(
                     new Endpoint(complexVerify, "Passed"),
                     new Endpoint(destroy)),
 
-                // Complex verify inconclusive -> destroy
                 new Connection(
                     new Endpoint(complexVerify, "Inconclusive"),
                     new Endpoint(destroy)),
 
-                // Complex verify failed -> repair
                 new Connection(
                     new Endpoint(complexVerify, "Failed"),
-                    new Endpoint(repair)),
+                    new Endpoint(complexRepair)),
 
-                // Repair -> RepairAgent
                 new Connection(
-                    new Endpoint(repair, "Done"),
+                    new Endpoint(complexRepair, "Done"),
                     new Endpoint(repairAgent)),
 
-                // RepairAgent -> ComplexVerify (retry loop)
+                new Connection(
+                    new Endpoint(complexRepair, "Exceeded"),
+                    new Endpoint(destroy)),
+
                 new Connection(
                     new Endpoint(repairAgent, "Done"),
                     new Endpoint(complexVerify)),
 
-                // RepairAgent failed -> destroy
                 new Connection(
                     new Endpoint(repairAgent, "Failed"),
-                    new Endpoint(destroy)),
+                    new Endpoint(complexVerify)),
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

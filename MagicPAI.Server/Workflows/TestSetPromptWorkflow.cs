@@ -8,7 +8,7 @@ namespace MagicPAI.Server.Workflows;
 
 /// <summary>
 /// Minimal test workflow for verifying prompt enhancement.
-/// Simply runs a single RunCliAgentActivity to test that the prompt enhancement
+/// Simply runs a single AiAssistantActivity to test that the prompt enhancement
 /// pipeline is functioning correctly.
 /// </summary>
 public class TestSetPromptWorkflow : WorkflowBase
@@ -19,23 +19,25 @@ public class TestSetPromptWorkflow : WorkflowBase
         builder.Description = "Minimal test workflow for verifying prompt enhancement";
 
         var prompt = builder.WithVariable<string>("Prompt", "");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
         var containerId = builder.WithVariable<string>("ContainerId", "");
 
-        var testAgent = new RunCliAgentActivity
+        var testAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
             Id = "test-prompt-agent"
         };
 
         var flowchart = new Flowchart
         {
             Id = "test-set-prompt-flow",
-            Start = testAgent
+            Start = testAgent,
+            Activities = { testAgent }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

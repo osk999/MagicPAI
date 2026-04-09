@@ -9,8 +9,8 @@
   "variables": [
     { "name": "Prompt", "typeName": "String", "value": "" },
     { "name": "ContainerId", "typeName": "String", "value": "" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" }
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" }
   ],
   "root": {
     "type": "Elsa.Flowchart",
@@ -18,12 +18,12 @@
     "start": "research-enhance",
     "activities": [
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "research-enhance",
         "name": "Enhance Prompt"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "research-gather",
         "name": "Research Gather"
       },
@@ -33,7 +33,7 @@
         "name": "Triage"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "research-simple-exec",
         "name": "Simple Execution"
       },
@@ -43,7 +43,7 @@
         "name": "Architect"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "research-complex-exec",
         "name": "Complex Execution"
       }

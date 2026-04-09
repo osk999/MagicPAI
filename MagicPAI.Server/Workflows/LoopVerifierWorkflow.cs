@@ -8,7 +8,7 @@ namespace MagicPAI.Server.Workflows;
 
 /// <summary>
 /// Generic reusable loop: runner executes, classifier checks for [DONE] marker,
-/// exits or iterates up to max iterations. Uses RunCliAgentActivity + TriageActivity.
+/// exits or iterates up to max iterations. Uses AiAssistantActivity + TriageActivity.
 /// The loop-back is modeled as a Flowchart connection from triage back to the runner.
 /// </summary>
 public class LoopVerifierWorkflow : WorkflowBase
@@ -21,16 +21,18 @@ public class LoopVerifierWorkflow : WorkflowBase
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
+        var model = builder.WithVariable<string>("Model", "auto");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
 
         // Step 1: Run the agent
-        var runAgent = new RunCliAgentActivity
+        var runAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
+            ModelPower = new Input<int>(modelPower),
             Id = "loop-runner"
         };
 
@@ -46,6 +48,7 @@ public class LoopVerifierWorkflow : WorkflowBase
         {
             Id = "loop-verifier-flow",
             Start = runAgent,
+            Activities = { runAgent, classify },
             Connections =
             {
                 // Runner done -> classify
@@ -67,6 +70,6 @@ public class LoopVerifierWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

@@ -9,8 +9,8 @@
   "variables": [
     { "name": "Prompt", "typeName": "String", "value": "" },
     { "name": "ContainerId", "typeName": "String", "value": "" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" }
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" }
   ],
   "root": {
     "type": "Elsa.Flowchart",
@@ -23,17 +23,17 @@
         "name": "Eval Triage"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "eval-context",
         "name": "Eval Context"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "eval-simple-exec",
         "name": "Eval Simple Execution"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "eval-complex-exec",
         "name": "Eval Complex Execution"
       }

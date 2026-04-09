@@ -20,7 +20,7 @@ public static class WorkerPodTemplate
         var podName = $"magicpai-worker-{shortId}";
 
         var envVars = config.Env
-            .Select(kv => new V1EnvVar(kv.Key, kv.Value))
+            .Select(kv => new V1EnvVar { Name = kv.Key, Value = kv.Value })
             .ToList();
 
         var resources = new V1ResourceRequirements

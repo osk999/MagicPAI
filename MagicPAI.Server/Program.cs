@@ -17,6 +17,10 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// NOTE: Do NOT use UseStaticWebAssets() — it rewrites index.html and removes
+// script tags that don't match the fingerprint map. UseBlazorFrameworkFiles()
+// + UseStaticFiles() handles WASM hosting without rewriting.
+
 // Disable Elsa API security in Development (per Elsa docs)
 if (builder.Environment.IsDevelopment())
 {
@@ -134,15 +138,11 @@ builder.Services.AddElsa(elsa =>
     // Default Authentication
     elsa.UseDefaultAuthentication(auth => auth.UseAdminApiKey());
 
-    // HTTP activities (with configurable base URL and prefixed path to avoid SPA route conflicts)
-    elsa.UseHttp(http =>
+    // HTTP activities
+    elsa.UseHttp(http => http.ConfigureHttpOptions = options =>
     {
-        http.ConfigureHttpOptions = options =>
-        {
-            var baseUrl = builder.Configuration["Elsa:Http:BaseUrl"] ?? "https://localhost:5001";
-            options.BaseUrl = new Uri(baseUrl);
-            options.BasePath = "/elsa/workflows";
-        };
+        var baseUrl = builder.Configuration["Elsa:Http:BaseUrl"] ?? "https://localhost:5001";
+        options.BaseUrl = new Uri(baseUrl);
     });
 
     // Scheduling (timers, delays, cron)
@@ -177,8 +177,9 @@ builder.Services.AddHostedService<WorkflowPublisher>();
 // --- Worker pod/container garbage collector ---
 builder.Services.AddHostedService<WorkerPodGarbageCollector>();
 
-// --- Controllers ---
+// --- Controllers + Razor Pages (for _Host.cshtml WASM fallback) ---
 builder.Services.AddControllers();
+builder.Services.AddRazorPages();
 
 // --- CORS ---
 builder.Services.AddCors(options =>
@@ -203,8 +204,10 @@ app.UseCors();
 // Blazor WASM framework files (from MagicPAI.Studio project)
 app.UseBlazorFrameworkFiles();
 
-// Static files with Blazor WASM types
-app.UseDefaultFiles();
+// WASM asset path rewriting (must be BEFORE UseStaticFiles)
+app.UseMiddleware<MagicPAI.Server.Middleware.WasmAssetsRewritingMiddleware>();
+
+// Static files — use traditional UseStaticFiles (UseStaticWebAssets rewrites script tags)
 var provider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
 provider.Mappings[".dat"] = "application/octet-stream";
 provider.Mappings[".blat"] = "application/octet-stream";
@@ -215,10 +218,9 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Elsa API via FastEndpoints — prefix all Elsa endpoints to avoid clashing with Blazor SPA routes
+// Elsa API via FastEndpoints
 app.UseFastEndpoints(cfg =>
 {
-    cfg.Endpoints.RoutePrefix = "elsa/api";
     cfg.Serializer.Options.Converters.Insert(0, new MagicPAI.Server.Bridge.TypeJsonConverter());
 });
 
@@ -233,8 +235,9 @@ app.MapHealthChecks("/health", new HealthCheckOptions());
 app.MapHealthChecks("/health/live", new HealthCheckOptions());
 app.MapHealthChecks("/health/ready", new HealthCheckOptions());
 app.MapControllers();
+app.MapRazorPages();
 app.MapHub<SessionHub>("/hub");
-app.MapFallbackToFile("index.html");
+app.MapFallbackToPage("/_Host");
 
 app.Run();
 

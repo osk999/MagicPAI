@@ -11,8 +11,16 @@ public interface IContainerManager
     Task<ExecResult> ExecAsync(string containerId, string command,
         string workDir, CancellationToken ct);
 
+    /// <summary>Execute a command using safe argv passing.</summary>
+    Task<ExecResult> ExecAsync(string containerId, ContainerExecRequest request,
+        CancellationToken ct);
+
     /// <summary>Execute with real-time output streaming.</summary>
     Task<ExecResult> ExecStreamingAsync(string containerId, string command,
+        Action<string> onOutput, TimeSpan timeout, CancellationToken ct);
+
+    /// <summary>Execute with real-time output streaming using safe argv passing.</summary>
+    Task<ExecResult> ExecStreamingAsync(string containerId, ContainerExecRequest request,
         Action<string> onOutput, TimeSpan timeout, CancellationToken ct);
 
     /// <summary>Stop and remove a container.</summary>

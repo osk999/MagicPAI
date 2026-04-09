@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,36 +7,28 @@
     <title>MagicPAI Studio</title>
     <base href="/" />
 
-    <!-- Fonts -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/_content/Elsa.Studio.Shell/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/_content/Elsa.Studio.Shell/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/_content/Elsa.Studio.Shell/favicon-16x16.png">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- MudBlazor CSS -->
-    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
-
-    <!-- CodeBeam MudExtensions -->
-    <link href="_content/CodeBeam.MudBlazor.Extensions/MudExtensions.min.css" rel="stylesheet" />
-
-    <!-- Radzen -->
-    <link href="_content/Radzen.Blazor/css/material-base.css" rel="stylesheet">
-
-    <!-- Elsa Studio Shell CSS -->
-    <link href="_content/Elsa.Studio.Shell/css/shell.css" rel="stylesheet">
-
-    <!-- App CSS -->
-    <link href="css/app.css" rel="stylesheet" />
-    <link href="MagicPAI.Studio.styles.css" rel="stylesheet" />
+    <link href="/_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link href="/_content/CodeBeam.MudBlazor.Extensions/MudExtensions.min.css" rel="stylesheet" />
+    <link href="/_content/Radzen.Blazor/css/material-base.css" rel="stylesheet">
+    <link href="/_content/Elsa.Studio.Shell/css/shell.css" rel="stylesheet">
 </head>
 <body>
     <div id="app">
-        <div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#1a2035;color:white;">
-            <div>
-                <h2>Loading MagicPAI Studio...</h2>
-                <p>Please wait while the application loads.</p>
-            </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background:#0f172a;color:#f1f5f9;font-family:Inter,system-ui,sans-serif;gap:1rem;">
+            <div style="width:40px;height:40px;border:3px solid #334155;border-top-color:#6366f1;border-radius:50%;animation:spin .8s linear infinite;"></div>
+            <p style="color:#94a3b8;font-size:.875rem;">Loading MagicPAI Studio&hellip;</p>
+            <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
         </div>
     </div>
 
@@ -45,21 +38,24 @@
         <a class="dismiss" style="cursor:pointer;">Dismiss</a>
     </div>
 
-    <!-- Monaco Editor -->
-    <script src="_content/BlazorMonaco/jsInterop.js"></script>
-    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
-    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
+    <script src="/_content/BlazorMonaco/jsInterop.js"></script>
+    <script src="/_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
+    <script src="/_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
+    <script src="/_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="/_content/CodeBeam.MudBlazor.Extensions/MudExtensions.min.js"></script>
+    <script src="/_content/Radzen.Blazor/Radzen.Blazor.js"></script>
 
-    <!-- MudBlazor JS -->
-    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
-
-    <!-- CodeBeam MudExtensions -->
-    <script src="_content/CodeBeam.MudBlazor.Extensions/MudExtensions.min.js"></script>
-
-    <!-- Radzen -->
-    <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
-
-    <!-- Blazor WASM -->
-    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            Blazor.start({
+                loadBootResource: function (type, name, defaultUri, integrity) {
+                    if (defaultUri.startsWith('http')) return defaultUri;
+                    if (!defaultUri.startsWith('/')) return '/' + defaultUri;
+                    return defaultUri;
+                }
+            });
+        });
+    </script>
 </body>
 </html>

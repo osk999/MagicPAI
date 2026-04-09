@@ -23,7 +23,9 @@ public partial class HallucinationDetector : IVerificationGate
         // Get the list of all files in the workspace
         var filesResult = await container.ExecAsync(containerId,
             "find . -type f -not -path '*/.*' -not -path '*/node_modules/*' " +
-            "-not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null",
+            "-not -path '*/bin/*' -not -path '*/obj/*' " +
+            "-not -path './artifacts/*' -not -path './publish/*' " +
+            "-not -path '*/wwwroot/_content/*' -not -path '*/wwwroot/_framework/*' 2>/dev/null",
             workDir, ct);
 
         var existingFiles = filesResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
@@ -35,6 +37,8 @@ public partial class HallucinationDetector : IVerificationGate
             "find . -type f \\( -name '*.cs' -o -name '*.js' -o -name '*.ts' " +
             "-o -name '*.py' \\) -not -path '*/node_modules/*' " +
             "-not -path '*/bin/*' -not -path '*/obj/*' " +
+            "-not -path './artifacts/*' -not -path './publish/*' " +
+            "-not -path '*/wwwroot/_content/*' -not -path '*/wwwroot/_framework/*' " +
             "| xargs grep -n -H -E '(#include|import|require|using)' 2>/dev/null || true",
             workDir, ct);
         sw.Stop();

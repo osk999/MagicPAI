@@ -4,6 +4,9 @@ using Elsa.Workflows.Activities.Flowchart.Attributes;
 using Elsa.Workflows.Attributes;
 using Elsa.Workflows.Models;
 using Elsa.Workflows.UIHints;
+using MagicPAI.Activities;
+using MagicPAI.Core.Config;
+using MagicPAI.Core.Services;
 
 namespace MagicPAI.Activities.AI;
 
@@ -30,26 +33,31 @@ public class ModelRouterActivity : Activity
 
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
+        var agentFactory = context.GetRequiredService<ICliAgentFactory>();
+        var config = context.GetRequiredService<MagicPaiConfig>();
         var complexity = Complexity.Get(context);
-        var agent = PreferredAgent.Get(context);
-
-        var model = (agent, complexity) switch
-        {
-            ("claude", <= 3) => "haiku",
-            ("claude", <= 7) => "sonnet",
-            ("claude", _) => "opus",
-            ("codex", <= 5) => "gpt-5.4-mini",
-            ("codex", _) => "gpt-5.4",
-            ("gemini", <= 5) => "gemini-3-flash",
-            ("gemini", _) => "gemini-3.1-pro-preview",
-            _ => "sonnet"
-        };
+        var agent = AiAssistantResolver.NormalizeAssistant(
+            PreferredAgent.Get(context),
+            config.DefaultAgent);
+        var runner = agentFactory.Create(agent);
+        var requestedModel = context.GetOptionalWorkflowInput<string>("Model");
+        var requestedModelPower = context.GetOptionalWorkflowInput<int?>("ModelPower");
+        var resolved = !string.IsNullOrWhiteSpace(requestedModel) ||
+                       requestedModelPower.GetValueOrDefault() > 0
+            ? AiAssistantResolver.Resolve(runner, config, agent, requestedModel, requestedModelPower)
+            : new ResolvedAssistantOptions(
+                agent,
+                AiAssistantResolver.ResolveModelForPower(
+                    runner,
+                    config,
+                    AiAssistantResolver.GetRecommendedModelPower(complexity)),
+                AiAssistantResolver.GetRecommendedModelPower(complexity));
 
         SelectedAgent.Set(context, agent);
-        SelectedModel.Set(context, model);
+        SelectedModel.Set(context, resolved.Model ?? runner.DefaultModel);
 
         context.AddExecutionLogEntry("ModelRouting",
-            $"Selected {agent}/{model} for complexity {complexity}");
+            $"Selected {agent}/{resolved.Model ?? runner.DefaultModel} (power={resolved.ModelPower ?? 0}) for complexity {complexity}");
 
         await context.CompleteActivityWithOutcomesAsync("Done");
     }

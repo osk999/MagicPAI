@@ -1,12 +1,16 @@
+using Elsa.Common.Models;
+using Elsa.Workflows.Models;
+using Elsa.Workflows.Management;
 using Elsa.Workflows.Runtime;
 using Elsa.Workflows.Runtime.Contracts;
-using Elsa.Workflows.Runtime.Parameters;
 using Elsa.Workflows.Runtime.Requests;
 using MagicPAI.Core.Models;
+using MagicPAI.Core.Services;
 using MagicPAI.Server.Bridge;
 using MagicPAI.Server.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace MagicPAI.Server.Controllers;
 
@@ -19,24 +23,27 @@ namespace MagicPAI.Server.Controllers;
 public class SessionController : ControllerBase
 {
     private readonly IWorkflowDispatcher _dispatcher;
-    private readonly IWorkflowRuntime _runtime;
+    private readonly IWorkflowDefinitionService _workflowDefinitionService;
     private readonly IWorkflowCancellationDispatcher _cancellationDispatcher;
     private readonly SessionTracker _tracker;
+    private readonly SessionHistoryReader _historyReader;
     private readonly IHubContext<SessionHub> _hubContext;
     private readonly ILogger<SessionController> _logger;
 
     public SessionController(
         IWorkflowDispatcher dispatcher,
-        IWorkflowRuntime runtime,
+        IWorkflowDefinitionService workflowDefinitionService,
         IWorkflowCancellationDispatcher cancellationDispatcher,
         SessionTracker tracker,
+        SessionHistoryReader historyReader,
         IHubContext<SessionHub> hubContext,
         ILogger<SessionController> logger)
     {
         _dispatcher = dispatcher;
-        _runtime = runtime;
+        _workflowDefinitionService = workflowDefinitionService;
         _cancellationDispatcher = cancellationDispatcher;
         _tracker = tracker;
+        _historyReader = historyReader;
         _hubContext = hubContext;
         _logger = logger;
     }
@@ -51,42 +58,24 @@ public class SessionController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest(new { Message = "Prompt is required" });
 
-        var instanceId = Guid.NewGuid().ToString("N");
-
         var definitionId = WorkflowPublisher.ResolveDefinitionId(
             request.WorkflowName ?? "full-orchestrate");
-
-        // Use IWorkflowRuntime which builds workflow from CLR code directly,
-        // preserving flowchart activities and connections properly
-        var runtimeParams = new StartWorkflowRuntimeParams
-        {
-            InstanceId = instanceId,
-            Input = new Dictionary<string, object>
-            {
-                ["Prompt"] = request.Prompt,
-                ["WorkspacePath"] = request.WorkspacePath ?? "",
-                ["Agent"] = request.Agent ?? "claude",
-                ["Model"] = request.Model ?? "sonnet"
-            },
-            CorrelationId = instanceId,
-        };
-
-        var startResult = await _runtime.TryStartWorkflowAsync(definitionId, runtimeParams);
-        if (startResult is null)
-            return NotFound(new { Message = $"Workflow '{request.WorkflowName}' could not start" });
+        var correlationId = Guid.NewGuid().ToString("N");
+        var instanceId = Guid.NewGuid().ToString("N");
+        var input = BuildWorkflowInput(request);
+        await DispatchWorkflowAsync(instanceId, definitionId, correlationId, input, HttpContext.RequestAborted);
 
         var sessionInfo = new SessionInfo
         {
             Id = instanceId,
             WorkflowId = request.WorkflowName ?? "full-orchestrate",
             State = "running",
-            Agent = request.Agent ?? "claude",
+            Agent = ResolveAssistant(request),
             PromptPreview = request.Prompt.Length > 100
                 ? request.Prompt[..100] + "..."
                 : request.Prompt,
             CreatedAt = DateTime.UtcNow
         };
-
         _tracker.RegisterSession(instanceId, sessionInfo);
 
         _logger.LogInformation("Created session {SessionId}", instanceId);
@@ -107,9 +96,12 @@ public class SessionController : ControllerBase
     /// Get a specific session's state and info.
     /// </summary>
     [HttpGet("{id}")]
-    public ActionResult<SessionInfo> GetSession(string id)
+    public async Task<ActionResult<SessionInfo>> GetSession(string id)
     {
-        var session = _tracker.GetSession(id);
+        var session = await _historyReader.GetSessionAsync(
+            id,
+            _tracker.GetSession(id),
+            HttpContext.RequestAborted);
         if (session is null)
             return NotFound(new { Message = $"Session {id} not found" });
 
@@ -173,14 +165,93 @@ public class SessionController : ControllerBase
     /// Get buffered output for a session.
     /// </summary>
     [HttpGet("{id}/output")]
-    public ActionResult<string[]> GetOutput(string id)
+    public async Task<ActionResult<string[]>> GetOutput(string id)
     {
-        var session = _tracker.GetSession(id);
+        var session = await _historyReader.GetSessionAsync(
+            id,
+            _tracker.GetSession(id),
+            HttpContext.RequestAborted);
         if (session is null)
             return NotFound(new { Message = $"Session {id} not found" });
 
-        return Ok(_tracker.GetOutput(id));
+        return Ok(await _historyReader.GetOutputAsync(
+            id,
+            _tracker.GetOutput(id),
+            HttpContext.RequestAborted));
     }
+
+    /// <summary>
+    /// Get tracked activity states for a session.
+    /// </summary>
+    [HttpGet("{id}/activities")]
+    public async Task<ActionResult<IReadOnlyList<ActivityState>>> GetActivities(string id)
+    {
+        var session = await _historyReader.GetSessionAsync(
+            id,
+            _tracker.GetSession(id),
+            HttpContext.RequestAborted);
+        if (session is null)
+            return NotFound(new { Message = $"Session {id} not found" });
+
+        return Ok(await _historyReader.GetActivitiesAsync(
+            id,
+            _tracker.GetActivities(id),
+            HttpContext.RequestAborted));
+    }
+
+    private static string ResolveAssistant(CreateSessionRequest request) =>
+        AiAssistantResolver.NormalizeAssistant(request.AiAssistant ?? request.Agent, "claude");
+
+    private Dictionary<string, object> BuildWorkflowInput(CreateSessionRequest request)
+    {
+        var resolvedAssistant = ResolveAssistant(request);
+        return new Dictionary<string, object>
+        {
+            ["Prompt"] = request.Prompt,
+            ["WorkspacePath"] = request.WorkspacePath ?? "",
+            ["AiAssistant"] = resolvedAssistant,
+            ["Agent"] = resolvedAssistant,
+            ["Model"] = request.Model ?? "auto",
+            ["ModelPower"] = request.ModelPower ?? 0,
+            ["StructuredOutputSchema"] = request.StructuredOutputSchema ?? ""
+        };
+    }
+
+    private async Task<string> DispatchWorkflowAsync(
+        string instanceId,
+        string definitionId,
+        string correlationId,
+        Dictionary<string, object> input,
+        CancellationToken cancellationToken)
+    {
+        var definitionVersionId = await ResolveDefinitionVersionIdAsync(definitionId, cancellationToken);
+        var request = new DispatchWorkflowDefinitionRequest
+        {
+            DefinitionVersionId = definitionVersionId,
+            InstanceId = instanceId,
+            CorrelationId = correlationId,
+            Input = input
+        };
+
+        var response = await _dispatcher.DispatchAsync(request, cancellationToken);
+        response.ThrowIfFailed();
+        _logger.LogInformation(
+            "Dispatched workflow {DefinitionId} as instance {WorkflowInstanceId}",
+            definitionId,
+            instanceId);
+        return instanceId;
+    }
+
+    private async Task<string> ResolveDefinitionVersionIdAsync(string definitionId, CancellationToken cancellationToken)
+    {
+        var definition = await _workflowDefinitionService.FindWorkflowDefinitionAsync(
+            WorkflowDefinitionHandle.ByDefinitionId(definitionId, VersionOptions.Published),
+            cancellationToken);
+        return definition?.Id
+            ?? throw new InvalidOperationException(
+                $"No published workflow definition found for '{definitionId}'.");
+    }
+
 }
 
 // --- Request/Response DTOs ---
@@ -188,8 +259,11 @@ public class SessionController : ControllerBase
 public record CreateSessionRequest(
     string Prompt,
     string? WorkspacePath = null,
+    string? AiAssistant = null,
     string? Agent = null,
     string? Model = null,
+    int? ModelPower = null,
+    string? StructuredOutputSchema = null,
     string? WorkflowName = null);
 
 public record CreateSessionResponse(string SessionId, string? WorkflowId);

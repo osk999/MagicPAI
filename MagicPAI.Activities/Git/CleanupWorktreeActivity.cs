@@ -39,7 +39,7 @@ public class CleanupWorktreeActivity : Activity
             // Remove the worktree
             await containerMgr.ExecAsync(
                 containerId,
-                $"git worktree remove {worktreePath} --force",
+                $"git worktree remove '{worktreePath}' --force",
                 repoDir,
                 context.CancellationToken);
 
@@ -48,7 +48,7 @@ public class CleanupWorktreeActivity : Activity
             {
                 await containerMgr.ExecAsync(
                     containerId,
-                    $"git branch -D {branchName}",
+                    $"git branch -D '{branchName}'",
                     repoDir,
                     context.CancellationToken);
             }

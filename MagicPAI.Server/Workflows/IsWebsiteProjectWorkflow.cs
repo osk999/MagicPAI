@@ -32,9 +32,10 @@ public class IsWebsiteProjectWorkflow : WorkflowBase
         var flowchart = new Flowchart
         {
             Id = "is-website-project-flow",
-            Start = classify
+            Start = classify,
+            Activities = { classify }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

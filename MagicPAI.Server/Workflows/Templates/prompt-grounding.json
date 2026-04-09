@@ -16,12 +16,12 @@
     "start": "analyze-codebase",
     "activities": [
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "analyze-codebase",
         "name": "Analyze Codebase"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "rewrite-prompt",
         "name": "Rewrite Prompt"
       }

@@ -16,7 +16,7 @@
     "start": "phase1-discovery-runner",
     "activities": [
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "phase1-discovery-runner",
         "name": "Phase 1: Discovery Runner"
       },
@@ -26,7 +26,7 @@
         "name": "Phase 1: Discovery Check"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "phase2-visual-runner",
         "name": "Phase 2: Visual Runner"
       },
@@ -36,7 +36,7 @@
         "name": "Phase 2: Visual Check"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "phase3-interaction-runner",
         "name": "Phase 3: Interaction Runner"
       },
@@ -46,7 +46,7 @@
         "name": "Phase 3: Interaction Check"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "phase4-opus-sweep",
         "name": "Phase 4: Opus Sweep"
       }

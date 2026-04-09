@@ -35,7 +35,7 @@ public class CreateWorktreeActivity : Activity
         {
             var result = await containerMgr.ExecAsync(
                 containerId,
-                $"git worktree add -b {branchName} {worktreePath}",
+                $"git worktree add -b '{branchName}' '{worktreePath}'",
                 repoDir,
                 context.CancellationToken);
 

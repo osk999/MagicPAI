@@ -6,7 +6,10 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Docker.DotNet" Version="3.125.15" />
-    <PackageReference Include="KubernetesClient" Version="15.*" />
+    <PackageReference Include="KubernetesClient" Version="19.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MagicPAI.Shared\MagicPAI.Shared.csproj" />
   </ItemGroup>
 </Project>

@@ -1,3 +1,4 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
@@ -20,25 +21,39 @@ public class PromptGroundingWorkflow : WorkflowBase
             "Analyze codebase and rewrite vague prompts into precise, file-specific instructions";
 
         var prompt = builder.WithVariable<string>("Prompt", "");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
         var containerId = builder.WithVariable<string>("ContainerId", "");
+        var codebaseAnalysis = builder.WithVariable<string>("CodebaseAnalysis", "");
+        var groundedPrompt = builder.WithVariable<string>("GroundedPrompt", "");
 
         // Step 1: Analyze the codebase structure
-        var analyzeCodebase = new RunCliAgentActivity
+        var analyzeCodebase = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
+            Response = new Output<string>(codebaseAnalysis),
             Id = "analyze-codebase"
         };
 
         // Step 2: Rewrite the prompt with grounded context
-        var rewritePrompt = new RunCliAgentActivity
+        var rewritePrompt = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx =>
+                $$"""
+                Rewrite this task into a precise, implementation-ready prompt using the codebase analysis below.
+
+                ## Original Prompt
+                {{ctx.GetVariable<string>("Prompt") ?? ""}}
+
+                ## Codebase Analysis
+                {{ctx.GetVariable<string>("CodebaseAnalysis") ?? ""}}
+                """),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
+            Response = new Output<string>(groundedPrompt),
             Id = "rewrite-prompt"
         };
 
@@ -46,6 +61,7 @@ public class PromptGroundingWorkflow : WorkflowBase
         {
             Id = "prompt-grounding-flow",
             Start = analyzeCodebase,
+            Activities = { analyzeCodebase, rewritePrompt },
             Connections =
             {
                 new Connection(
@@ -59,6 +75,6 @@ public class PromptGroundingWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

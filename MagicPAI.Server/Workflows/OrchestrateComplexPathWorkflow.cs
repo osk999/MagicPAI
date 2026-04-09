@@ -22,8 +22,15 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
+        var model = builder.WithVariable<string>("Model", "auto");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
+        var selectedAgent = builder.WithVariable<string>("SelectedAgent", "claude");
+        var selectedModel = builder.WithVariable<string>("SelectedModel", "sonnet");
+        var failedGates = builder.WithVariable<string[]>("FailedGates", []);
+        var gateResultsJson = builder.WithVariable<string>("GateResultsJson", "[]");
+        var repairPrompt = builder.WithVariable<string>("RepairPrompt", "");
+        var repairAttempts = builder.WithVariable<int>("RepairAttempts", 0);
 
         // Step 1: Architect decomposes the task
         var architect = new ArchitectActivity
@@ -39,16 +46,18 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             TaskCategory = new Input<string>("code_gen"),
             Complexity = new Input<int>(8),
             PreferredAgent = new Input<string>(agent),
+            SelectedAgent = new Output<string>(selectedAgent),
+            SelectedModel = new Output<string>(selectedModel),
             Id = "model-router"
         };
 
         // Step 3: Execute worker agent (in production, ForEach over task list)
-        var worker = new RunCliAgentActivity
+        var worker = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
+            AiAssistant = new Input<string>(selectedAgent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
+            Model = new Input<string>(selectedModel),
             Id = "complex-worker"
         };
 
@@ -56,6 +65,8 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
         var verify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
+            FailedGates = new Output<string[]>(failedGates),
+            GateResultsJson = new Output<string>(gateResultsJson),
             Id = "complex-verify"
         };
 
@@ -63,29 +74,30 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
         var repair = new RepairActivity
         {
             ContainerId = new Input<string>(containerId),
-            FailedGates = new Input<string[]>([]),
+            FailedGates = new Input<string[]>(failedGates),
             OriginalPrompt = new Input<string>(prompt),
-            GateResultsJson = new Input<string>(""),
+            GateResultsJson = new Input<string>(gateResultsJson),
+            RepairPrompt = new Output<string>(repairPrompt),
             Id = "complex-repair"
         };
 
         // Step 6: Repair agent
-        var repairAgent = new RunCliAgentActivity
+        var repairAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(selectedAgent),
+            Prompt = new Input<string>(repairPrompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
+            Model = new Input<string>(selectedModel),
             Id = "complex-repair-agent"
         };
 
         // Step 7: Merge results
-        var merge = new RunCliAgentActivity
+        var merge = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
             Id = "merge-results"
         };
 
@@ -93,6 +105,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
         {
             Id = "orchestrate-complex-path-flow",
             Start = architect,
+            Activities = { architect, modelRouter, worker, verify, repair, repairAgent, merge },
             Connections =
             {
                 // Architect -> ModelRouter
@@ -138,6 +151,11 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
                     new Endpoint(repair, "Done"),
                     new Endpoint(repairAgent)),
 
+                // Repair attempts exhausted -> merge partial results
+                new Connection(
+                    new Endpoint(repair, "Exceeded"),
+                    new Endpoint(merge)),
+
                 // RepairAgent -> Verify (loop back)
                 new Connection(
                     new Endpoint(repairAgent, "Done"),
@@ -150,6 +168,6 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

@@ -9,8 +9,8 @@
   "variables": [
     { "name": "Prompt", "typeName": "String", "value": "" },
     { "name": "WorkspacePath", "typeName": "String", "value": "/workspace" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" },
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" },
     { "name": "ContainerId", "typeName": "String", "value": "" }
   ],
   "root": {
@@ -24,7 +24,7 @@
         "name": "Spawn Container"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "run-agent",
         "name": "Run Agent"
       },

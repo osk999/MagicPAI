@@ -5,12 +5,14 @@ using Elsa.Workflows.Activities.Flowchart.Attributes;
 using Elsa.Workflows.Attributes;
 using Elsa.Workflows.Models;
 using Elsa.Workflows.UIHints;
+using MagicPAI.Activities;
+using MagicPAI.Core.Config;
 
 namespace MagicPAI.Activities.Verification;
 
 [Activity("MagicPAI", "Verification",
     "Generate an AI repair prompt from failed verification gates")]
-[FlowNode("Done")]
+[FlowNode("Done", "Exceeded")]
 public class RepairActivity : Activity
 {
     [Input(DisplayName = "Container ID")]
@@ -30,24 +32,62 @@ public class RepairActivity : Activity
 
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
-        var failedGates = FailedGates.Get(context) ?? [];
-        var originalPrompt = OriginalPrompt.Get(context) ?? "";
-        var gateResultsJson = GateResultsJson.Get(context) ?? "[]";
+        var config = context.GetRequiredService<MagicPaiConfig>();
+        var failedGates = FailedGates.GetOrDefault(context, () => null)
+            ?? TryGetVariable<string[]>(context, "FailedGates")
+            ?? [];
+        var originalPrompt = OriginalPrompt.GetOrDefault(context, () => "")
+            ?? "";
+        if (string.IsNullOrWhiteSpace(originalPrompt))
+            originalPrompt = context.GetOptionalWorkflowInput<string>("Prompt") ?? "";
+        var gateResultsJson = GateResultsJson.GetOrDefault(context, () => null)
+            ?? TryGetVariable<string>(context, "GateResultsJson")
+            ?? "[]";
+        var attemptCount = TryGetVariable<int>(context, "RepairAttempts");
+        var maxAttempts = Math.Max(0, config.MaxRepairAttempts);
 
-        var prompt = BuildRepairPrompt(originalPrompt, failedGates, gateResultsJson);
+        if (attemptCount >= maxAttempts)
+        {
+            context.AddExecutionLogEntry("RepairAttemptsExceeded",
+                $"Repair attempts exhausted after {attemptCount}/{maxAttempts} tries");
+            await context.CompleteActivityWithOutcomesAsync("Exceeded");
+            return;
+        }
+
+        var nextAttempt = attemptCount + 1;
+        context.SetVariable("RepairAttempts", nextAttempt);
+
+        var prompt = BuildRepairPrompt(
+            originalPrompt, failedGates, gateResultsJson, nextAttempt, maxAttempts);
         RepairPrompt.Set(context, prompt);
+        context.SetVariable("RepairPrompt", prompt);
 
         context.AddExecutionLogEntry("RepairPromptGenerated",
-            $"Repair prompt for {failedGates.Length} failed gate(s)");
+            $"Repair prompt for {failedGates.Length} failed gate(s), attempt {nextAttempt}/{maxAttempts}");
 
         await context.CompleteActivityWithOutcomesAsync("Done");
     }
 
+    private static T? TryGetVariable<T>(ActivityExecutionContext context, string name)
+    {
+        try
+        {
+            return context.GetVariable<T>(name);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
     private static string BuildRepairPrompt(
-        string originalPrompt, string[] failedGates, string gateResultsJson)
+        string originalPrompt, string[] failedGates, string gateResultsJson,
+        int attemptNumber, int maxAttempts)
     {
         var sb = new StringBuilder();
         sb.AppendLine("The previous attempt had verification failures. Fix them.");
+        sb.AppendLine();
+        sb.AppendLine($"Repair attempt: {attemptNumber}/{maxAttempts}");
         sb.AppendLine();
         sb.AppendLine("## Original Task");
         sb.AppendLine(originalPrompt);

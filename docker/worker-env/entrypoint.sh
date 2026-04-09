@@ -1,6 +1,29 @@
 #!/bin/bash
 set -e
 
+sync_credential_file() {
+    local src="$1"
+    local dest="$2"
+
+    if [ ! -f "$src" ]; then
+        return
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+    cp "$src" "$dest"
+    chmod 600 "$dest"
+}
+
+export HOME=/home/worker
+export XDG_CONFIG_HOME=/home/worker/.config
+
+mkdir -p "$HOME/.config" "$HOME/.codex" "$HOME/.claude"
+
+sync_credential_file /tmp/magicpai-host-claude.json "$HOME/.claude.json"
+sync_credential_file /tmp/magicpai-host-claude-credentials.json "$HOME/.claude/.credentials.json"
+sync_credential_file /tmp/magicpai-host-codex-auth.json "$HOME/.codex/auth.json"
+sync_credential_file /tmp/magicpai-host-codex-cap-sid "$HOME/.codex/cap_sid"
+
 # Configure Docker socket permissions if mounted
 if [ -S /var/run/docker.sock ]; then
     DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)

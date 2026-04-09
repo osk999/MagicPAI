@@ -9,8 +9,8 @@
   "variables": [
     { "name": "Prompt", "typeName": "String", "value": "" },
     { "name": "ContainerId", "typeName": "String", "value": "" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" }
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" }
   ],
   "root": {
     "type": "Elsa.Flowchart",
@@ -18,12 +18,12 @@
     "start": "assemble-prompt",
     "activities": [
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "assemble-prompt",
         "name": "Assemble Prompt"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "simple-execute",
         "name": "Simple Execute"
       },

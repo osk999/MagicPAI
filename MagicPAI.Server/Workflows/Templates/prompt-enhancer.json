@@ -22,7 +22,7 @@
         "name": "Classify Vagueness"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "enhance-sonnet",
         "name": "Enhance with Sonnet"
       },
@@ -32,7 +32,7 @@
         "name": "Quality Check"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "enhance-opus",
         "name": "Enhance with Opus"
       }

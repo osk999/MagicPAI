@@ -22,27 +22,32 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
+        var model = builder.WithVariable<string>("Model", "auto");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
         var workerOutput = builder.WithVariable<string>("WorkerOutput", "");
+        var failedGates = builder.WithVariable<string[]>("FailedGates", []);
+        var gateResultsJson = builder.WithVariable<string>("GateResultsJson", "[]");
+        var repairPrompt = builder.WithVariable<string>("RepairPrompt", "");
+        var repairAttempts = builder.WithVariable<int>("RepairAttempts", 0);
 
         // Step 1: Completeness audit
-        var completenessAudit = new RunCliAgentActivity
+        var completenessAudit = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
             Id = "completeness-audit"
         };
 
         // Step 2: Review loop (code review agent)
-        var reviewAgent = new RunCliAgentActivity
+        var reviewAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
             Id = "review-agent"
         };
 
@@ -59,16 +64,18 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
         {
             ContainerId = new Input<string>(containerId),
             WorkerOutput = new Input<string?>(workerOutput),
+            FailedGates = new Output<string[]>(failedGates),
+            GateResultsJson = new Output<string>(gateResultsJson),
             Id = "quality-gates"
         };
 
         // Step 5: E2E test
-        var e2eTest = new RunCliAgentActivity
+        var e2eTest = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
             Id = "e2e-test"
         };
 
@@ -76,6 +83,8 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
         var finalVerify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
+            FailedGates = new Output<string[]>(failedGates),
+            GateResultsJson = new Output<string>(gateResultsJson),
             Id = "final-verify"
         };
 
@@ -83,18 +92,20 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
         var repair = new RepairActivity
         {
             ContainerId = new Input<string>(containerId),
-            FailedGates = new Input<string[]>([]),
+            FailedGates = new Input<string[]>(failedGates),
             OriginalPrompt = new Input<string>(prompt),
-            GateResultsJson = new Input<string>(""),
+            GateResultsJson = new Input<string>(gateResultsJson),
+            RepairPrompt = new Output<string>(repairPrompt),
             Id = "post-repair"
         };
 
-        var repairAgent = new RunCliAgentActivity
+        var repairAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(repairPrompt),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
+            ModelPower = new Input<int>(modelPower),
             Id = "post-repair-agent"
         };
 
@@ -102,6 +113,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
         {
             Id = "post-execution-pipeline-flow",
             Start = completenessAudit,
+            Activities = { completenessAudit, reviewAgent, reviewCheck, qualityGates, e2eTest, finalVerify, repair, repairAgent },
             Connections =
             {
                 // Audit -> Review
@@ -171,6 +183,6 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

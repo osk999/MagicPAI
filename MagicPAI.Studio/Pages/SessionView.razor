@@ -1,8 +1,10 @@
 @page "/magic/sessions/{SessionId}"
-@using MagicPAI.Core.Models
+@using MagicPAI.Shared.Models
 @using MagicPAI.Studio.Services
 @using MagicPAI.Studio.Components
+@using MagicPAI.Studio.Models
 @inject SessionHubClient Hub
+@inject SessionApiClient Api
 
 <PageTitle>Session @(SessionId.Length > 8 ? SessionId[..8] : SessionId)</PageTitle>
 
@@ -18,7 +20,7 @@
 
         <CostTracker SessionId="@SessionId" />
 
-        <ContainerStatus ContainerId="@containerId" />
+        <ContainerStatus ContainerId="@containerId" GuiUrl="@guiUrl" />
 
         @if (verificationUpdate is not null)
         {
@@ -29,6 +31,21 @@
         }
 
         <DagView Activities="@activities" />
+
+        @if (!string.IsNullOrEmpty(workflowId))
+        {
+            <div class="workflow-links">
+                <a href="/elsa/api/workflow-instances/@SessionId"
+                   target="_blank" class="btn btn-sm btn-link">
+                    View Instance (API)
+                </a>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="error-banner">@errorMessage</div>
+        }
 
         @if (state == "running")
         {
@@ -45,8 +62,15 @@
     private OutputPanel? outputPanel;
     private string state = "idle";
     private string containerId = "";
+    private string? guiUrl;
+    private string? workflowId;
+    private string? errorMessage;
     private VerificationUpdateEvent? verificationUpdate;
     private List<(string Name, string Status)> activities = new();
+    private string initialOutput = "";
+    private bool joinedSession;
+    private string lastOutputText = "";
+    private CancellationTokenSource? pollingCts;
 
     protected override async Task OnInitializedAsync()
     {
@@ -60,16 +84,31 @@
         try
         {
             await Hub.ConnectAsync();
+            await Hub.JoinSessionAsync(SessionId);
+            joinedSession = true;
         }
         catch
         {
             // Hub may not be available
         }
+
+        await RefreshSnapshotAsync();
+        StartPollingIfRunning();
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && outputPanel is not null && initialOutput.Length > 0)
+            outputPanel.SetText(initialOutput);
+
+        return Task.CompletedTask;
     }
 
     private void OnChunk(OutputChunkEvent e)
     {
         if (e.SessionId != SessionId) return;
+        lastOutputText += e.Text;
+        initialOutput = lastOutputText;
         outputPanel?.AppendText(e.Text);
         InvokeAsync(StateHasChanged);
     }
@@ -78,6 +117,8 @@
     {
         if (e.SessionId != SessionId) return;
         state = e.State;
+        StartPollingIfRunning();
+        _ = RefreshSnapshotAsync();
         InvokeAsync(StateHasChanged);
     }
 
@@ -103,18 +144,88 @@
     {
         if (e.SessionId != SessionId) return;
         containerId = e.ContainerId;
+        guiUrl = e.GuiUrl;
         InvokeAsync(StateHasChanged);
     }
 
     private void OnError(ErrorEvent e)
     {
         if (e.SessionId != SessionId) return;
+        errorMessage = e.Message;
         outputPanel?.AppendText($"\n[ERROR] {e.Message}\n");
         InvokeAsync(StateHasChanged);
     }
 
     private async Task Stop() =>
         await Hub.StopSessionAsync(SessionId);
+
+    private async Task RefreshSnapshotAsync()
+    {
+        var session = await Api.GetSessionAsync(SessionId);
+        var output = await Api.GetOutputAsync(SessionId);
+        var trackedActivities = await Api.GetActivitiesAsync(SessionId);
+
+        await InvokeAsync(() =>
+        {
+            if (session is not null)
+            {
+                state = session.State;
+                containerId = session.ContainerId ?? "";
+                workflowId = session.WorkflowId;
+            }
+
+            ApplyOutput(output);
+            activities = trackedActivities
+                .Select(x => (x.Name, x.Status))
+                .ToList();
+            StateHasChanged();
+        });
+    }
+
+    private void ApplyOutput(string[] chunks)
+    {
+        var text = string.Concat(chunks);
+        if (string.Equals(text, lastOutputText, StringComparison.Ordinal))
+            return;
+
+        lastOutputText = text;
+        initialOutput = text;
+
+        if (outputPanel is not null)
+            outputPanel.SetText(text);
+    }
+
+    private void StartPollingIfRunning()
+    {
+        pollingCts?.Cancel();
+        pollingCts?.Dispose();
+        pollingCts = null;
+
+        if (!string.Equals(state, "running", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        pollingCts = new CancellationTokenSource();
+        _ = PollSessionAsync(pollingCts.Token);
+    }
+
+    private async Task PollSessionAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshSnapshotAsync();
+
+                if (!string.Equals(state, "running", StringComparison.OrdinalIgnoreCase))
+                    break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
 
     public void Dispose()
     {
@@ -124,5 +235,10 @@
         Hub.OnWorkflowProgress -= OnProgress;
         Hub.OnContainerSpawned -= OnContainer;
         Hub.OnError -= OnError;
+        pollingCts?.Cancel();
+        pollingCts?.Dispose();
+
+        if (joinedSession)
+            _ = Hub.LeaveSessionAsync(SessionId);
     }
 }

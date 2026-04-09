@@ -1,3 +1,5 @@
+using MagicPAI.Core.Services;
+
 namespace MagicPAI.Core.Config;
 
 public class MagicPaiConfig
@@ -13,9 +15,11 @@ public class MagicPaiConfig
 
     // --- AI Agents ---
     public string DefaultAgent { get; set; } = "claude";
-    public string DefaultModel { get; set; } = "sonnet";
+    public string DefaultModel { get; set; } = "auto";
     public int MaxTurnsPerTask { get; set; } = 20;
     public int AgentTimeoutMinutes { get; set; } = 30;
+    public bool RequireContainerizedAgentExecution { get; set; } = true;
+    public Dictionary<string, Dictionary<string, string>> AssistantModelPowerMap { get; set; } = new();
 
     // --- Verification ---
     public bool EnableVerification { get; set; } = true;
@@ -66,6 +70,8 @@ public class MagicPaiConfig
 
     // --- Execution Backend ---
     public string ExecutionBackend { get; set; } = "docker"; // "docker" or "kubernetes"
+    public bool UseWorkerContainers =>
+        UseDocker || string.Equals(ExecutionBackend, "kubernetes", StringComparison.OrdinalIgnoreCase);
 
     // --- Kubernetes ---
     public string KubernetesNamespace { get; set; } = "magicpai";
@@ -100,6 +106,9 @@ public class MagicPaiConfig
         if (ExecutionBackend is not ("docker" or "kubernetes")) errors.Add("ExecutionBackend must be 'docker' or 'kubernetes'");
         if (ContainerPoolSize < 1) errors.Add("ContainerPoolSize must be >= 1");
         if (string.IsNullOrWhiteSpace(KubernetesNamespace)) errors.Add("KubernetesNamespace must not be empty");
+        if (RequireContainerizedAgentExecution && !UseWorkerContainers)
+            errors.Add("RequireContainerizedAgentExecution requires Docker or Kubernetes worker-container execution.");
+        errors.AddRange(AiAssistantResolver.ValidateConfiguredPowerMaps(AssistantModelPowerMap));
 
         return errors;
     }

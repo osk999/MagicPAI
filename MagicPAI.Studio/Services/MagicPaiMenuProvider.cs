@@ -36,6 +36,30 @@ public class MagicPaiMenuProvider : IMenuProvider
                 Icon = "fa-solid fa-gear",
                 Order = -7,
                 GroupName = "MagicPAI"
+            },
+            new()
+            {
+                Href = "workflow-definitions",
+                Text = "Workflows",
+                Icon = "fa-solid fa-diagram-project",
+                Order = -5,
+                GroupName = "Elsa Studio"
+            },
+            new()
+            {
+                Href = "workflow-instances",
+                Text = "Instances",
+                Icon = "fa-solid fa-list-check",
+                Order = -4,
+                GroupName = "Elsa Studio"
+            },
+            new()
+            {
+                Href = "magic/elsa-studio",
+                Text = "API Explorer",
+                Icon = "fa-solid fa-terminal",
+                Order = -3,
+                GroupName = "Elsa Studio"
             }
         };
 

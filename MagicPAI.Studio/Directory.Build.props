@@ -1,0 +1,10 @@
+<Project>
+  <!--
+    Redirect build output to /tmp to avoid WSL2/9p filesystem permission issues
+    where MSBuild-created files become root-owned and unwritable in subsequent builds.
+  -->
+  <PropertyGroup>
+    <BaseOutputPath>/tmp/magicpai-build/$(MSBuildProjectName)/</BaseOutputPath>
+    <BaseIntermediateOutputPath>/tmp/magicpai-build/$(MSBuildProjectName)/obj/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

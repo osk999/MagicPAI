@@ -39,9 +39,8 @@ public static class SchemaGenerator
             var name = ToSnakeCase(prop.Name);
             properties[name] = MapType(prop.PropertyType);
 
-            // Non-nullable types are required
-            if (!IsNullable(prop.PropertyType))
-                required.Add(name);
+            // OpenAI structured outputs require every declared property to appear in "required".
+            required.Add(name);
         }
 
         var schema = new Dictionary<string, object>
@@ -108,12 +107,6 @@ public static class SchemaGenerator
             return BuildObjectSchema(type);
 
         return new() { ["type"] = "string" };
-    }
-
-    private static bool IsNullable(Type type)
-    {
-        if (!type.IsValueType) return true; // Reference types are nullable
-        return Nullable.GetUnderlyingType(type) is not null;
     }
 
     private static string ToSnakeCase(string name)

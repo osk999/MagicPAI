@@ -5,6 +5,8 @@ using Elsa.Workflows.Activities.Flowchart.Attributes;
 using Elsa.Workflows.Attributes;
 using Elsa.Workflows.Models;
 using Elsa.Workflows.UIHints;
+using MagicPAI.Activities;
+using MagicPAI.Core.Config;
 using MagicPAI.Core.Services;
 
 namespace MagicPAI.Activities.Verification;
@@ -46,25 +48,48 @@ public class RunVerificationActivity : Activity
     {
         var containerMgr = context.GetRequiredService<IContainerManager>();
         var pipeline = context.GetRequiredService<VerificationPipeline>();
+        var config = context.GetRequiredService<MagicPaiConfig>();
 
         try
         {
-            var containerId = ContainerId.Get(context);
+            var containerId = ContainerId.GetOrDefault(context, () => "");
             if (string.IsNullOrEmpty(containerId))
-                containerId = context.GetVariable<string>("ContainerId") ?? "";
-            var workDir = context.GetWorkflowInput<string>("WorkspacePath") ?? WorkingDirectory.Get(context) ?? "/workspace";
+                containerId = TryGetVariable<string>(context, "ContainerId") ?? "";
+            if (string.IsNullOrEmpty(containerId))
+                containerId = context.GetOptionalWorkflowInput<string>("ContainerId") ?? "";
+            var workDir = config.UseWorkerContainers
+                ? WorkingDirectory.Get(context) ?? config.ContainerWorkDir ?? "/workspace"
+                : context.GetOptionalWorkflowInput<string>("WorkspacePath")
+                    ?? WorkingDirectory.Get(context)
+                    ?? config.WorkspacePath
+                    ?? ".";
             var gates = Gates.Get(context) ?? ["compile", "test", "hallucination"];
             var workerOutput = WorkerOutput.GetOrDefault(context, () => null);
+            if (string.IsNullOrWhiteSpace(workerOutput))
+                workerOutput = TryGetVariable<string>(context, "WorkerOutput");
+            if (string.IsNullOrWhiteSpace(workerOutput))
+                workerOutput = TryGetVariable<string>(context, "ComplexWorkerOutput");
+            if (string.IsNullOrWhiteSpace(workerOutput))
+                workerOutput = TryGetVariable<string>(context, "SimpleWorkerOutput");
+            if (string.IsNullOrWhiteSpace(workerOutput))
+                workerOutput = TryGetVariable<string>(context, "LastAgentResponse");
+            if (string.IsNullOrWhiteSpace(workerOutput))
+                workerOutput = context.GetOptionalWorkflowInput<string>("WorkerOutput");
 
             var result = await pipeline.RunAsync(
                 containerMgr, containerId, workDir, gates,
                 workerOutput, context.CancellationToken);
 
+            var failedGates = result.Gates.Where(g => !g.Passed).Select(g => g.Name).ToArray();
+            var gateResultsJson = JsonSerializer.Serialize(result.Gates);
+
             AllPassed.Set(context, result.AllPassed);
-            FailedGates.Set(context,
-                result.Gates.Where(g => !g.Passed).Select(g => g.Name).ToArray());
-            GateResultsJson.Set(context,
-                JsonSerializer.Serialize(result.Gates));
+            FailedGates.Set(context, failedGates);
+            GateResultsJson.Set(context, gateResultsJson);
+
+            context.SetVariable("AllPassed", result.AllPassed);
+            context.SetVariable("FailedGates", failedGates);
+            context.SetVariable("GateResultsJson", gateResultsJson);
 
             context.AddExecutionLogEntry("VerificationComplete",
                 $"AllPassed={result.AllPassed}, Gates={result.Gates.Count}");
@@ -79,7 +104,22 @@ public class RunVerificationActivity : Activity
             AllPassed.Set(context, false);
             FailedGates.Set(context, ["pipeline-error"]);
             GateResultsJson.Set(context, "[]");
+            context.SetVariable("AllPassed", false);
+            context.SetVariable("FailedGates", new[] { "pipeline-error" });
+            context.SetVariable("GateResultsJson", "[]");
             await context.CompleteActivityWithOutcomesAsync("Failed");
+        }
+    }
+
+    private static T? TryGetVariable<T>(ActivityExecutionContext context, string name)
+    {
+        try
+        {
+            return context.GetVariable<T>(name);
+        }
+        catch
+        {
+            return default;
         }
     }
 }

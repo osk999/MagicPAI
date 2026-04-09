@@ -9,8 +9,8 @@
   "variables": [
     { "name": "Prompt", "typeName": "String", "value": "" },
     { "name": "WorkspacePath", "typeName": "String", "value": "/workspace" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" },
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" },
     { "name": "ContainerId", "typeName": "String", "value": "" }
   ],
   "root": {
@@ -24,17 +24,17 @@
         "name": "Spawn Container"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "std-enhance",
         "name": "Enhance Prompt"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "std-elaborate",
         "name": "Elaborate"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "std-context",
         "name": "Gather Context"
       },
@@ -44,7 +44,7 @@
         "name": "Triage"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "std-simple-agent",
         "name": "Simple Agent"
       },
@@ -59,7 +59,7 @@
         "name": "Architect"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "std-complex-agent",
         "name": "Complex Agent"
       },
@@ -74,7 +74,7 @@
         "name": "Repair"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "std-repair-agent",
         "name": "Repair Agent"
       },

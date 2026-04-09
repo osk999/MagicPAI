@@ -31,9 +31,10 @@ public class IsComplexAppWorkflow : WorkflowBase
         var flowchart = new Flowchart
         {
             Id = "is-complex-app-flow",
-            Start = classify
+            Start = classify,
+            Activities = { classify }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

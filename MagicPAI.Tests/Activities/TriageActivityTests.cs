@@ -26,7 +26,7 @@ public class TriageActivityTests
         var schema = SchemaGenerator.FromType<TriageResult>();
         Assert.Contains("complexity", schema);
         Assert.Contains("category", schema);
-        Assert.Contains("recommended_model", schema);
+        Assert.Contains("recommended_model_power", schema);
         Assert.Contains("needs_decomposition", schema);
         Assert.Contains("additionalProperties", schema);
     }
@@ -35,7 +35,7 @@ public class TriageActivityTests
     public async Task Triage_Simple_Task_Returns_Low_Complexity()
     {
         var mockContainer = new Mock<IContainerManager>();
-        var triageResponse = """{"complexity": 3, "category": "bug_fix", "needs_decomposition": false, "recommended_model": "haiku"}""";
+        var triageResponse = """{"complexity": 3, "category": "bug_fix", "needs_decomposition": false, "recommended_model_power": 3}""";
         mockContainer.Setup(m => m.ExecAsync(
                 "c1", It.IsAny<string>(), "/workspace", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExecResult(0, triageResponse, ""));
@@ -56,7 +56,7 @@ public class TriageActivityTests
     public async Task Triage_Complex_Task_Returns_High_Complexity()
     {
         var mockContainer = new Mock<IContainerManager>();
-        var triageResponse = """{"complexity": 9, "category": "architecture", "needs_decomposition": true, "recommended_model": "opus"}""";
+        var triageResponse = """{"complexity": 9, "category": "architecture", "needs_decomposition": true, "recommended_model_power": 1}""";
         mockContainer.Setup(m => m.ExecAsync(
                 "c1", It.IsAny<string>(), "/workspace", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExecResult(0, triageResponse, ""));
@@ -74,21 +74,21 @@ public class TriageActivityTests
     [Fact]
     public void TriageResult_Record_Properties()
     {
-        var result = new TriageResult(5, "code_gen", "sonnet", false);
+        var result = new TriageResult(5, "code_gen", 2, false);
 
         Assert.Equal(5, result.Complexity);
         Assert.Equal("code_gen", result.Category);
-        Assert.Equal("sonnet", result.RecommendedModel);
+        Assert.Equal(2, result.RecommendedModelPower);
         Assert.False(result.NeedsDecomposition);
     }
 
     [Fact]
     public void TriageResult_DecompositionNeeded_ForComplexTasks()
     {
-        var result = new TriageResult(8, "architecture", "opus", true);
+        var result = new TriageResult(8, "architecture", 1, true);
 
         Assert.True(result.NeedsDecomposition);
-        Assert.Equal("opus", result.RecommendedModel);
+        Assert.Equal(1, result.RecommendedModelPower);
     }
 
     [Fact]

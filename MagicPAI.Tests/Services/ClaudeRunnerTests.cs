@@ -55,7 +55,7 @@ public class ClaudeRunnerTests
     public void BuildCommand_Uses_Custom_Model_When_Not_Alias()
     {
         var cmd = _runner.BuildCommand(new AgentRequest { Prompt = "test", Model = "claude-custom-model" });
-        Assert.Contains("--model claude-claude-custom-model", cmd);
+        Assert.Contains("--model claude-custom-model", cmd);
     }
 
     [Fact]
@@ -108,6 +108,20 @@ public class ClaudeRunnerTests
     {
         var cmd = _runner.BuildCommand(new AgentRequest { Prompt = "test" });
         Assert.Contains("--model claude-sonnet-4-6", cmd);
+    }
+
+    [Fact]
+    public void BuildExecutionPlan_Resumes_Session_When_Provided()
+    {
+        var plan = _runner.BuildExecutionPlan(new AgentRequest
+        {
+            Prompt = "continue",
+            SessionId = "sess-123"
+        });
+
+        Assert.Equal("claude", plan.MainRequest.FileName);
+        Assert.Contains("--resume", plan.MainRequest.Arguments);
+        Assert.Contains("sess-123", plan.MainRequest.Arguments);
     }
 
     [Fact]
@@ -196,5 +210,6 @@ public class ClaudeRunnerTests
         Assert.True(result.Success);
         Assert.Contains("score", result.Output);
         Assert.Contains("8", result.Output);
+        Assert.Contains("score", result.StructuredOutputJson);
     }
 }

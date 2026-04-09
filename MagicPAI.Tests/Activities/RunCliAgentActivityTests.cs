@@ -103,6 +103,40 @@ public class RunCliAgentActivityTests
         Assert.Contains("--sandbox danger-full-access", cmd);
         Assert.Contains("ask_for_approval", cmd);
         Assert.Contains("never", cmd);
+        Assert.Contains("--json", cmd);
+        Assert.Contains("--output-last-message", cmd.Replace(" -o ", "--output-last-message "));
+    }
+
+    [Fact]
+    public void Codex_BuildExecutionPlan_Uses_Safe_Arguments()
+    {
+        var runner = new CodexRunner();
+        var plan = runner.BuildExecutionPlan(new AgentRequest
+        {
+            Prompt = "Build feature",
+            Model = "gpt-5.4-mini",
+            WorkDir = "/workspace"
+        });
+
+        Assert.Equal("codex", plan.MainRequest.FileName);
+        Assert.Contains("exec", plan.MainRequest.Arguments);
+        Assert.Contains("--json", plan.MainRequest.Arguments);
+        Assert.Equal("/workspace", plan.MainRequest.WorkingDirectory);
+        Assert.Contains("Build feature", plan.MainRequest.Arguments);
+    }
+
+    [Fact]
+    public void Codex_BuildExecutionPlan_Resumes_Session_When_Available()
+    {
+        var runner = new CodexRunner();
+        var plan = runner.BuildExecutionPlan(new AgentRequest
+        {
+            Prompt = "Continue the work",
+            SessionId = "019d6ea8-4a25-7e80-9275-d2cc03ea5c4a"
+        });
+
+        Assert.Equal(["exec", "resume"], plan.MainRequest.Arguments.Take(2).ToArray());
+        Assert.Equal("019d6ea8-4a25-7e80-9275-d2cc03ea5c4a", plan.MainRequest.Arguments[^2]);
     }
 
     [Fact]
@@ -132,17 +166,93 @@ public class RunCliAgentActivityTests
     }
 
     [Fact]
-    public void Codex_ParseResponse_Detects_Error()
+    public void Codex_ParseResponse_Extracts_Last_Message_Block()
     {
         var runner = new CodexRunner();
-        Assert.False(runner.ParseResponse("Something went wrong with error").Success);
+        var result = runner.ParseResponse("""
+            some progress
+            __MAGICPAI_CODEX_LAST_MESSAGE_START__
+            {"status":"ok"}
+            __MAGICPAI_CODEX_LAST_MESSAGE_END__
+            """);
+        Assert.True(result.Success);
+        Assert.Equal("""{"status":"ok"}""", result.Output);
+        Assert.Equal("""{"status":"ok"}""", result.StructuredOutputJson);
     }
 
     [Fact]
-    public void Codex_ParseResponse_Success_When_No_Error()
+    public void Codex_ParseResponse_Parses_Json_Stream_And_Session()
     {
         var runner = new CodexRunner();
-        Assert.True(runner.ParseResponse("Task completed successfully").Success);
+        var result = runner.ParseResponse("""
+            {"type":"thread.started","thread_id":"thread-123"}
+            {"type":"turn.started"}
+            {"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}
+            {"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":34}}
+            """);
+
+        Assert.True(result.Success);
+        Assert.Equal("OK", result.Output);
+        Assert.Equal("thread-123", result.SessionId);
+        Assert.Equal(12, result.InputTokens);
+        Assert.Equal(34, result.OutputTokens);
+    }
+
+    [Fact]
+    public void Codex_ParseResponse_Ignores_NonObject_Json_Lines()
+    {
+        var runner = new CodexRunner();
+        var result = runner.ParseResponse("""
+            "status"
+            {"type":"thread.started","thread_id":"thread-123"}
+            {"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}
+            """);
+
+        Assert.True(result.Success);
+        Assert.Equal("OK", result.Output);
+        Assert.Equal("thread-123", result.SessionId);
+    }
+
+    [Fact]
+    public void Codex_ParseResponse_Ignores_NonObject_Nested_Properties()
+    {
+        var runner = new CodexRunner();
+        var result = runner.ParseResponse("""
+            {"type":"item.completed","item":"partial"}
+            {"type":"turn.completed","usage":"pending"}
+            {"type":"turn.failed","error":"bad"}
+            {"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}
+            """);
+
+        Assert.False(result.Success);
+        Assert.Equal("OK", result.Output);
+    }
+
+    [Fact]
+    public void Codex_ParseResponse_Returns_Error_When_Stream_Fails()
+    {
+        var runner = new CodexRunner();
+        var result = runner.ParseResponse("""
+            {"type":"thread.started","thread_id":"thread-123"}
+            {"type":"error","message":"invalid model"}
+            {"type":"turn.failed","error":{"message":"invalid model"}}
+            """);
+
+        Assert.False(result.Success);
+        Assert.Equal("invalid model", result.Output);
+    }
+
+    [Fact]
+    public void Claude_ParseResponse_Ignores_NonObject_Json_Lines()
+    {
+        var runner = new ClaudeRunner();
+        var result = runner.ParseResponse("""
+            "progress"
+            {"type":"result","result":"done","is_error":false}
+            """);
+
+        Assert.True(result.Success);
+        Assert.Equal("done", result.Output);
     }
 
     // --- Gemini ---

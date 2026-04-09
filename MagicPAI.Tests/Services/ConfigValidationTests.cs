@@ -64,4 +64,18 @@ public class ConfigValidationTests
         var errors = config.Validate();
         Assert.True(errors.Count >= 3);
     }
+
+    [Fact]
+    public void ContainerizedAgents_Require_Docker()
+    {
+        var config = new MagicPaiConfig
+        {
+            UseDocker = false,
+            RequireContainerizedAgentExecution = true
+        };
+
+        var errors = config.Validate();
+
+        Assert.Contains(errors, e => e.Contains("RequireContainerizedAgentExecution"));
+    }
 }

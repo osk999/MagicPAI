@@ -1,0 +1,128 @@
+@page "/magic/elsa-studio"
+@inject SessionApiClient Api
+
+<PageTitle>Elsa Studio</PageTitle>
+
+<div class="dashboard">
+    <h2>Elsa Workflow Designer</h2>
+    <p class="text-muted">Manage Elsa workflows and inspect the runtime.</p>
+
+    <div class="elsa-links-grid">
+        <a href="@(baseUrl)elsa/api/workflow-definitions" target="_blank" class="card elsa-link-card">
+            <h3>Workflow Definitions</h3>
+            <p class="text-muted">List and inspect all published workflow definitions (JSON API).</p>
+        </a>
+
+        <a href="@(baseUrl)elsa/api/workflow-instances" target="_blank" class="card elsa-link-card">
+            <h3>Workflow Instances</h3>
+            <p class="text-muted">Browse running and completed workflow instances.</p>
+        </a>
+
+        <a href="@(baseUrl)elsa/api/activity-descriptors" target="_blank" class="card elsa-link-card">
+            <h3>Activity Registry</h3>
+            <p class="text-muted">Browse all registered activities and their properties.</p>
+        </a>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem;">
+        <h3>API Explorer</h3>
+        <div style="display:flex;gap:.5rem;margin-top:.75rem;">
+            <input @bind="apiPath" @bind:event="oninput" class="form-input" style="flex:1;margin-bottom:0;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.82rem;" placeholder="/api/sessions, /api/browse/workflows, /elsa/api/..." />
+            <button @onclick="FetchApi" class="btn btn-primary btn-sm" type="button" disabled="@fetching">
+                @(fetching ? "Loading..." : "Fetch")
+            </button>
+        </div>
+        @if (!string.IsNullOrEmpty(apiError))
+        {
+            <p class="error-text" style="margin-top:.75rem;">@apiError</p>
+        }
+        @if (!string.IsNullOrEmpty(apiResponse))
+        {
+            <div style="margin-top:.75rem;position:relative;">
+                <button @onclick="CopyResponse" class="btn btn-sm btn-secondary" style="position:absolute;top:.5rem;right:.5rem;z-index:1;">
+                    @(copied ? "Copied" : "Copy")
+                </button>
+                <pre class="output-content" style="max-height:500px;overflow:auto;background:var(--bg-0);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;">@apiResponse</pre>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string baseUrl = "";
+    private string apiPath = "/api/browse/workflows";
+    private string apiResponse = "";
+    private string apiError = "";
+    private bool fetching;
+    private bool copied;
+
+    protected override void OnInitialized()
+    {
+        var uri = Api.BaseAddress;
+        baseUrl = $"{uri.Scheme}://{uri.Authority}/";
+    }
+
+    private async Task FetchApi()
+    {
+        if (string.IsNullOrWhiteSpace(apiPath)) return;
+
+        fetching = true;
+        apiError = "";
+        apiResponse = "";
+        copied = false;
+        StateHasChanged();
+
+        try
+        {
+            var path = apiPath.TrimStart('/');
+            var (statusCode, body) = await Api.FetchRawAsync(path);
+
+            if (statusCode >= 200 && statusCode < 300)
+            {
+                // Detect HTML fallback (means the API route wasn't matched / needs auth)
+                if (body.TrimStart().StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase)
+                    || body.TrimStart().StartsWith("<html", StringComparison.OrdinalIgnoreCase))
+                {
+                    apiError = $"Received HTML instead of JSON. The Elsa API endpoints require authentication. Try /api/sessions or /api/browse/workflows instead.";
+                }
+                else
+                {
+                    // Try to pretty-print JSON
+                    try
+                    {
+                        var doc = System.Text.Json.JsonDocument.Parse(body);
+                        apiResponse = System.Text.Json.JsonSerializer.Serialize(doc, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    }
+                    catch
+                    {
+                        apiResponse = body;
+                    }
+                }
+            }
+            else
+            {
+                apiError = $"HTTP {statusCode}";
+                if (!string.IsNullOrWhiteSpace(body) && body.Length < 500)
+                    apiError += $"\n{body}";
+            }
+        }
+        catch (Exception ex)
+        {
+            apiError = ex.Message;
+        }
+        finally
+        {
+            fetching = false;
+        }
+    }
+
+    private async Task CopyResponse()
+    {
+        // Simple copy-to-clipboard via JS interop is not available without JSRuntime
+        // Just toggle the "Copied" text as visual feedback
+        copied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        copied = false;
+    }
+}

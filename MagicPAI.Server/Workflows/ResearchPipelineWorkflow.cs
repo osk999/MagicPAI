@@ -1,3 +1,4 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
@@ -21,61 +22,82 @@ public class ResearchPipelineWorkflow : WorkflowBase
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
+        var model = builder.WithVariable<string>("Model", "auto");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
+        var enhancedPrompt = builder.WithVariable<string>("EnhancedPrompt", "");
+        var researchContext = builder.WithVariable<string>("ResearchContext", "");
 
         // Step 1: Enhance prompt
-        var enhance = new RunCliAgentActivity
+        var enhance = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
+            Response = new Output<string>(enhancedPrompt),
             Id = "research-enhance"
         };
 
         // Step 2: Research context gathering
-        var research = new RunCliAgentActivity
+        var research = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("EnhancedPrompt"))
+                    ? ctx.GetVariable<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("EnhancedPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
+            Response = new Output<string>(researchContext),
             Id = "research-gather"
         };
 
         // Step 3: Triage for routing
         var triage = new TriageActivity
         {
-            Prompt = new Input<string>(prompt),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchContext"))
+                    ? ctx.GetVariable<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("ResearchContext") ?? ""),
             ContainerId = new Input<string>(containerId),
             Id = "research-triage"
         };
 
         // Step 4a: Simple execution path
-        var simpleAgent = new RunCliAgentActivity
+        var simpleAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchContext"))
+                    ? ctx.GetVariable<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("ResearchContext") ?? ""),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
+            ModelPower = new Input<int>(modelPower),
             Id = "research-simple-exec"
         };
 
         // Step 4b: Complex decomposition path
         var architect = new ArchitectActivity
         {
-            Prompt = new Input<string>(prompt),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchContext"))
+                    ? ctx.GetVariable<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("ResearchContext") ?? ""),
             ContainerId = new Input<string>(containerId),
             Id = "research-architect"
         };
 
-        var complexAgent = new RunCliAgentActivity
+        var complexAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx =>
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchContext"))
+                    ? ctx.GetVariable<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("ResearchContext") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("opus"),
+            ModelPower = new Input<int>(1),
             Id = "research-complex-exec"
         };
 
@@ -83,6 +105,7 @@ public class ResearchPipelineWorkflow : WorkflowBase
         {
             Id = "research-pipeline-flow",
             Start = enhance,
+            Activities = { enhance, research, triage, simpleAgent, architect, complexAgent },
             Connections =
             {
                 // Enhance -> Research
@@ -118,6 +141,6 @@ public class ResearchPipelineWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

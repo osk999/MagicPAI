@@ -1,6 +1,6 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
-using Elsa.Workflows.Activities.Flowchart.Activities;
-using Elsa.Workflows.Activities.Flowchart.Models;
+using Elsa.Workflows.Activities;
 using Elsa.Workflows.Models;
 using MagicPAI.Activities.AI;
 
@@ -8,7 +8,7 @@ namespace MagicPAI.Server.Workflows;
 
 /// <summary>
 /// Parallel context collection: research, repo-map analysis, and memory loading run in parallel,
-/// then merge results. Uses RunCliAgentActivity with different prompts for each collection phase.
+/// then merge results. Uses AiAssistantActivity with different prompts for each collection phase.
 /// </summary>
 public class ContextGathererWorkflow : WorkflowBase
 {
@@ -19,89 +19,81 @@ public class ContextGathererWorkflow : WorkflowBase
             "Collect context in parallel: research, repo-map, and memory, then merge";
 
         var prompt = builder.WithVariable<string>("Prompt", "");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
         var containerId = builder.WithVariable<string>("ContainerId", "");
+        var researchContext = builder.WithVariable<string>("ResearchContext", "");
+        var repoMapContext = builder.WithVariable<string>("RepoMapContext", "");
+        var memoryContext = builder.WithVariable<string>("MemoryContext", "");
+        var mergedContext = builder.WithVariable<string>("MergedContext", "");
 
         // Parallel branch 1: Research
-        var research = new RunCliAgentActivity
+        var research = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
+            Response = new Output<string>(researchContext),
             Id = "research-context"
         };
 
         // Parallel branch 2: Repo-map analysis
-        var repoMap = new RunCliAgentActivity
+        var repoMap = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx =>
+                $"Create a repo-map style implementation context for this task:\n\n{ctx.GetVariable<string>("Prompt") ?? ""}"),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
+            Response = new Output<string>(repoMapContext),
             Id = "repo-map-context"
         };
 
         // Parallel branch 3: Memory loading
-        var memoryLoad = new RunCliAgentActivity
+        var memoryLoad = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx =>
+                $"Load any relevant prior constraints, conventions, or remembered context for this task:\n\n{ctx.GetVariable<string>("Prompt") ?? ""}"),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
+            Response = new Output<string>(memoryContext),
             Id = "memory-context"
         };
 
         // Merge step: combine all context
-        var mergeContext = new RunCliAgentActivity
+        var mergeContext = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx =>
+                $$"""
+                Combine the parallel context-gathering results into one concise execution brief.
+
+                ## Original Prompt
+                {{ctx.GetVariable<string>("Prompt") ?? ""}}
+
+                ## Research
+                {{ctx.GetVariable<string>("ResearchContext") ?? ""}}
+
+                ## Repo Map
+                {{ctx.GetVariable<string>("RepoMapContext") ?? ""}}
+
+                ## Memory
+                {{ctx.GetVariable<string>("MemoryContext") ?? ""}}
+                """),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
+            Response = new Output<string>(mergedContext),
             Id = "merge-context"
         };
 
-        // In Elsa Flowchart, activities with no inbound connections from Start
-        // run in parallel when reached. We use a fork-join pattern:
-        // All three branches connect to merge.
-        var flowchart = new Flowchart
+        builder.Root = new Sequence
         {
-            Id = "context-gatherer-flow",
-            Start = research,
-            Connections =
+            Activities =
             {
-                // Research done -> merge
-                new Connection(
-                    new Endpoint(research, "Done"),
-                    new Endpoint(mergeContext)),
-
-                // Research failed -> merge (proceed with partial context)
-                new Connection(
-                    new Endpoint(research, "Failed"),
-                    new Endpoint(mergeContext)),
-
-                // Repo-map done -> merge
-                new Connection(
-                    new Endpoint(repoMap, "Done"),
-                    new Endpoint(mergeContext)),
-
-                // Repo-map failed -> merge
-                new Connection(
-                    new Endpoint(repoMap, "Failed"),
-                    new Endpoint(mergeContext)),
-
-                // Memory done -> merge
-                new Connection(
-                    new Endpoint(memoryLoad, "Done"),
-                    new Endpoint(mergeContext)),
-
-                // Memory failed -> merge
-                new Connection(
-                    new Endpoint(memoryLoad, "Failed"),
-                    new Endpoint(mergeContext)),
+                new Elsa.Workflows.Activities.Parallel(new IActivity[] { research, repoMap, memoryLoad }),
+                mergeContext
             }
-        };
-
-        builder.Root = flowchart;
+        }.WithAttachedVariables(builder);
     }
 }

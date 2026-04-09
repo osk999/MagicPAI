@@ -7,4 +7,5 @@ public record CliAgentResponse(
     string[] FilesModified,
     int InputTokens,
     int OutputTokens,
-    string? SessionId);
+    string? SessionId,
+    string? StructuredOutputJson = null);

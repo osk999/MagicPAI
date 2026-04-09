@@ -1,3 +1,4 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
@@ -18,24 +19,35 @@ public class SimpleAgentWorkflow : WorkflowBase
         builder.Name = "Simple Agent";
         builder.Description = "Execute a single AI agent task with verification";
 
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var workspacePath = builder.WithVariable<string>("WorkspacePath", "/workspace");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
         var containerId = builder.WithVariable<string>("ContainerId", "");
+        var prompt = builder.WithVariable<string>("Prompt", "");
+        var assistant = builder.WithVariable<string>("AiAssistant", "");
+        var model = builder.WithVariable<string>("Model", "");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
+        Input<string> resolveAssistant() => new(ctx =>
+            ctx.GetInput<string>("AiAssistant")
+            ?? ctx.GetInput<string>("Agent")
+            ?? ctx.GetVariable<string>("AiAssistant")
+            ?? "");
+        Input<string> resolveModel() => new(ctx =>
+            ctx.GetInput<string>("Model")
+            ?? ctx.GetVariable<string>("Model")
+            ?? "");
 
         var spawn = new SpawnContainerActivity
         {
-            WorkspacePath = new Input<string>(workspacePath),
+            WorkspacePath = new Input<string>("/workspace"),
+            ContainerId = new Output<string>(containerId),
             Id = "spawn-container"
         };
 
-        var runAgent = new RunCliAgentActivity
+        var runAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
+            AiAssistant = resolveAssistant(),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
+            Model = resolveModel(),
+            ModelPower = new Input<int>(modelPower),
             Id = "run-agent"
         };
 
@@ -55,6 +67,7 @@ public class SimpleAgentWorkflow : WorkflowBase
         {
             Id = "simple-agent-flow",
             Start = spawn,
+            Activities = { spawn, runAgent, verify, destroy },
             Connections =
             {
                 new Connection(new Endpoint(spawn, "Done"), new Endpoint(runAgent)),
@@ -67,6 +80,6 @@ public class SimpleAgentWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

@@ -16,7 +16,7 @@
     "start": "test-prompt-agent",
     "activities": [
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "test-prompt-agent",
         "name": "Test Prompt Agent"
       }

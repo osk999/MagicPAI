@@ -9,8 +9,8 @@
   "variables": [
     { "name": "ContainerId", "typeName": "String", "value": "" },
     { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" },
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" },
     { "name": "WorkerOutput", "typeName": "String", "value": "" }
   ],
   "root": {
@@ -29,7 +29,7 @@
         "name": "Repair"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "repair-agent",
         "name": "Repair Agent"
       },

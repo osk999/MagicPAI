@@ -1,5 +1,5 @@
-using Elsa.Workflows;
 using MagicPAI.Server.Workflows;
+using WorkflowBase = MagicPAI.Server.Workflows.WorkflowBase;
 
 namespace MagicPAI.Tests.Workflows;
 

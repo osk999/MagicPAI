@@ -80,16 +80,21 @@ public class ContainerPool : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_pool.Count < _poolSize)
+        // Enqueue first, then trim if over capacity (atomic-safe with ConcurrentQueue)
+        if (await _containerManager.IsRunningAsync(container.ContainerId, ct))
         {
-            // Check it's still running before returning to pool
-            if (await _containerManager.IsRunningAsync(container.ContainerId, ct))
+            _pool.Enqueue(container);
+
+            // Trim excess containers beyond pool size
+            while (_pool.Count > _poolSize && _pool.TryDequeue(out var excess))
             {
-                _pool.Enqueue(container);
-                _logger.LogDebug("Returned container {ContainerId} to pool ({Count}/{Max})",
-                    container.ContainerId, _pool.Count, _poolSize);
-                return;
+                try { await _containerManager.DestroyAsync(excess.ContainerId, ct); }
+                catch { /* best effort cleanup */ }
             }
+
+            _logger.LogDebug("Returned container {ContainerId} to pool ({Count}/{Max})",
+                container.ContainerId, _pool.Count, _poolSize);
+            return;
         }
 
         // Pool is full or container is dead — destroy it

@@ -41,7 +41,7 @@ public class MergeWorktreeActivity : Activity
         {
             var mergeResult = await containerMgr.ExecAsync(
                 containerId,
-                $"git checkout {targetBranch} && git merge {branchName} --no-edit",
+                $"git checkout '{targetBranch}' && git merge '{branchName}' --no-edit",
                 repoDir,
                 context.CancellationToken);
 

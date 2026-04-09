@@ -30,6 +30,7 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
         TimeSpan.FromSeconds(1),
         TimeSpan.FromSeconds(2)
     ];
+    private const string ExitCodeMarker = "__MAGICPAI_EXIT_CODE__=";
 
     private static readonly TimeSpan PodReadyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PodPollInterval = TimeSpan.FromSeconds(2);
@@ -98,9 +99,7 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
         string workDir, CancellationToken ct)
     {
         var podName = containerId;
-        var fullCommand = string.IsNullOrEmpty(workDir)
-            ? command
-            : $"cd {workDir} && {command}";
+        var fullCommand = WrapCommand(command, workDir);
 
         _logger.LogDebug("Executing in pod {PodName}: {Command}", podName, fullCommand);
 
@@ -132,7 +131,17 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
 
             var results = await Task.WhenAll(stdoutTask, stderrTask);
             stdout.Append(results[0]);
-            stderr.Append(results[1]);
+            var stderrText = results[1];
+            var parsedResult = ExtractExitCode(stderrText);
+            stderr.Append(parsedResult.Output);
+
+            if (parsedResult.ExitCode.HasValue)
+                exitCode = parsedResult.ExitCode.Value;
+            else
+            {
+                exitCode = 1;
+                stderr.AppendLine("Kubernetes exec completed without an exit-code marker. Treating the command as failed.");
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -144,25 +153,38 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
         return new ExecResult(exitCode, stdout.ToString(), stderr.ToString());
     }
 
+    public Task<ExecResult> ExecAsync(string containerId, ContainerExecRequest request,
+        CancellationToken ct)
+    {
+        var command = BuildShellCommand(request);
+        return ExecAsync(containerId, command, request.WorkingDirectory, ct);
+    }
+
     public async Task<ExecResult> ExecStreamingAsync(string containerId, string command,
         Action<string> onOutput, TimeSpan timeout, CancellationToken ct)
     {
+        var idleTimeout = ExecutionTimeoutPolicy.NormalizeIdleTimeout(timeout);
+        var hardTimeout = ExecutionTimeoutPolicy.GetHardTimeout(idleTimeout);
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
+        cts.CancelAfter(hardTimeout);
 
         var podName = containerId;
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
         var exitCode = 0;
+        var lastActivity = DateTimeOffset.UtcNow;
+        void RecordActivity() => lastActivity = DateTimeOffset.UtcNow;
 
         _logger.LogDebug("Streaming exec in pod {PodName}: {Command}", podName, command);
 
         try
         {
+            var wrappedCommand = WrapCommand(command);
             var webSocket = await _client.WebSocketNamespacedPodExecAsync(
                 name: podName,
                 @namespace: _namespace,
-                command: ["bash", "-c", command],
+                command: ["bash", "-c", wrappedCommand],
                 container: "worker",
                 stderr: true,
                 stdin: false,
@@ -176,25 +198,63 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
             using var stdoutStream = demuxer.GetStream(1, null);
             using var stderrStream = demuxer.GetStream(2, null);
 
-            // Read stderr in the background
-            var stderrTask = ReadStreamToStringAsync(stderrStream, cts.Token);
+            var stdoutTask = ReadStreamAsync(
+                stdoutStream,
+                chunk =>
+                {
+                    RecordActivity();
+                    stdout.Append(chunk);
+                    onOutput(chunk);
+                },
+                cts.Token);
 
-            // Stream stdout with callback
-            var buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = await stdoutStream.ReadAsync(buffer, cts.Token)) > 0)
+            var stderrTask = ReadStreamAsync(
+                stderrStream,
+                chunk =>
+                {
+                    RecordActivity();
+                    stderr.Append(chunk);
+                    onOutput(chunk);
+                },
+                cts.Token);
+
+            var streamTask = Task.WhenAll(stdoutTask, stderrTask);
+
+            while (!streamTask.IsCompleted)
             {
-                var text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                stdout.Append(text);
-                onOutput(text);
+                var completedTask = await Task.WhenAny(streamTask, Task.Delay(TimeSpan.FromSeconds(1)));
+
+                if (completedTask == streamTask)
+                    break;
+
+                cts.Token.ThrowIfCancellationRequested();
+                ExecutionTimeoutPolicy.ThrowIfIdle(lastActivity, idleTimeout);
             }
 
-            stderr.Append(await stderrTask);
+            await streamTask;
+
+            var parsedResult = ExtractExitCode(stderr.ToString());
+            stderr.Clear();
+            stderr.Append(parsedResult.Output);
+
+            if (parsedResult.ExitCode.HasValue)
+                exitCode = parsedResult.ExitCode.Value;
+            else
+            {
+                exitCode = 1;
+                stderr.AppendLine("Kubernetes exec completed without an exit-code marker. Treating the command as failed.");
+            }
+        }
+        catch (IdleCommandTimeoutException ex)
+        {
+            _logger.LogWarning("Command in pod {PodName} hit inactivity timeout after {Timeout}", podName, idleTimeout);
+            stderr.AppendLine(ex.Message);
+            exitCode = 124;
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            _logger.LogWarning("Command timed out after {Timeout} in pod {PodName}", timeout, podName);
-            stderr.Append($"Command timed out after {timeout}");
+            _logger.LogWarning("Command in pod {PodName} exceeded hard timeout after {Timeout}", podName, hardTimeout);
+            stderr.AppendLine(ExecutionTimeoutPolicy.FormatHardTimeoutMessage(hardTimeout));
             exitCode = 124; // Standard timeout exit code
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -205,6 +265,13 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
         }
 
         return new ExecResult(exitCode, stdout.ToString(), stderr.ToString());
+    }
+
+    public Task<ExecResult> ExecStreamingAsync(string containerId, ContainerExecRequest request,
+        Action<string> onOutput, TimeSpan timeout, CancellationToken ct)
+    {
+        var command = BuildShellCommand(request);
+        return ExecStreamingAsync(containerId, command, onOutput, timeout, ct);
     }
 
     public async Task DestroyAsync(string containerId, CancellationToken ct)
@@ -342,6 +409,83 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
         }
 
         return sb.ToString();
+    }
+
+    private static async Task ReadStreamAsync(Stream stream, Action<string> onChunk,
+        CancellationToken ct)
+    {
+        var buffer = new byte[4096];
+
+        try
+        {
+            while (true)
+            {
+                var bytesRead = await stream.ReadAsync(buffer, ct);
+                if (bytesRead == 0)
+                    break;
+
+                onChunk(Encoding.UTF8.GetString(buffer, 0, bytesRead));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Stream was cancelled by timeout or workflow cancellation.
+        }
+        catch (IOException)
+        {
+            // Stream may be closed by the remote end.
+        }
+    }
+
+    private static string WrapCommand(string command, string? workDir = null)
+    {
+        var cdPrefix = string.IsNullOrWhiteSpace(workDir)
+            ? ""
+            : $"cd '{EscapeBashSingleQuoted(workDir)}' && ";
+
+        return $"set +e; {cdPrefix}{command}; __magicpai_exit_code=$?; >&2 printf '\\n{ExitCodeMarker}%s\\n' \"$__magicpai_exit_code\"";
+    }
+
+    private static (string Output, int? ExitCode) ExtractExitCode(string text)
+    {
+        var markerIndex = text.LastIndexOf(ExitCodeMarker, StringComparison.Ordinal);
+        if (markerIndex < 0)
+            return (text, null);
+
+        var lineEnd = markerIndex;
+        while (lineEnd < text.Length && text[lineEnd] != '\n' && text[lineEnd] != '\r')
+            lineEnd++;
+
+        var removeEnd = lineEnd;
+        while (removeEnd < text.Length && (text[removeEnd] == '\n' || text[removeEnd] == '\r'))
+            removeEnd++;
+
+        var lineStart = markerIndex;
+        while (lineStart > 0 && text[lineStart - 1] != '\n' && text[lineStart - 1] != '\r')
+            lineStart--;
+
+        var exitCodeText = text[(markerIndex + ExitCodeMarker.Length)..lineEnd].Trim();
+        if (!int.TryParse(exitCodeText, out var exitCode))
+            return (text, null);
+
+        var cleanText = text.Remove(lineStart, removeEnd - lineStart).TrimEnd('\r', '\n');
+        return (cleanText, exitCode);
+    }
+
+    private static string EscapeBashSingleQuoted(string value) =>
+        value.Replace("'", "'\"'\"'");
+
+    private static string BuildShellCommand(ContainerExecRequest request)
+    {
+        var envPrefix = request.Environment is null
+            ? ""
+            : string.Join(" ", request.Environment.Select(pair =>
+                pair.Value is null
+                    ? $"{pair.Key}=''"
+                    : $"{pair.Key}='{EscapeBashSingleQuoted(pair.Value)}'")) + " ";
+
+        var args = string.Join(" ", request.Arguments.Select(arg => $"'{EscapeBashSingleQuoted(arg)}'"));
+        return $"{envPrefix}{request.FileName} {args}".TrimEnd();
     }
 
     /// <summary>Retry a K8s operation with exponential backoff for transient failures.</summary>

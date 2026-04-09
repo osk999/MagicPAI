@@ -9,8 +9,8 @@
   "variables": [
     { "name": "Prompt", "typeName": "String", "value": "" },
     { "name": "ContainerId", "typeName": "String", "value": "" },
-    { "name": "Agent", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "sonnet" },
+    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
+    { "name": "Model", "typeName": "String", "value": "auto" },
     { "name": "WorkerOutput", "typeName": "String", "value": "" }
   ],
   "root": {
@@ -19,12 +19,12 @@
     "start": "completeness-audit",
     "activities": [
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "completeness-audit",
         "name": "Completeness Audit"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "review-agent",
         "name": "Review Agent"
       },
@@ -39,7 +39,7 @@
         "name": "Quality Gates"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "e2e-test",
         "name": "E2E Test"
       },
@@ -54,7 +54,7 @@
         "name": "Repair"
       },
       {
-        "type": "MagicPAI.RunCliAgentActivity",
+        "type": "MagicPAI.AiAssistantActivity",
         "id": "post-repair-agent",
         "name": "Repair Agent"
       }

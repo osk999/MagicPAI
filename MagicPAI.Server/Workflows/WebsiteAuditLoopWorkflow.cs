@@ -12,7 +12,7 @@ namespace MagicPAI.Server.Workflows;
 ///   Phase 2: Visual audit loop - screenshot and analyze each page
 ///   Phase 3: Interaction + scroll loop - test forms, buttons, scrolling
 ///   Phase 4: Opus sweep - deep analysis and final report
-/// Each phase uses RunCliAgentActivity in a while-like loop pattern via Flowchart
+/// Each phase uses AiAssistantActivity in a while-like loop pattern via Flowchart
 /// connections that loop back from a classifier to the phase runner.
 /// </summary>
 public class WebsiteAuditLoopWorkflow : WorkflowBase
@@ -24,15 +24,16 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
             "Four-phase autonomous website audit: discovery, visual, interaction, and Opus sweep";
 
         var prompt = builder.WithVariable<string>("Prompt", "");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
         var containerId = builder.WithVariable<string>("ContainerId", "");
 
         // --- Phase 1: Discovery Loop ---
-        var discoveryRunner = new RunCliAgentActivity
+        var discoveryRunner = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
             Id = "phase1-discovery-runner"
         };
 
@@ -44,12 +45,12 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
         };
 
         // --- Phase 2: Visual Audit Loop ---
-        var visualRunner = new RunCliAgentActivity
+        var visualRunner = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
             Id = "phase2-visual-runner"
         };
 
@@ -61,12 +62,12 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
         };
 
         // --- Phase 3: Interaction + Scroll Loop ---
-        var interactionRunner = new RunCliAgentActivity
+        var interactionRunner = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("sonnet"),
+            ModelPower = new Input<int>(2),
             Id = "phase3-interaction-runner"
         };
 
@@ -78,12 +79,12 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
         };
 
         // --- Phase 4: Opus Sweep ---
-        var opusSweep = new RunCliAgentActivity
+        var opusSweep = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("opus"),
+            ModelPower = new Input<int>(1),
             Id = "phase4-opus-sweep"
         };
 
@@ -91,6 +92,7 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
         {
             Id = "website-audit-loop-flow",
             Start = discoveryRunner,
+            Activities = { discoveryRunner, discoveryCheck, visualRunner, visualCheck, interactionRunner, interactionCheck, opusSweep },
             Connections =
             {
                 // Phase 1: Discovery loop
@@ -143,6 +145,6 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

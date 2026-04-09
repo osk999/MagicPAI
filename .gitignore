@@ -24,3 +24,5 @@ Desktop.ini
 appsettings.*.local.json
 *.pfx
 *.p12
+artifacts/
+.playwright-mcp/

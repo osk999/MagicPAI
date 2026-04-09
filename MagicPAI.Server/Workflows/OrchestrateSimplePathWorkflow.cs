@@ -1,3 +1,4 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
@@ -22,26 +23,30 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
+        var model = builder.WithVariable<string>("Model", "auto");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
+        var assembledPrompt = builder.WithVariable<string>("AssembledPrompt", "");
 
         // Step 1: Assemble prompt with context
-        var assemblePrompt = new RunCliAgentActivity
+        var assemblePrompt = new AiAssistantActivity
         {
-            Agent = new Input<string>("claude"),
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            ModelPower = new Input<int>(3),
+            Response = new Output<string>(assembledPrompt),
             Id = "assemble-prompt"
         };
 
         // Step 2: Execute the main agent
-        var runAgent = new RunCliAgentActivity
+        var runAgent = new AiAssistantActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(assembledPrompt),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
+            ModelPower = new Input<int>(modelPower),
             Id = "simple-execute"
         };
 
@@ -56,6 +61,7 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
         {
             Id = "orchestrate-simple-path-flow",
             Start = assemblePrompt,
+            Activities = { assemblePrompt, runAgent, verify },
             Connections =
             {
                 // Assemble -> Execute
@@ -77,6 +83,6 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
             }
         };
 
-        builder.Root = flowchart;
+        builder.Root = flowchart.WithAttachedVariables(builder);
     }
 }

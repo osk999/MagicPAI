@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.SignalR;
 namespace MagicPAI.Server.Bridge;
 
 /// <summary>
-/// Tracks workflow execution progress by listening to ActivityExecutionRecordUpdated notifications.
+/// Tracks workflow execution progress by listening to activity execution record updates.
 /// Sends workflowProgress and sessionStateChanged events to SignalR clients.
 /// </summary>
 public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRecordUpdated>
@@ -33,39 +33,50 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
     {
         var record = notification.Record;
         var sessionId = record.WorkflowInstanceId;
-
         var session = _tracker.GetSession(sessionId);
         if (session is null)
             return;
 
-        // Determine if activity completed or started
-        var status = record.CompletedAt.HasValue ? "completed" : "running";
+        var status = record.Status switch
+        {
+            Elsa.Workflows.ActivityStatus.Running => "running",
+            Elsa.Workflows.ActivityStatus.Faulted => "failed",
+            Elsa.Workflows.ActivityStatus.Completed => "completed",
+            _ => null
+        };
 
-        // Track completed activity count per session
+        if (status is null)
+            return;
+
+        var activityName = !string.IsNullOrWhiteSpace(record.ActivityId)
+            ? record.ActivityId
+            : !string.IsNullOrWhiteSpace(record.ActivityName)
+                ? record.ActivityName
+                : record.ActivityType;
+
         var completed = 0;
-        if (record.CompletedAt.HasValue)
+        if (status == "completed")
             completed = _completedCounts.AddOrUpdate(sessionId, 1, (_, count) => count + 1);
         else
             _completedCounts.TryGetValue(sessionId, out completed);
 
-        // Track total distinct activities seen (approximates total steps)
         var activityKey = $"{sessionId}:{record.ActivityId}";
         _seenActivities.TryAdd(activityKey, 0);
         var totalSeen = _seenActivities.Keys.Count(k => k.StartsWith($"{sessionId}:"));
 
-        // Send progress update
+        _tracker.UpdateActivity(sessionId, activityName, status);
+
         await _hubContext.Clients.Group(sessionId).SendAsync(
             "workflowProgress",
             new WorkflowProgressEvent(
                 SessionId: sessionId,
-                ActivityName: record.ActivityName ?? record.ActivityType,
+                ActivityName: activityName,
                 Status: status,
                 CompletedSteps: completed,
                 TotalSteps: totalSeen),
             ct);
 
-        // Update session state based on activity status
-        if (record.Status == Elsa.Workflows.ActivityStatus.Faulted)
+        if (status == "failed")
         {
             _tracker.UpdateState(sessionId, "failed");
 
@@ -76,10 +87,10 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
         }
 
         _logger.LogDebug(
-            "Activity {ActivityType} ({ActivityName}) {Status} for session {SessionId} [{Completed}/{Total}]",
+            "Activity status {ActivityStatus} for {ActivityType} ({ActivityName}) in session {SessionId} [{Completed}/{Total}]",
+            record.Status,
             record.ActivityType,
-            record.ActivityName,
-            status,
+            activityName,
             sessionId,
             completed,
             totalSeen);

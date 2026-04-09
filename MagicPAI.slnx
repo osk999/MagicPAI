@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="MagicPAI.Activities/MagicPAI.Activities.csproj" />
   <Project Path="MagicPAI.Core/MagicPAI.Core.csproj" />
+  <Project Path="MagicPAI.Shared/MagicPAI.Shared.csproj" />
   <Project Path="MagicPAI.Server/MagicPAI.Server.csproj" />
   <Project Path="MagicPAI.Studio/MagicPAI.Studio.csproj" />
   <Project Path="MagicPAI.Tests/MagicPAI.Tests.csproj" />
