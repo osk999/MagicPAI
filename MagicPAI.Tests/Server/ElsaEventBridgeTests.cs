@@ -277,6 +277,37 @@ public class ElsaEventBridgeTests
         Assert.Equal("failed", status);
     }
 
+    [Fact]
+    public void BuildInsight_ParsesClassifierPayload()
+    {
+        var method = typeof(ElsaEventBridge)
+            .GetMethod("BuildInsight",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+        var payload = """{"complexity":8,"category":"architecture","outcome":"Complex"}""";
+        var insight = (TaskInsightEvent)method.Invoke(null, ["s1", "TriageResult", payload])!;
+
+        Assert.Equal("classifier", insight.Kind);
+        Assert.Equal("Complex", insight.Verdict);
+        Assert.Contains("Complexity 8", insight.Summary);
+    }
+
+    [Fact]
+    public void BuildInsight_ParsesPromptTransformPayload()
+    {
+        var method = typeof(ElsaEventBridge)
+            .GetMethod("BuildInsight",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+        var payload = """{"label":"Prompt Enhancement","summary":"Prompt was transformed.","verdict":"changed","before":"short","after":"expanded"}""";
+        var insight = (TaskInsightEvent)method.Invoke(null, ["s1", "PromptTransform", payload])!;
+
+        Assert.Equal("prompt-transform", insight.Kind);
+        Assert.Equal("short", insight.BeforeText);
+        Assert.Equal("expanded", insight.AfterText);
+        Assert.Equal("changed", insight.Verdict);
+    }
+
     /// <summary>
     /// Test record type that mimics the shape of Elsa's ActivityExecutionLogRecord.
     /// The ElsaEventBridge uses reflection (GetProperty) to access these fields.

@@ -1,8 +1,11 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
 using MagicPAI.Activities.AI;
+using MagicPAI.Activities.ControlFlow;
+using MagicPAI.Activities.Docker;
 
 namespace MagicPAI.Server.Workflows;
 
@@ -24,6 +27,24 @@ public class LoopVerifierWorkflow : WorkflowBase
         var agent = builder.WithVariable<string>("AiAssistant", "claude");
         var model = builder.WithVariable<string>("Model", "auto");
         var modelPower = builder.WithVariable<int>("ModelPower", 0);
+        var loopOutput = builder.WithVariable<string>("LoopOutput", "");
+        var attemptCount = builder.WithVariable<int>("LoopAttempts", 0);
+
+        var spawn = new SpawnContainerActivity
+        {
+            WorkspacePath = new Input<string>(""),
+            ContainerId = new Output<string>(containerId),
+            Id = "loop-spawn"
+        };
+
+        var iterationGate = new IterationGateActivity
+        {
+            CurrentCount = new Input<int>(attemptCount),
+            NextCount = new Output<int>(attemptCount),
+            MaxIterations = new Input<int>(ctx => Math.Max(1, ctx.GetInput<int?>("MaxTurns") ?? 3)),
+            Label = new Input<string>("Loop Verifier"),
+            Id = "loop-iteration-gate"
+        };
 
         // Step 1: Run the agent
         var runAgent = new AiAssistantActivity
@@ -33,24 +54,66 @@ public class LoopVerifierWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
             ModelPower = new Input<int>(modelPower),
+            Response = new Output<string>(loopOutput),
             Id = "loop-runner"
         };
 
-        // Step 2: Classify the output (check for [DONE] marker)
+        // Step 2: Classify the latest agent output to decide whether another pass is required.
         var classify = new TriageActivity
         {
-            Prompt = new Input<string>(prompt),
+            Prompt = new Input<string>(ctx =>
+            {
+                var originalPrompt = ctx.GetVariable<string>("Prompt") ?? "";
+                var latestOutput = ctx.GetVariable<string>("LoopOutput") ?? "";
+                return $$"""
+                    Original task:
+                    {{originalPrompt}}
+
+                    Latest worker output:
+                    {{latestOutput}}
+                    """;
+            }),
             ContainerId = new Input<string>(containerId),
+            ClassificationInstructions = new Input<string?>(
+                """
+                Decide whether the latest worker output shows the task is complete.
+                Return low complexity (1-4) when the task is complete and no more iterations are needed.
+                Return high complexity (8-10) when another iteration is still required.
+                Set category to "testing".
+                """),
             Id = "loop-classifier"
+        };
+
+        var destroy = new DestroyContainerActivity
+        {
+            ContainerId = new Input<string>(ctx =>
+                ctx.GetVariable<string>("ContainerId")
+                ?? ctx.GetInput<string>("ContainerId")
+                ?? ""),
+            Id = "loop-destroy"
         };
 
         var flowchart = new Flowchart
         {
             Id = "loop-verifier-flow",
-            Start = runAgent,
-            Activities = { runAgent, classify },
+            Start = spawn,
+            Activities = { spawn, iterationGate, runAgent, classify, destroy },
             Connections =
             {
+                new Connection(
+                    new Endpoint(spawn, "Done"),
+                    new Endpoint(iterationGate)),
+                new Connection(
+                    new Endpoint(spawn, "Failed"),
+                    new Endpoint(destroy)),
+
+                new Connection(
+                    new Endpoint(iterationGate, "Continue"),
+                    new Endpoint(runAgent)),
+                new Connection(
+                    new Endpoint(iterationGate, "Exceeded"),
+                    new Endpoint(destroy)),
+
                 // Runner done -> classify
                 new Connection(
                     new Endpoint(runAgent, "Done"),
@@ -61,12 +124,15 @@ public class LoopVerifierWorkflow : WorkflowBase
                     new Endpoint(runAgent, "Failed"),
                     new Endpoint(classify)),
 
-                // Classifier says Simple (task complete / [DONE] found) -> terminal
+                // Classifier says Simple (task complete) -> cleanup
+                new Connection(
+                    new Endpoint(classify, "Simple"),
+                    new Endpoint(destroy)),
 
-                // Classifier says Complex (not done yet) -> loop back to runner
+                // Classifier says Complex (not done yet) -> another bounded attempt
                 new Connection(
                     new Endpoint(classify, "Complex"),
-                    new Endpoint(runAgent)),
+                    new Endpoint(iterationGate)),
             }
         };
 

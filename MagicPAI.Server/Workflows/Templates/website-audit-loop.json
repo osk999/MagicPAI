@@ -1,69 +1,87 @@
 {
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
   "definitionId": "WebsiteAuditLoopWorkflow",
   "name": "Website Audit Loop",
-  "description": "Four-phase autonomous website audit: discovery, visual, interaction, and Opus sweep",
+  "description": "Standalone website audit with container lifecycle and GUI-enabled browser execution",
+  "createdAt": "0001-01-01T00:00:00+00:00",
   "version": 1,
+  "variables": [
+    { "id": "containerIdVariable", "name": "ContainerId", "typeName": "String", "isArray": false, "value": "" },
+    { "id": "promptVariable", "name": "Prompt", "typeName": "String", "isArray": false, "value": "" },
+    { "id": "aiAssistantVariable", "name": "AiAssistant", "typeName": "String", "isArray": false, "value": "claude" }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "variables": [
-    { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "ContainerId", "typeName": "String", "value": "" }
-  ],
+  "options": { "autoUpdateConsumingWorkflows": false },
   "root": {
-    "type": "Elsa.Flowchart",
     "id": "website-audit-loop-flow",
-    "start": "phase1-discovery-runner",
+    "nodeId": "Workflow1:website-audit-loop-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": { "source": "WebsiteAuditLoopWorkflow.cs" },
+    "metadata": {},
     "activities": [
       {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "phase1-discovery-runner",
-        "name": "Phase 1: Discovery Runner"
+        "workspacePath": { "typeName": "String", "expression": { "type": "Literal", "value": "" } },
+        "enableGui": { "typeName": "Boolean", "expression": { "type": "Literal", "value": true } },
+        "containerId": { "typeName": "String", "memoryReference": { "id": "containerIdVariable" } },
+        "guiUrl": null,
+        "id": "audit-spawn",
+        "nodeId": "Workflow1:website-audit-loop-flow:audit-spawn",
+        "name": null,
+        "type": "MagicPAI.SpawnContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.TriageActivity",
-        "id": "phase1-discovery-check",
-        "name": "Phase 1: Discovery Check"
+        "workflowDefinitionId": { "typeName": "String", "expression": { "type": "Literal", "value": "WebsiteAuditCoreWorkflow" } },
+        "waitForCompletion": { "typeName": "Boolean", "expression": { "type": "Literal", "value": true } },
+        "input": {
+          "typeName": "Object",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return { Prompt: getVariable('Prompt') || '', AiAssistant: getVariable('AiAssistant') || 'claude', ContainerId: getVariable('ContainerId') || '' };"
+          }
+        },
+        "id": "audit-core",
+        "nodeId": "Workflow1:website-audit-loop-flow:audit-core",
+        "name": null,
+        "type": "Elsa.ExecuteWorkflow",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "phase2-visual-runner",
-        "name": "Phase 2: Visual Runner"
-      },
-      {
-        "type": "MagicPAI.TriageActivity",
-        "id": "phase2-visual-check",
-        "name": "Phase 2: Visual Check"
-      },
-      {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "phase3-interaction-runner",
-        "name": "Phase 3: Interaction Runner"
-      },
-      {
-        "type": "MagicPAI.TriageActivity",
-        "id": "phase3-interaction-check",
-        "name": "Phase 3: Interaction Check"
-      },
-      {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "phase4-opus-sweep",
-        "name": "Phase 4: Opus Sweep"
+        "containerId": {
+          "typeName": "String",
+          "expression": { "type": "Variable", "value": { "id": "containerIdVariable", "name": "ContainerId", "typeName": "String", "value": "" } }
+        },
+        "id": "audit-destroy",
+        "nodeId": "Workflow1:website-audit-loop-flow:audit-destroy",
+        "name": null,
+        "type": "MagicPAI.DestroyContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       }
     ],
+    "variables": [
+      { "id": "containerIdVariable", "name": "ContainerId", "typeName": "String", "value": "" },
+      { "id": "promptVariable", "name": "Prompt", "typeName": "String", "value": "" },
+      { "id": "aiAssistantVariable", "name": "AiAssistant", "typeName": "String", "value": "claude" }
+    ],
     "connections": [
-      { "source": { "activity": "phase1-discovery-runner", "port": "Done" }, "target": { "activity": "phase1-discovery-check" } },
-      { "source": { "activity": "phase1-discovery-runner", "port": "Failed" }, "target": { "activity": "phase1-discovery-check" } },
-      { "source": { "activity": "phase1-discovery-check", "port": "Complex" }, "target": { "activity": "phase1-discovery-runner" } },
-      { "source": { "activity": "phase1-discovery-check", "port": "Simple" }, "target": { "activity": "phase2-visual-runner" } },
-      { "source": { "activity": "phase2-visual-runner", "port": "Done" }, "target": { "activity": "phase2-visual-check" } },
-      { "source": { "activity": "phase2-visual-runner", "port": "Failed" }, "target": { "activity": "phase2-visual-check" } },
-      { "source": { "activity": "phase2-visual-check", "port": "Complex" }, "target": { "activity": "phase2-visual-runner" } },
-      { "source": { "activity": "phase2-visual-check", "port": "Simple" }, "target": { "activity": "phase3-interaction-runner" } },
-      { "source": { "activity": "phase3-interaction-runner", "port": "Done" }, "target": { "activity": "phase3-interaction-check" } },
-      { "source": { "activity": "phase3-interaction-runner", "port": "Failed" }, "target": { "activity": "phase3-interaction-check" } },
-      { "source": { "activity": "phase3-interaction-check", "port": "Complex" }, "target": { "activity": "phase3-interaction-runner" } },
-      { "source": { "activity": "phase3-interaction-check", "port": "Simple" }, "target": { "activity": "phase4-opus-sweep" } }
+      { "source": { "activity": "audit-spawn", "port": "Done" }, "target": { "activity": "audit-core" }, "vertices": [] },
+      { "source": { "activity": "audit-spawn", "port": "Failed" }, "target": { "activity": "audit-destroy" }, "vertices": [] },
+      { "source": { "activity": "audit-core", "port": "Done" }, "target": { "activity": "audit-destroy" }, "vertices": [] }
     ]
   }
 }

@@ -3,16 +3,15 @@ using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
+using Elsa.Workflows.Runtime.Activities;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Docker;
-using MagicPAI.Activities.Verification;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Full orchestration workflow with triage-based routing.
-/// Flow: SpawnContainer -> Triage -> (Simple: RunCliAgent | Complex: Architect -> RunCliAgent -> VerifyRepair) -> DestroyContainer
-/// This is the primary workflow for end-to-end AI agent orchestration.
+/// Parent orchestration workflow that owns the container lifecycle and delegates
+/// specialized execution to reusable child workflows.
 /// </summary>
 public class FullOrchestrateWorkflow : WorkflowBase
 {
@@ -20,213 +19,121 @@ public class FullOrchestrateWorkflow : WorkflowBase
     {
         builder.Name = "Full Orchestrate";
         builder.Description =
-            "Complete AI orchestration: triage, agent execution, verification, and repair";
+            "Complete AI orchestration: website routing, triage, child workflow execution, and cleanup";
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
         var assistant = builder.WithVariable<string>("AiAssistant", "");
         var model = builder.WithVariable<string>("Model", "");
         var modelPower = builder.WithVariable<int>("ModelPower", 0);
-        Input<string> resolveAssistant() => new(ctx =>
-            ctx.GetInput<string>("AiAssistant")
-            ?? ctx.GetInput<string>("Agent")
-            ?? ctx.GetVariable<string>("AiAssistant")
-            ?? "");
-        Input<string> resolveModel() => new(ctx =>
-            ctx.GetInput<string>("Model")
-            ?? ctx.GetVariable<string>("Model")
-            ?? "");
+        var recommendedModel = builder.WithVariable<string>("RecommendedModel", "");
+
         Input<string> resolveContainerId() => new(ctx =>
             ctx.GetVariable<string>("ContainerId")
             ?? ctx.GetInput<string>("ContainerId")
             ?? "");
 
-        // --- Define Activities ---
+        Input<IDictionary<string, object>?> buildChildInput() => new(ctx =>
+        {
+            var resolvedAssistant =
+                ctx.GetInput<string>("AiAssistant")
+                ?? ctx.GetInput<string>("Agent")
+                ?? ctx.GetVariable<string>("AiAssistant")
+                ?? "";
+            var requestedModel = ctx.GetInput<string>("Model");
+            var resolvedModel =
+                string.IsNullOrWhiteSpace(requestedModel) ||
+                string.Equals(requestedModel, "auto", StringComparison.OrdinalIgnoreCase)
+                    ? ctx.GetVariable<string>("RecommendedModel")
+                        ?? ctx.GetVariable<string>("Model")
+                        ?? ""
+                    : requestedModel;
+
+            return new Dictionary<string, object>
+            {
+                ["Prompt"] = ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? "",
+                ["AiAssistant"] = resolvedAssistant,
+                ["Agent"] = resolvedAssistant,
+                ["Model"] = resolvedModel,
+                ["ModelPower"] = ctx.GetVariable<int>("ModelPower"),
+                ["ContainerId"] = ctx.GetVariable<string>("ContainerId") ?? ctx.GetInput<string>("ContainerId") ?? "",
+                ["EnableGui"] = ctx.GetInput<bool?>("EnableGui") ?? true
+            };
+        });
 
         var spawn = new SpawnContainerActivity
         {
             WorkspacePath = new Input<string>(""),
+            EnableGui = new Input<bool>(ctx => ctx.GetInput<bool?>("EnableGui") ?? true),
             ContainerId = new Output<string>(containerId),
             Id = "spawn-container"
+        };
+
+        var websiteClassifier = new WebsiteTaskClassifierActivity
+        {
+            Prompt = new Input<string>(prompt),
+            ContainerId = new Input<string>(containerId),
+            Id = "website-classifier"
         };
 
         var triage = new TriageActivity
         {
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
+            RecommendedModel = new Output<string>(recommendedModel),
+            RecommendedModelPower = new Output<int>(modelPower),
             Id = "triage"
         };
 
-        // Simple path: single agent run
-        var simpleAgent = new AiAssistantActivity
+        var websiteAudit = new ExecuteWorkflow
         {
-            AiAssistant = resolveAssistant(),
-            Agent = resolveAssistant(),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Model = resolveModel(),
-            ModelPower = new Input<int>(modelPower),
-            Id = "simple-agent"
+            WorkflowDefinitionId = new Input<string>(nameof(WebsiteAuditCoreWorkflow)),
+            WaitForCompletion = new Input<bool>(true),
+            Input = buildChildInput(),
+            Id = "website-audit"
         };
 
-        // Simple path: verify
-        var simpleVerify = new RunVerificationActivity
+        var simplePath = new ExecuteWorkflow
         {
-            ContainerId = new Input<string>(containerId),
-            Id = "simple-verify"
+            WorkflowDefinitionId = new Input<string>(nameof(OrchestrateSimplePathWorkflow)),
+            WaitForCompletion = new Input<bool>(true),
+            Input = buildChildInput(),
+            Id = "simple-path"
         };
 
-        // Complex path: architect decomposition
-        var architect = new ArchitectActivity
+        var complexPath = new ExecuteWorkflow
         {
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Id = "architect"
+            WorkflowDefinitionId = new Input<string>(nameof(OrchestrateComplexPathWorkflow)),
+            WaitForCompletion = new Input<bool>(true),
+            Input = buildChildInput(),
+            Id = "complex-path"
         };
 
-        // Complex path: run agent for decomposed tasks
-        // TODO: In a full implementation, use ForEach/ParallelForEach to iterate
-        // over architect's task list. For now, runs a single agent with full prompt.
-        var complexAgent = new AiAssistantActivity
-        {
-            AiAssistant = resolveAssistant(),
-            Agent = resolveAssistant(),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Model = resolveModel(),
-            ModelPower = new Input<int>(modelPower),
-            Id = "complex-agent"
-        };
-
-        var complexVerify = new RunVerificationActivity
-        {
-            ContainerId = new Input<string>(containerId),
-            Id = "complex-verify"
-        };
-
-        var complexRepair = new RepairActivity
-        {
-            ContainerId = new Input<string>(containerId),
-            OriginalPrompt = new Input<string>(prompt),
-            Id = "complex-repair"
-        };
-
-        var repairAgent = new AiAssistantActivity
-        {
-            AiAssistant = resolveAssistant(),
-            Agent = resolveAssistant(),
-            Prompt = new Input<string>(ctx =>
-                ctx.GetVariable<string>("RepairPrompt")
-                ?? ctx.GetInput<string>("RepairPrompt")
-                ?? ctx.GetVariable<string>("Prompt")
-                ?? ctx.GetInput<string>("Prompt")
-                ?? ""),
-            ContainerId = new Input<string>(containerId),
-            Model = resolveModel(),
-            ModelPower = new Input<int>(modelPower),
-            Id = "repair-agent"
-        };
-
-        // Cleanup
         var destroy = new DestroyContainerActivity
         {
             ContainerId = resolveContainerId(),
             Id = "destroy-container"
         };
 
-        // --- Build Flowchart ---
         var flowchart = new Flowchart
         {
             Id = "full-orchestrate-flow",
             Start = spawn,
-            Activities = { spawn, triage, simpleAgent, simpleVerify, architect, complexAgent, complexVerify, complexRepair, repairAgent, destroy },
+            Activities = { spawn, websiteClassifier, triage, websiteAudit, simplePath, complexPath, destroy },
             Connections =
             {
-                // Spawn -> Triage (on Done)
-                new Connection(
-                    new Endpoint(spawn, "Done"),
-                    new Endpoint(triage)),
+                new Connection(new Endpoint(spawn, "Done"), new Endpoint(websiteClassifier)),
+                new Connection(new Endpoint(spawn, "Failed"), new Endpoint(destroy)),
 
-                // Spawn failed -> Destroy
-                new Connection(
-                    new Endpoint(spawn, "Failed"),
-                    new Endpoint(destroy)),
+                new Connection(new Endpoint(websiteClassifier, "Website"), new Endpoint(websiteAudit)),
+                new Connection(new Endpoint(websiteClassifier, "NonWebsite"), new Endpoint(triage)),
 
-                // Triage -> Simple path (Simple outcome)
-                new Connection(
-                    new Endpoint(triage, "Simple"),
-                    new Endpoint(simpleAgent)),
+                new Connection(new Endpoint(triage, "Simple"), new Endpoint(simplePath)),
+                new Connection(new Endpoint(triage, "Complex"), new Endpoint(complexPath)),
 
-                // Triage -> Complex path (Complex outcome)
-                new Connection(
-                    new Endpoint(triage, "Complex"),
-                    new Endpoint(architect)),
-
-                // --- Simple path ---
-                new Connection(
-                    new Endpoint(simpleAgent, "Done"),
-                    new Endpoint(simpleVerify)),
-
-                new Connection(
-                    new Endpoint(simpleAgent, "Failed"),
-                    new Endpoint(destroy)),
-
-                new Connection(
-                    new Endpoint(simpleVerify, "Passed"),
-                    new Endpoint(destroy)),
-
-                new Connection(
-                    new Endpoint(simpleVerify, "Failed"),
-                    new Endpoint(destroy)),
-
-                new Connection(
-                    new Endpoint(simpleVerify, "Inconclusive"),
-                    new Endpoint(destroy)),
-
-                // --- Complex path ---
-                new Connection(
-                    new Endpoint(architect, "Done"),
-                    new Endpoint(complexAgent)),
-
-                new Connection(
-                    new Endpoint(architect, "Failed"),
-                    new Endpoint(destroy)),
-
-                new Connection(
-                    new Endpoint(complexAgent, "Done"),
-                    new Endpoint(complexVerify)),
-
-                new Connection(
-                    new Endpoint(complexAgent, "Failed"),
-                    new Endpoint(destroy)),
-
-                new Connection(
-                    new Endpoint(complexVerify, "Passed"),
-                    new Endpoint(destroy)),
-
-                new Connection(
-                    new Endpoint(complexVerify, "Inconclusive"),
-                    new Endpoint(destroy)),
-
-                new Connection(
-                    new Endpoint(complexVerify, "Failed"),
-                    new Endpoint(complexRepair)),
-
-                new Connection(
-                    new Endpoint(complexRepair, "Done"),
-                    new Endpoint(repairAgent)),
-
-                new Connection(
-                    new Endpoint(complexRepair, "Exceeded"),
-                    new Endpoint(destroy)),
-
-                new Connection(
-                    new Endpoint(repairAgent, "Done"),
-                    new Endpoint(complexVerify)),
-
-                new Connection(
-                    new Endpoint(repairAgent, "Failed"),
-                    new Endpoint(complexVerify)),
+                new Connection(new Endpoint(websiteAudit, "Done"), new Endpoint(destroy)),
+                new Connection(new Endpoint(simplePath, "Done"), new Endpoint(destroy)),
+                new Connection(new Endpoint(complexPath, "Done"), new Endpoint(destroy)),
             }
         };
 

@@ -35,6 +35,8 @@ public class ResearchPipelineWorkflow : WorkflowBase
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
             ModelPower = new Input<int>(2),
+            TrackPromptTransform = new Input<bool>(true),
+            PromptTransformLabel = new Input<string>("Research Prompt Enhancement"),
             Response = new Output<string>(enhancedPrompt),
             Id = "research-enhance"
         };

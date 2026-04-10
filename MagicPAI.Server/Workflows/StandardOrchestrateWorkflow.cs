@@ -1,12 +1,13 @@
+using System.Linq;
 using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
-using Elsa.Workflows.Runtime.Activities;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Docker;
 using MagicPAI.Activities.Verification;
+using MagicPAI.Server.Workflows.Components;
 
 namespace MagicPAI.Server.Workflows;
 
@@ -27,11 +28,53 @@ public class StandardOrchestrateWorkflow : WorkflowBase
         var enhancedPrompt = builder.WithVariable<string>("EnhancedPrompt", "");
         var elaboratedPrompt = builder.WithVariable<string>("ElaboratedPrompt", "");
         var gatheredContext = builder.WithVariable<string>("GatheredContext", "");
+        var recommendedModel = builder.WithVariable<string>("RecommendedModel", "");
+        var recommendedModelPower = builder.WithVariable<int>("RecommendedModelPower", 0);
+        var architectTasks = builder.WithVariable<string[]>("ArchitectTasks", []);
         var complexWorkerOutput = builder.WithVariable<string>("ComplexWorkerOutput", "");
         Input<string> resolveContainerId() => new(ctx =>
             ctx.GetVariable<string>("ContainerId")
             ?? ctx.GetInput<string>("ContainerId")
             ?? "");
+        Input<string> resolveRecommendedModel() => new(ctx =>
+        {
+            var requestedModel = ctx.GetInput<string>("Model");
+            if (!string.IsNullOrWhiteSpace(requestedModel) &&
+                !string.Equals(requestedModel, "auto", StringComparison.OrdinalIgnoreCase))
+                return requestedModel;
+
+            return ctx.GetVariable<string>("RecommendedModel") ?? requestedModel ?? "";
+        });
+        Input<int> resolveRecommendedPower() => new(ctx =>
+        {
+            var requestedModel = ctx.GetInput<string>("Model");
+            if (!string.IsNullOrWhiteSpace(requestedModel) &&
+                !string.Equals(requestedModel, "auto", StringComparison.OrdinalIgnoreCase))
+                return ctx.GetInput<int?>("ModelPower") ?? 0;
+
+            return ctx.GetVariable<int?>("RecommendedModelPower") ?? ctx.GetInput<int?>("ModelPower") ?? 0;
+        });
+        Input<string> resolveComplexPrompt() => new(ctx =>
+        {
+            var originalPrompt =
+                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("GatheredContext"))
+                    ? ctx.GetInput<string>("Prompt") ?? ""
+                    : ctx.GetVariable<string>("GatheredContext") ?? "";
+            var tasks = ctx.GetVariable<string[]>("ArchitectTasks") ?? [];
+            if (tasks.Length == 0)
+                return originalPrompt;
+
+            var plan = string.Join(Environment.NewLine, tasks.Select((task, index) => $"{index + 1}. {task}"));
+            return $$"""
+                Execute the task using the architected sub-task plan below.
+
+                Context-rich prompt:
+                {{originalPrompt}}
+
+                Sub-tasks:
+                {{plan}}
+                """;
+        });
 
         // --- Setup ---
         var spawn = new SpawnContainerActivity
@@ -48,6 +91,8 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             Prompt = new Input<string>(""),
             ContainerId = new Input<string>(containerId),
             ModelPower = new Input<int>(2),
+            TrackPromptTransform = new Input<bool>(true),
+            PromptTransformLabel = new Input<string>("Prompt Enhancement"),
             Response = new Output<string>(enhancedPrompt),
             Id = "std-enhance"
         };
@@ -88,6 +133,8 @@ public class StandardOrchestrateWorkflow : WorkflowBase
                     ? ctx.GetInput<string>("Prompt") ?? ""
                     : ctx.GetVariable<string>("GatheredContext") ?? ""),
             ContainerId = new Input<string>(containerId),
+            RecommendedModel = new Output<string>(recommendedModel),
+            RecommendedModelPower = new Output<int>(recommendedModelPower),
             Id = "std-triage"
         };
 
@@ -100,8 +147,8 @@ public class StandardOrchestrateWorkflow : WorkflowBase
                     ? ctx.GetInput<string>("Prompt") ?? ""
                     : ctx.GetVariable<string>("GatheredContext") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(""),
-            ModelPower = new Input<int>(0),
+            Model = resolveRecommendedModel(),
+            ModelPower = resolveRecommendedPower(),
             Id = "std-simple-agent"
         };
 
@@ -119,38 +166,37 @@ public class StandardOrchestrateWorkflow : WorkflowBase
                     ? ctx.GetInput<string>("Prompt") ?? ""
                     : ctx.GetVariable<string>("GatheredContext") ?? ""),
             ContainerId = new Input<string>(containerId),
+            TaskListJson = new Output<string[]>(architectTasks),
             Id = "std-architect"
         };
 
         var complexAgent = new AiAssistantActivity
         {
             AiAssistant = new Input<string>(""),
-            Prompt = new Input<string>(ctx =>
-                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("GatheredContext"))
-                    ? ctx.GetInput<string>("Prompt") ?? ""
-                    : ctx.GetVariable<string>("GatheredContext") ?? ""),
+            Prompt = resolveComplexPrompt(),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(1),
+            Model = resolveRecommendedModel(),
+            ModelPower = resolveRecommendedPower(),
             Response = new Output<string>(complexWorkerOutput),
             Id = "std-complex-agent"
         };
 
-        var complexVerifyAndRepair = new DispatchWorkflow
-        {
-            WorkflowDefinitionId = new Input<string>(nameof(VerifyAndRepairWorkflow)),
-            WaitForCompletion = new Input<bool>(true),
-            Input = new Input<IDictionary<string, object>?>(ctx => new Dictionary<string, object>
-            {
-                ["ContainerId"] = ctx.GetVariable<string>("ContainerId") ?? "",
-                ["Prompt"] = ctx.GetInput<string>("Prompt") ?? "",
-                ["AiAssistant"] = ctx.GetInput<string>("AiAssistant") ?? "",
-                ["Agent"] = ctx.GetInput<string>("Agent") ?? "",
-                ["Model"] = ctx.GetInput<string>("Model") ?? "auto",
-                ["ModelPower"] = ctx.GetInput<int>("ModelPower"),
-                ["WorkerOutput"] = ctx.GetVariable<string>("ComplexWorkerOutput") ?? ""
-            }),
-            Id = "std-complex-verify-repair"
-        };
+        var complexLoop = VerifyAndRepairLoop.Create(
+            verifyId: "std-complex-verify",
+            repairId: "std-complex-repair",
+            repairAgentId: "std-repair-agent",
+            containerId: new Input<string>(containerId),
+            originalPrompt: new Input<string>(ctx => ctx.GetInput<string>("Prompt") ?? ""),
+            assistant: new Input<string>(ctx =>
+                ctx.GetInput<string>("AiAssistant")
+                ?? ctx.GetInput<string>("Agent")
+                ?? ""),
+            model: resolveRecommendedModel(),
+            modelPower: resolveRecommendedPower(),
+            workerOutput: new Input<string?>(complexWorkerOutput));
+        var complexVerify = complexLoop.Verify;
+        var complexRepair = complexLoop.Repair;
+        var repairAgent = complexLoop.RepairAgent;
 
         // --- Cleanup ---
         var destroy = new DestroyContainerActivity
@@ -163,7 +209,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
         {
             Id = "standard-orchestrate-flow",
             Start = spawn,
-            Activities = { spawn, enhancePrompt, elaborate, gatherContext, triage, simpleAgent, simpleVerify, architect, complexAgent, complexVerifyAndRepair, destroy },
+            Activities = { spawn, enhancePrompt, elaborate, gatherContext, triage, simpleAgent, simpleVerify, architect, complexAgent, complexVerify, complexRepair, repairAgent, destroy },
             Connections =
             {
                 // Spawn -> Enhance
@@ -232,15 +278,24 @@ public class StandardOrchestrateWorkflow : WorkflowBase
                     new Endpoint(destroy)),
                 new Connection(
                     new Endpoint(complexAgent, "Done"),
-                    new Endpoint(complexVerifyAndRepair)),
+                    new Endpoint(complexVerify)),
                 new Connection(
                     new Endpoint(complexAgent, "Failed"),
                     new Endpoint(destroy)),
                 new Connection(
-                    new Endpoint(complexVerifyAndRepair),
+                    new Endpoint(complexVerify, "Passed"),
+                    new Endpoint(destroy)),
+                new Connection(
+                    new Endpoint(complexVerify, "Inconclusive"),
+                    new Endpoint(destroy)),
+                new Connection(
+                    new Endpoint(complexRepair, "Exceeded"),
                     new Endpoint(destroy)),
             }
         };
+
+        foreach (var connection in complexLoop.InternalConnections)
+            flowchart.Connections.Add(connection);
 
         builder.Root = flowchart.WithAttachedVariables(builder);
     }

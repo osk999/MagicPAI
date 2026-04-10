@@ -32,8 +32,23 @@ public record SessionStateEvent(string SessionId, string State);
 /// <summary>Container lifecycle event.</summary>
 public record ContainerEvent(string SessionId, string ContainerId, string? GuiUrl);
 
+/// <summary>Live container log line.</summary>
+public record ContainerLogEvent(string SessionId, string ContainerId, string Line, DateTime TimestampUtc);
+
 /// <summary>Error notification.</summary>
 public record ErrorEvent(string SessionId, string Message, string? ActivityName = null);
+
+/// <summary>Structured workflow insight for classifiers, prompt transforms, and repair steps.</summary>
+public record TaskInsightEvent(
+    string SessionId,
+    string Kind,
+    string Title,
+    string Summary,
+    string? Verdict,
+    string? BeforeText,
+    string? AfterText,
+    string? RawPayload,
+    DateTime TimestampUtc);
 
 /// <summary>Session info for listing.</summary>
 public class SessionInfo
@@ -44,6 +59,12 @@ public class SessionInfo
     public decimal TotalCostUsd { get; set; }
     public string Agent { get; set; } = "claude";
     public string? ContainerId { get; set; }
+    public string? GuiUrl { get; set; }
     public string? PromptPreview { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastActivityAt { get; set; }
+    public string? LastActivityName { get; set; }
+    public DateTime? LastOutputAt { get; set; }
+    public DateTime? LastContainerLogAt { get; set; }
+    public DateTime? LastUpdatedAt { get; set; }
 }

@@ -5,6 +5,13 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Elsa.Common.Services;
+using Elsa.Tenants;
+using Elsa.Labels.Contracts;
+using Elsa.Labels.Entities;
+using Elsa.Labels.Services;
+using MagicPAI.Server.Bridge;
+using MagicPAI.Server.Services;
 using Testcontainers.PostgreSql;
 
 namespace MagicPAI.Tests.Integration.Fixtures;
@@ -36,8 +43,9 @@ public class MagicPaiWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Development");
 
-        builder.UseSetting("MagicPAI:UseDocker", "false");
-        builder.UseSetting("MagicPAI:RequireContainerizedAgentExecution", "false");
+        builder.UseSetting("MagicPAI:UseDocker", "true");
+        builder.UseSetting("MagicPAI:RequireContainerizedAgentExecution", "true");
+        builder.UseSetting("MagicPAI:EnableContainerGui", "true");
         builder.UseSetting("MagicPAI:EnableContainerPool", "false");
         builder.UseSetting("MagicPAI:EnableWorktreeIsolation", "false");
 
@@ -57,9 +65,19 @@ public class MagicPaiWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<ICliAgentFactory>();
             services.AddSingleton<ICliAgentFactory>(CliAgentFactory);
 
-            // Remove our custom hosted services (registered as IHostedService)
+            services.RemoveAll<ITenantStore>();
+            services.AddSingleton<ITenantStore, InMemoryTenantStore>();
+
+            services.RemoveAll<ILabelStore>();
+            services.RemoveAll<MemoryStore<Label>>();
+            services.AddSingleton<MemoryStore<Label>>();
+            services.AddSingleton<ILabelStore, InMemoryLabelStore>();
+
+            // Keep WorkflowPublisher so real workflow definitions exist during integration tests.
+            // Remove only the worker cleanup service, which is irrelevant here.
             var hostedServiceDescriptors = services
-                .Where(d => d.ServiceType == typeof(IHostedService))
+                .Where(d => d.ServiceType == typeof(IHostedService) &&
+                            d.ImplementationType == typeof(WorkerPodGarbageCollector))
                 .ToList();
             foreach (var d in hostedServiceDescriptors)
                 services.Remove(d);

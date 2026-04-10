@@ -78,7 +78,7 @@ public class ArchitectActivity : Activity
             if (string.IsNullOrWhiteSpace(cid))
                 throw new InvalidOperationException("Container ID is required. Architect runs inside the spawned worker container.");
 
-            foreach (var setupRequest in plan.SetupRequests)
+            foreach (var setupRequest in plan.SetupRequests ?? [])
                 await containerMgr.ExecAsync(cid, setupRequest, context.CancellationToken);
 
             var result = await containerMgr.ExecAsync(
@@ -107,7 +107,11 @@ public class ArchitectActivity : Activity
             TaskCount.Set(context, tasks.Length);
 
             context.AddExecutionLogEntry("ArchitectResult",
-                $"Decomposed into {tasks.Length} sub-tasks");
+                JsonSerializer.Serialize(new
+                {
+                    taskCount = tasks.Length,
+                    tasks
+                }));
 
             await context.CompleteActivityWithOutcomesAsync(
                 tasks.Length > 0 ? "Done" : "Failed");

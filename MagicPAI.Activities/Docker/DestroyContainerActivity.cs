@@ -17,6 +17,10 @@ public class DestroyContainerActivity : Activity
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
         var docker = context.GetRequiredService<IContainerManager>();
+        var guiPortAllocator = context.GetService<IGuiPortAllocator>();
+        var sessionRegistry = context.GetService<ISessionContainerRegistry>();
+        var logStreamer = context.GetService<ISessionContainerLogStreamer>();
+        var ownerId = context.WorkflowExecutionContext.Id;
         var containerId = ContainerId.GetOrDefault(context, () => "") ?? "";
         if (string.IsNullOrEmpty(containerId))
             containerId = context.GetVariable<string>("ContainerId") ?? "";
@@ -27,12 +31,20 @@ public class DestroyContainerActivity : Activity
         {
             if (string.IsNullOrEmpty(containerId))
             {
+                if (logStreamer is not null)
+                    await logStreamer.StopStreamingAsync(context.WorkflowExecutionContext.Id);
+                guiPortAllocator?.Release(ownerId);
+                sessionRegistry?.UpdateContainer(context.WorkflowExecutionContext.Id, null);
                 context.AddExecutionLogEntry("ContainerDestroySkipped", "No container ID provided");
                 await context.CompleteActivityWithOutcomesAsync("Done");
                 return;
             }
 
             await docker.DestroyAsync(containerId, context.CancellationToken);
+            if (logStreamer is not null)
+                await logStreamer.StopStreamingAsync(context.WorkflowExecutionContext.Id);
+            guiPortAllocator?.Release(ownerId);
+            sessionRegistry?.UpdateContainer(context.WorkflowExecutionContext.Id, null);
 
             context.AddExecutionLogEntry("ContainerDestroyed",
                 $"Container {containerId[..Math.Min(12, containerId.Length)]} removed");
@@ -41,6 +53,7 @@ public class DestroyContainerActivity : Activity
         }
         catch (Exception ex)
         {
+            guiPortAllocator?.Release(ownerId);
             context.AddExecutionLogEntry("ContainerDestroyFailed", ex.Message);
             await context.CompleteActivityWithOutcomesAsync("Failed");
         }

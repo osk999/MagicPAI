@@ -1,0 +1,351 @@
+Elsa security disabled via Elsa.EndpointSecurityOptions
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'WorkflowDefinition' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'WorkflowInstance' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+info: SQLiteSchemaSetup[0]
+      Schema setup completed for ManagementElsaDbContext
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'SerializedKeyValuePair' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'ActivityExecutionRecord' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'BookmarkQueueItem' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'StoredBookmark' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'StoredTrigger' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'WorkflowExecutionLogRecord' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[30000]
+      The entity type 'WorkflowInboxMessage' is configured to use schema 'Elsa', but SQLite does not support schemas. This configuration will be ignored by the SQLite provider.
+info: SQLiteSchemaSetup[0]
+      Schema setup completed for RuntimeElsaDbContext
+info: FastEndpoints.StartupTimer[1]
+      Registered 105 endpoints in 1,595 milliseconds.
+dbug: Microsoft.Extensions.Hosting.Internal.Host[1]
+      Hosting starting
+info: MagicPAI.Server.Services.WorkerPodGarbageCollector[0]
+      WorkerPodGarbageCollector started (backend=docker, interval=60s)
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\AllGit\CSharp\MagicPAI\MagicPAI.Server
+dbug: Microsoft.Extensions.Hosting.Internal.Host[2]
+      Hosting started
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: SimpleAgentWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: VerifyAndRepairWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: PromptEnhancerWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: ContextGathererWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: PromptGroundingWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: IsComplexAppWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: IsWebsiteProjectWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: OrchestrateComplexPathWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: OrchestrateSimplePathWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: PostExecutionPipelineWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: ResearchPipelineWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: StandardOrchestrateWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: TestSetPromptWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: ClawEvalAgentWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: LoopVerifierWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: WebsiteAuditCoreWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: WebsiteAuditLoopWorkflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized: FullOrchestrateWorkflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found, overwriting the IsLatest property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found to be published, overwriting the IsPublished property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found, overwriting the IsLatest property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found to be published, overwriting the IsPublished property on the workflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Force-repopulated runtime workflow definition store
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found, overwriting the IsLatest property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found to be published, overwriting the IsPublished property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found, overwriting the IsLatest property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found to be published, overwriting the IsPublished property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found, overwriting the IsLatest property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found to be published, overwriting the IsPublished property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found, overwriting the IsLatest property on the workflow
+warn: Elsa.Workflows.Runtime.DefaultWorkflowDefinitionStorePopulator[0]
+      A more recent version of the workflow has been found to be published, overwriting the IsPublished property on the workflow
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Reloaded runtime workflow definitions after synchronization
+info: MagicPAI.Server.Bridge.WorkflowPublisher[0]
+      Synchronized 18 workflows (18 total templates)
+info: Elsa.Mediator.Middleware.Command.Components.CommandLoggingMiddleware[0]
+      Invoking DispatchWorkflowDefinitionCommand
+info: Elsa.Mediator.Middleware.Command.Components.CommandLoggingMiddleware[0]
+      DispatchWorkflowDefinitionCommand completed with no result
+info: MagicPAI.Server.Controllers.SessionController[0]
+      Dispatched workflow StandardOrchestrateWorkflow as instance 4878b5c7326a45f9a17b4f26b0273ced
+info: MagicPAI.Server.Controllers.SessionController[0]
+      Created session 4878b5c7326a45f9a17b4f26b0273ced
+info: MagicPAI.Activities.Docker.SpawnContainerActivity[0]
+      Spawn container activity starting. WorkspacePath=C:/AllGit/CSharp/IsraelRiseDonationSystem Image=magicpai-env:latest
+info: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local mode: Simulated container local-03fdca43c37542 (workspace=C:/AllGit/CSharp/IsraelRiseDonationSystem)
+info: MagicPAI.Activities.Docker.SpawnContainerActivity[0]
+      Spawn container activity received container local-03fdca43c37542
+info: MagicPAI.Activities.Docker.SpawnContainerActivity[0]
+      Spawn container activity outputs set for local-03fdca43c37542
+info: MagicPAI.Activities.Docker.SpawnContainerActivity[0]
+      Spawn container activity variable set for local-03fdca43c37542
+info: MagicPAI.Activities.Docker.SpawnContainerActivity[0]
+      Spawn container activity completion starting for local-03fdca43c37542
+info: MagicPAI.Activities.Docker.SpawnContainerActivity[0]
+      Spawn container activity completed for local-03fdca43c37542
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+info: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec in C:/AllGit/CSharp/IsraelRiseDonationSystem: claude
+info: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec in C:/AllGit/CSharp/IsraelRiseDonationSystem: claude
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+dbug: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local exec (streaming): claude
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: MagicPAI.Core.Services.LocalContainerManager[0]
+      Local mode: Released container local-03fdca43c37542
+warn: MagicPAI.Server.Bridge.WorkflowCompletionHandler[0]
+      Workflow 4878b5c7326a45f9a17b4f26b0273ced finished without container cleanup; destroyed leaked container local-03fdca43c37542
+info: MagicPAI.Server.Bridge.WorkflowCompletionHandler[0]
+      Workflow 4878b5c7326a45f9a17b4f26b0273ced finished with state Finished/Finished
+info: Elsa.Mediator.Middleware.Command.Components.CommandLoggingMiddleware[0]
+      Invoking DispatchWorkflowDefinitionCommand
+info: Elsa.Mediator.Middleware.Command.Components.CommandLoggingMiddleware[0]
+      DispatchWorkflowDefinitionCommand completed with no result
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Restarting interrupted workflows.
+info: Elsa.Workflows.Runtime.Tasks.RestartInterruptedWorkflowsTask[0]
+      Finished restarting interrupted workflows.

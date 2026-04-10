@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Attributes;
@@ -63,7 +64,14 @@ public class RepairActivity : Activity
         context.SetVariable("RepairPrompt", prompt);
 
         context.AddExecutionLogEntry("RepairPromptGenerated",
-            $"Repair prompt for {failedGates.Length} failed gate(s), attempt {nextAttempt}/{maxAttempts}");
+            JsonSerializer.Serialize(new
+            {
+                attempt = nextAttempt,
+                maxAttempts,
+                failedGates,
+                failedGatesSummary = failedGates.Length == 0 ? "no named gates" : string.Join(", ", failedGates),
+                repairPrompt = prompt
+            }));
 
         await context.CompleteActivityWithOutcomesAsync("Done");
     }

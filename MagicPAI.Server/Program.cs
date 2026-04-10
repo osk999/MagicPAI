@@ -2,12 +2,14 @@ using FastEndpoints;
 using Elsa.EntityFrameworkCore.Extensions;
 using Elsa.EntityFrameworkCore.Modules.Management;
 using Elsa.EntityFrameworkCore.Modules.Runtime;
+using Microsoft.EntityFrameworkCore;
 using Elsa.Extensions;
 using MagicPAI.Activities.AI;
 using MagicPAI.Core.Config;
 using MagicPAI.Core.Services;
 using MagicPAI.Core.Services.Gates;
 using Elsa.Workflows;
+using Elsa.Tenants.Extensions;
 using MagicPAI.Server.Bridge;
 using MagicPAI.Server.Hubs;
 using MagicPAI.Server.Providers;
@@ -46,10 +48,11 @@ builder.Services.AddSingleton(config);
 
 var pgConn = builder.Configuration.GetConnectionString("MagicPai");
 var useKubernetesBackend = string.Equals(config.ExecutionBackend, "kubernetes", StringComparison.OrdinalIgnoreCase);
+var useSqlite = !string.IsNullOrWhiteSpace(pgConn) && pgConn.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
 
 if (string.IsNullOrWhiteSpace(pgConn))
     throw new InvalidOperationException(
-        "ConnectionStrings:MagicPai is required. MagicPAI uses PostgreSQL for Elsa workflow persistence.");
+        "ConnectionStrings:MagicPai is required. Use PostgreSQL or SQLite (Data Source=magicpai.db).");
 
 // --- Core Services ---
 builder.Services.AddSingleton<SharedBlackboard>();
@@ -79,20 +82,33 @@ builder.Services.AddHealthChecks();
 
 // --- Event Bridge Services ---
 builder.Services.AddSingleton<SessionTracker>();
+builder.Services.AddSingleton<ISessionContainerRegistry>(sp => sp.GetRequiredService<SessionTracker>());
 builder.Services.AddSingleton<SessionHistoryReader>();
+builder.Services.AddSingleton<IGuiPortAllocator, GuiPortAllocator>();
+builder.Services.AddSingleton<SessionContainerLogStreamer>();
+builder.Services.AddSingleton<ISessionContainerLogStreamer>(sp => sp.GetRequiredService<SessionContainerLogStreamer>());
+builder.Services.AddSingleton<SessionLaunchPlanner>();
 
 builder.Services.AddElsa(elsa =>
 {
-    // Workflow Management — PostgreSQL
+    // Workflow Management — PostgreSQL or SQLite
     elsa.UseWorkflowManagement(management =>
     {
-        management.UseEntityFrameworkCore(ef => ef.UsePostgreSql(pgConn));
+        management.UseEntityFrameworkCore(ef =>
+        {
+            if (useSqlite) { ef.UseSqlite(pgConn); ef.RunMigrations = false; }
+            else ef.UsePostgreSql(pgConn);
+        });
     });
 
-    // Workflow Runtime — PostgreSQL
+    // Workflow Runtime — PostgreSQL or SQLite
     elsa.UseWorkflowRuntime(runtime =>
     {
-        runtime.UseEntityFrameworkCore(ef => ef.UsePostgreSql(pgConn));
+        runtime.UseEntityFrameworkCore(ef =>
+        {
+            if (useSqlite) { ef.UseSqlite(pgConn); ef.RunMigrations = false; }
+            else ef.UsePostgreSql(pgConn);
+        });
 
         if (useKubernetesBackend)
         {
@@ -103,24 +119,12 @@ builder.Services.AddElsa(elsa =>
             };
         }
 
-        // Register built-in workflows
+        // Most workflows are now JSON-serialized templates loaded by WorkflowPublisher.
+        // These two still use delegate-based ExecuteWorkflow input builders
+        // that require CLR runtime registration.
         runtime.AddWorkflow<FullOrchestrateWorkflow>();
-        runtime.AddWorkflow<SimpleAgentWorkflow>();
-        runtime.AddWorkflow<VerifyAndRepairWorkflow>();
-        runtime.AddWorkflow<PromptEnhancerWorkflow>();
-        runtime.AddWorkflow<ContextGathererWorkflow>();
-        runtime.AddWorkflow<PromptGroundingWorkflow>();
-        runtime.AddWorkflow<LoopVerifierWorkflow>();
         runtime.AddWorkflow<WebsiteAuditLoopWorkflow>();
-        runtime.AddWorkflow<IsComplexAppWorkflow>();
-        runtime.AddWorkflow<IsWebsiteProjectWorkflow>();
-        runtime.AddWorkflow<OrchestrateComplexPathWorkflow>();
-        runtime.AddWorkflow<OrchestrateSimplePathWorkflow>();
-        runtime.AddWorkflow<PostExecutionPipelineWorkflow>();
-        runtime.AddWorkflow<ResearchPipelineWorkflow>();
-        runtime.AddWorkflow<StandardOrchestrateWorkflow>();
-        runtime.AddWorkflow<TestSetPromptWorkflow>();
-        runtime.AddWorkflow<ClawEvalAgentWorkflow>();
+
     });
 
     // Identity
@@ -156,6 +160,10 @@ builder.Services.AddElsa(elsa =>
     // Workflows API (handles FastEndpoints + serialization internally)
     elsa.UseWorkflowsApi();
 
+    // Multi-tenancy + Labels (required by Elsa 3.5+ even for single-tenant)
+    elsa.UseTenants(tenants => tenants.UseTenantManagement());
+    elsa.UseLabels(labels => { });
+
     // Register all custom activities from MagicPAI.Activities assembly
     elsa.AddActivitiesFrom<RunCliAgentActivity>();
 });
@@ -171,7 +179,7 @@ builder.Services.AddSingleton<IActivityDescriptorModifier, MagicPaiActivityDescr
 // --- FastEndpoints (required for Elsa API in 3.6) ---
 builder.Services.AddFastEndpoints();
 
-// --- Workflow publisher (materializes code-first workflows for Studio) ---
+// --- Workflow publisher (imports JSON workflow templates into Elsa stores) ---
 builder.Services.AddHostedService<WorkflowPublisher>();
 
 // --- Worker pod/container garbage collector ---
@@ -194,6 +202,54 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// SQLite schema fixup: EnsureCreated doesn't work with multiple DbContexts sharing one DB.
+// We use raw SQL to create any tables the Elsa 3.5.x migrations missed.
+if (useSqlite)
+{
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SQLiteSchemaSetup");
+    using var scope = app.Services.CreateScope();
+
+    // Get each DbContext, generate its SQL model, and apply missing tables
+    foreach (var contextType in new[] {
+        typeof(Elsa.EntityFrameworkCore.Modules.Management.ManagementElsaDbContext),
+        typeof(Elsa.EntityFrameworkCore.Modules.Runtime.RuntimeElsaDbContext) })
+    {
+        try
+        {
+            var factoryType = typeof(Microsoft.EntityFrameworkCore.IDbContextFactory<>).MakeGenericType(contextType);
+            var factory = scope.ServiceProvider.GetService(factoryType);
+            if (factory is null) continue;
+            var createMethod = factoryType.GetMethod("CreateDbContext");
+            if (createMethod is null) continue;
+            using var db = (Microsoft.EntityFrameworkCore.DbContext)createMethod.Invoke(factory, null)!;
+            var script = db.Database.GenerateCreateScript();
+            // Execute each CREATE TABLE IF NOT EXISTS statement
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection(pgConn);
+            conn.Open();
+            foreach (var statement in script.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (string.IsNullOrWhiteSpace(statement)) continue;
+                var sql = statement.Replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", StringComparison.OrdinalIgnoreCase);
+                try
+                {
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = sql;
+                    cmd.ExecuteNonQuery();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "SQLite schema statement skipped: {Sql}", sql[..Math.Min(sql.Length, 80)]);
+                }
+            }
+            logger.LogInformation("Schema setup completed for {ContextType}", contextType.Name);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Schema setup failed for {ContextType}", contextType.Name);
+        }
+    }
+}
 
 // --- Middleware (order follows official Elsa reference app) ---
 if (app.Environment.IsDevelopment())
@@ -221,7 +277,8 @@ app.UseAuthorization();
 // Elsa API via FastEndpoints
 app.UseFastEndpoints(cfg =>
 {
-    cfg.Serializer.Options.Converters.Insert(0, new MagicPAI.Server.Bridge.TypeJsonConverter());
+    if (!cfg.Serializer.Options.Converters.OfType<MagicPAI.Server.Bridge.TypeJsonConverter>().Any())
+        cfg.Serializer.Options.Converters.Add(new MagicPAI.Server.Bridge.TypeJsonConverter());
 });
 
 // JSON error handler

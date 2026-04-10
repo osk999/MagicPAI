@@ -28,13 +28,13 @@ public class DockerContainerManagerTests
     {
         var mock = new Mock<IContainerManager>();
         mock.Setup(m => m.SpawnAsync(It.IsAny<ContainerConfig>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ContainerInfo("container-gui-1", "http://localhost:7900"));
+            .ReturnsAsync(new ContainerInfo("container-gui-1", "http://127.0.0.1:7900/vnc.html?autoconnect=1&resize=scale"));
 
         var config = new ContainerConfig { EnableGui = true, GuiPort = 7900 };
         var result = await mock.Object.SpawnAsync(config, CancellationToken.None);
 
         Assert.Equal("container-gui-1", result.ContainerId);
-        Assert.Equal("http://localhost:7900", result.GuiUrl);
+        Assert.Equal("http://127.0.0.1:7900/vnc.html?autoconnect=1&resize=scale", result.GuiUrl);
     }
 
     [Fact]

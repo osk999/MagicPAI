@@ -1,75 +1,32 @@
-using Elsa.Workflows;
-using Elsa.Workflows.Management;
-using Elsa.Workflows.Management.Filters;
-using Elsa.Workflows.Runtime;
-using Elsa.Workflows.Activities;
-using MagicPAI.Core.Config;
-using Medallion.Threading;
-using MagicPAI.Server.Workflows;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Elsa.Workflows;
+using Elsa.Workflows.Activities;
+using Elsa.Workflows.Management;
+using Elsa.Workflows.Management.Filters;
+using Elsa.Workflows.Management.Models;
+using Elsa.Workflows.Memory;
+using Elsa.Workflows.Runtime;
+using MagicPAI.Core.Config;
+using Medallion.Threading;
 
 namespace MagicPAI.Server.Bridge;
 
 public class WorkflowPublisher : BackgroundService
 {
     private const string PublishLockName = "magicpai:workflow-publisher";
-    private const string PublisherFormatVersion = "4";
+    private const string PublisherFormatVersion = "5";
+    private const string WorkflowSchemaUrl = "https://elsaworkflows.io/schemas/3.x/workflow-definition.json";
     private readonly IServiceProvider _services;
     private readonly ILogger<WorkflowPublisher> _logger;
 
-    // All code-first workflow types
-    private static readonly Type[] WorkflowTypes =
-    [
-        typeof(FullOrchestrateWorkflow),
-        typeof(SimpleAgentWorkflow),
-        typeof(VerifyAndRepairWorkflow),
-        typeof(PromptEnhancerWorkflow),
-        typeof(ContextGathererWorkflow),
-        typeof(PromptGroundingWorkflow),
-        typeof(LoopVerifierWorkflow),
-        typeof(WebsiteAuditLoopWorkflow),
-        typeof(IsComplexAppWorkflow),
-        typeof(IsWebsiteProjectWorkflow),
-        typeof(OrchestrateComplexPathWorkflow),
-        typeof(OrchestrateSimplePathWorkflow),
-        typeof(PostExecutionPipelineWorkflow),
-        typeof(ResearchPipelineWorkflow),
-        typeof(StandardOrchestrateWorkflow),
-        typeof(TestSetPromptWorkflow),
-        typeof(ClawEvalAgentWorkflow),
-    ];
-
-    // Map friendly names → class names
-    private static readonly Dictionary<string, string> FriendlyNameMap = WorkflowTypes
-        .ToDictionary(
-            t => ToFriendlyName(t.Name),
-            t => t.Name,
-            StringComparer.OrdinalIgnoreCase);
-
     /// <summary>Resolve a friendly name to the DefinitionId (class name).</summary>
-    public static string ResolveDefinitionId(string workflowName)
-    {
-        if (WorkflowTypes.Any(t => t.Name.Equals(workflowName, StringComparison.OrdinalIgnoreCase)))
-            return workflowName;
-        if (FriendlyNameMap.TryGetValue(workflowName, out var defId))
-            return defId;
-        return workflowName;
-    }
+    public static string ResolveDefinitionId(string workflowName) => WorkflowCatalog.ResolveDefinitionId(workflowName);
 
     /// <summary>Resolve to DefinitionVersionId for dispatch.</summary>
-    public static string ResolveDefinitionVersionId(string workflowName)
-    {
-        var defId = ResolveDefinitionId(workflowName);
-        return $"{defId}:v1";
-    }
-
-    private static string ToFriendlyName(string className)
-    {
-        var name = className.Replace("Workflow", "");
-        return string.Concat(name.Select((c, i) =>
-            i > 0 && char.IsUpper(c) ? "-" + char.ToLower(c) : char.ToLower(c).ToString()));
-    }
+    public static string ResolveDefinitionVersionId(string workflowName) => WorkflowCatalog.ResolveDefinitionVersionId(workflowName);
 
     public WorkflowPublisher(IServiceProvider services, ILogger<WorkflowPublisher> logger)
     {
@@ -79,8 +36,6 @@ public class WorkflowPublisher : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        // Wait for Elsa's migration startup tasks to complete before publishing.
-        // On fresh databases, EF Core migrations need a few seconds.
         await Task.Delay(TimeSpan.FromSeconds(10), ct);
 
         using var scope = _services.CreateScope();
@@ -88,8 +43,6 @@ public class WorkflowPublisher : BackgroundService
 
         try
         {
-            // Patch: add OriginalSource column for Elsa 3.6 compatibility.
-            // Elsa 3.5.3 EF Core migrations don't create it, but 3.6 queries expect it.
             await PatchSchemaAsync(sp, ct);
 
             var config = sp.GetRequiredService<MagicPaiConfig>();
@@ -102,9 +55,7 @@ public class WorkflowPublisher : BackgroundService
 
                 _logger.LogInformation("Acquiring distributed workflow publish lock");
                 await using (await lockProvider.AcquireLockAsync(PublishLockName, null, ct))
-                {
                     await SynchronizeAsync(sp, ct);
-                }
 
                 return;
             }
@@ -119,49 +70,55 @@ public class WorkflowPublisher : BackgroundService
 
     private async Task SynchronizeAsync(IServiceProvider sp, CancellationToken ct)
     {
+        var configuration = sp.GetRequiredService<IConfiguration>();
+        var environment = sp.GetRequiredService<IHostEnvironment>();
         var publisher = sp.GetRequiredService<IWorkflowDefinitionPublisher>();
+        var importer = sp.GetRequiredService<IWorkflowDefinitionImporter>();
         var store = sp.GetRequiredService<IWorkflowDefinitionStore>();
         var reloader = sp.GetService<IWorkflowDefinitionsReloader>();
         var runtimeStorePopulator = sp.GetService<IWorkflowDefinitionStorePopulator>();
+        var templateDirectory = Path.Combine(environment.ContentRootPath, "Workflows", "Templates");
+        var refreshTemplatesFromCode = configuration.GetValue<bool>("MagicPAI:WorkflowTemplates:RefreshFromCode");
+
+        if (refreshTemplatesFromCode)
+        {
+            await ExportTemplatesAsync(sp, templateDirectory, ct);
+            _logger.LogInformation("Regenerated workflow JSON templates from current workflow classes");
+        }
 
         var count = 0;
-        foreach (var type in WorkflowTypes)
+
+        foreach (var entry in WorkflowCatalog.Entries)
         {
             try
             {
-                var defId = type.Name;
-                var checksum = ComputeWorkflowChecksum(type);
-                var filter = new WorkflowDefinitionFilter { DefinitionId = defId };
-                var existing = await store.FindManyAsync(filter, ct);
+                var templatePath = Path.Combine(templateDirectory, entry.TemplateFileName);
+                var hasTemplate = entry.UseJsonTemplate && File.Exists(templatePath);
+                var checksum = hasTemplate
+                    ? await ComputeTemplateChecksumAsync(templatePath, ct)
+                    : ComputeWorkflowChecksum(entry.WorkflowType);
+                var existing = await store.FindManyAsync(new WorkflowDefinitionFilter
+                {
+                    DefinitionId = entry.DefinitionId
+                }, ct);
+
                 if (existing.Any(d => IsSynchronized(d, checksum)))
                 {
-                    _logger.LogDebug("Already synchronized: {Name}", defId);
+                    _logger.LogDebug("Already synchronized: {Name}", entry.DefinitionId);
                     continue;
                 }
 
-                // Build the workflow from C# code
-                var workflow = (IWorkflow)ActivatorUtilities.CreateInstance(sp, type);
-                var builder = sp.GetRequiredService<IWorkflowBuilderFactory>().CreateBuilder();
-                var built = await builder.BuildWorkflowAsync(workflow, ct);
-                AttachWorkflowVariables(builder);
+                if (hasTemplate)
+                    await ImportTemplateAsync(sp, importer, entry, templatePath, checksum, ct);
+                else
+                    await PublishCodeFirstAsync(sp, publisher, entry, checksum, ct);
 
-                // Publish via Elsa's publisher (creates proper serialized definition)
-                var def = await publisher.NewAsync(built.Root, ct);
-                def.DefinitionId = defId;
-                def.Name = defId;
-                def.IsPublished = true;
-                def.CustomProperties["Source"] = "CodeFirst";
-                def.CustomProperties["SourceChecksum"] = checksum;
-                def.CustomProperties["PublisherFormatVersion"] = PublisherFormatVersion;
-
-                await publisher.SaveDraftAsync(def, ct);
-                await publisher.PublishAsync(def, ct);
                 count++;
-                _logger.LogInformation("Synchronized: {Name}", defId);
+                _logger.LogInformation("Synchronized: {Name}", entry.DefinitionId);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed: {Type}", type.Name);
+                _logger.LogWarning(ex, "Failed: {Type}", entry.DefinitionId);
             }
         }
 
@@ -177,7 +134,7 @@ public class WorkflowPublisher : BackgroundService
             _logger.LogInformation("Reloaded runtime workflow definitions after synchronization");
         }
 
-        _logger.LogInformation("Synchronized {Count} workflows ({Total} total types)", count, WorkflowTypes.Length);
+        _logger.LogInformation("Synchronized {Count} workflows ({Total} total templates)", count, WorkflowCatalog.Entries.Count);
     }
 
     private static bool IsSynchronized(Elsa.Workflows.Management.Entities.WorkflowDefinition definition, string checksum)
@@ -193,15 +150,123 @@ public class WorkflowPublisher : BackgroundService
                string.Equals(publisherVersion?.ToString(), PublisherFormatVersion, StringComparison.Ordinal);
     }
 
-    private static void AttachWorkflowVariables(IWorkflowBuilder builder)
+    private async Task ImportTemplateAsync(
+        IServiceProvider sp,
+        IWorkflowDefinitionImporter importer,
+        WorkflowCatalogEntry entry,
+        string templatePath,
+        string checksum,
+        CancellationToken ct)
     {
-        if (builder.Root is not IVariableContainer variableContainer)
+        var serializer = sp.GetRequiredService<IActivitySerializer>();
+        var json = await File.ReadAllTextAsync(templatePath, ct);
+        var model = serializer.Deserialize<WorkflowDefinitionModel>(json);
+        model.DefinitionId = entry.DefinitionId;
+        model.Name = string.IsNullOrWhiteSpace(model.Name) ? entry.DefinitionId : model.Name.Trim();
+        model.IsPublished = true;
+        model.CustomProperties ??= new Dictionary<string, object>();
+        model.CustomProperties["Source"] = "JsonTemplate";
+        model.CustomProperties["SourceChecksum"] = checksum;
+        model.CustomProperties["PublisherFormatVersion"] = PublisherFormatVersion;
+        model.CustomProperties["TemplateFileName"] = entry.TemplateFileName;
+
+        var result = await importer.ImportAsync(new SaveWorkflowDefinitionRequest
+        {
+            Model = model,
+            Publish = true
+        }, ct);
+
+        if (!result.Succeeded)
+        {
+            var message = string.Join("; ", result.ValidationErrors.Select(x => x.Message));
+            throw new InvalidOperationException(
+                $"Failed to import workflow template '{entry.TemplateFileName}': {message}");
+        }
+    }
+
+    private async Task PublishCodeFirstAsync(
+        IServiceProvider sp,
+        IWorkflowDefinitionPublisher publisher,
+        WorkflowCatalogEntry entry,
+        string checksum,
+        CancellationToken ct)
+    {
+        var built = await BuildWorkflowAsync(sp, entry.WorkflowType, ct);
+        AttachWorkflowVariables(built.Root, built.Variables);
+        var definition = await publisher.NewAsync(built.Root, ct);
+        definition.DefinitionId = entry.DefinitionId;
+        definition.Name = entry.DefinitionId;
+        definition.IsPublished = true;
+        definition.CustomProperties["Source"] = "CodeFirst";
+        definition.CustomProperties["SourceChecksum"] = checksum;
+        definition.CustomProperties["PublisherFormatVersion"] = PublisherFormatVersion;
+        definition.CustomProperties["TemplateFileName"] = entry.TemplateFileName;
+
+        await publisher.SaveDraftAsync(definition, ct);
+        await publisher.PublishAsync(definition, ct);
+    }
+
+    private async Task ExportTemplatesAsync(IServiceProvider sp, string templateDirectory, CancellationToken ct)
+    {
+        Directory.CreateDirectory(templateDirectory);
+        var serializer = sp.GetRequiredService<IWorkflowSerializer>();
+
+        foreach (var entry in WorkflowCatalog.Entries.Where(x => x.UseJsonTemplate))
+        {
+            var workflow = await BuildWorkflowAsync(sp, entry.WorkflowType, ct);
+            var serialized = serializer.Serialize(workflow);
+            var normalized = NormalizeTemplateJson(serialized);
+            var templatePath = Path.Combine(templateDirectory, entry.TemplateFileName);
+            await File.WriteAllTextAsync(templatePath, normalized, Encoding.UTF8, ct);
+        }
+    }
+
+    private static async Task<Workflow> BuildWorkflowAsync(IServiceProvider sp, Type workflowType, CancellationToken ct)
+    {
+        var workflow = (IWorkflow)ActivatorUtilities.CreateInstance(sp, workflowType);
+        var builder = sp.GetRequiredService<IWorkflowBuilderFactory>().CreateBuilder();
+        return await builder.BuildWorkflowAsync(workflow, ct);
+    }
+
+    private static string NormalizeTemplateJson(string serialized)
+    {
+        var parsed = JsonNode.Parse(serialized)?.AsObject()
+            ?? throw new InvalidOperationException("Workflow serializer returned invalid JSON.");
+
+        if (!parsed.ContainsKey("$schema"))
+        {
+            var withSchema = new JsonObject
+            {
+                ["$schema"] = WorkflowSchemaUrl
+            };
+
+            foreach (var property in parsed)
+                withSchema[property.Key] = property.Value?.DeepClone();
+
+            parsed = withSchema;
+        }
+
+        return parsed.ToJsonString(new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+    }
+
+    private static void AttachWorkflowVariables(IActivity root, IEnumerable<Variable> variables)
+    {
+        if (root is not IVariableContainer variableContainer)
             return;
 
-        variableContainer.Variables.Clear();
+        foreach (var variable in variables)
+        {
+            var exists = variableContainer.Variables.Any(existing =>
+                string.Equals(existing.Id, variable.Id, StringComparison.Ordinal) ||
+                (!string.IsNullOrWhiteSpace(existing.Name) &&
+                 string.Equals(existing.Name, variable.Name, StringComparison.Ordinal)));
 
-        foreach (var variable in builder.Variables)
-            variableContainer.Variables.Add(variable);
+            if (!exists)
+                variableContainer.Variables.Add(variable);
+        }
     }
 
     private async Task PatchSchemaAsync(IServiceProvider sp, CancellationToken ct)
@@ -212,6 +277,33 @@ public class WorkflowPublisher : BackgroundService
             var pgConn = configuration.GetConnectionString("MagicPai");
             if (string.IsNullOrWhiteSpace(pgConn))
                 return;
+
+            if (pgConn.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+            {
+                await using var sqliteConn = new Microsoft.Data.Sqlite.SqliteConnection(pgConn);
+                await sqliteConn.OpenAsync(ct);
+                try
+                {
+                    await using var checkCmd = sqliteConn.CreateCommand();
+                    checkCmd.CommandText = "SELECT OriginalSource FROM WorkflowDefinitions LIMIT 0";
+                    await checkCmd.ExecuteNonQueryAsync(ct);
+                }
+                catch
+                {
+                    try
+                    {
+                        await using var alterCmd = sqliteConn.CreateCommand();
+                        alterCmd.CommandText = "ALTER TABLE WorkflowDefinitions ADD COLUMN OriginalSource TEXT";
+                        await alterCmd.ExecuteNonQueryAsync(ct);
+                        _logger.LogInformation("SQLite schema patch applied (OriginalSource column)");
+                    }
+                    catch (Exception ex2)
+                    {
+                        _logger.LogWarning(ex2, "SQLite schema patch failed");
+                    }
+                }
+                return;
+            }
 
             await using var conn = new Npgsql.NpgsqlConnection(pgConn);
             await conn.OpenAsync(ct);
@@ -233,13 +325,18 @@ public class WorkflowPublisher : BackgroundService
 
     private static string ComputeWorkflowChecksum(Type workflowType)
     {
-        // Use the compiled assembly module version ID instead of source paths so checksum
-        // changes on every rebuild and still works when the app runs from published output.
         var assemblyVersionId = workflowType.Assembly.ManifestModule.ModuleVersionId.ToString("N");
         var identity = $"{assemblyVersionId}:{workflowType.FullName ?? workflowType.Name}";
 
         using var sha256 = SHA256.Create();
         var bytes = Encoding.UTF8.GetBytes(identity);
         return Convert.ToHexString(sha256.ComputeHash(bytes));
+    }
+
+    private static async Task<string> ComputeTemplateChecksumAsync(string templatePath, CancellationToken ct)
+    {
+        var content = await File.ReadAllTextAsync(templatePath, ct);
+        using var sha256 = SHA256.Create();
+        return Convert.ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(content)));
     }
 }

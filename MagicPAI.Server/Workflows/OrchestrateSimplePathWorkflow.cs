@@ -36,7 +36,7 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             ModelPower = new Input<int>(3),
             Response = new Output<string>(assembledPrompt),
-            Id = "assemble-prompt"
+            Id = "simple-assemble-prompt"
         };
 
         // Step 2: Execute the main agent
@@ -47,7 +47,7 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
             ModelPower = new Input<int>(modelPower),
-            Id = "simple-execute"
+            Id = "simple-agent"
         };
 
         // Step 3: Verify results

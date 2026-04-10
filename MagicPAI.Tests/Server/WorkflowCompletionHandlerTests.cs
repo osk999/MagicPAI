@@ -3,9 +3,12 @@ using Elsa.Workflows.Activities;
 using Elsa.Workflows.Notifications;
 using Elsa.Workflows.State;
 using MagicPAI.Core.Models;
+using MagicPAI.Core.Services;
 using MagicPAI.Server.Bridge;
 using MagicPAI.Server.Hubs;
+using MagicPAI.Server.Services;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -15,6 +18,7 @@ public class WorkflowCompletionHandlerTests
 {
     private readonly Mock<IHubContext<SessionHub>> _hubContextMock;
     private readonly Mock<IClientProxy> _clientProxyMock;
+    private readonly Mock<IContainerManager> _containerManagerMock;
     private readonly SessionTracker _tracker;
     private readonly WorkflowCompletionHandler _handler;
     private readonly List<(string Method, object?[] Args)> _sentMessages = [];
@@ -23,6 +27,7 @@ public class WorkflowCompletionHandlerTests
     {
         _hubContextMock = new Mock<IHubContext<SessionHub>>();
         _clientProxyMock = new Mock<IClientProxy>();
+        _containerManagerMock = new Mock<IContainerManager>();
         _tracker = new SessionTracker();
 
         _clientProxyMock
@@ -40,9 +45,22 @@ public class WorkflowCompletionHandlerTests
         mockClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_clientProxyMock.Object);
         _hubContextMock.Setup(h => h.Clients).Returns(mockClients.Object);
 
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+        var logStreamer = new SessionContainerLogStreamer(
+            _containerManagerMock.Object,
+            _tracker,
+            _hubContextMock.Object,
+            NullLogger<SessionContainerLogStreamer>.Instance);
+
         _handler = new WorkflowCompletionHandler(
             _hubContextMock.Object,
             _tracker,
+            _containerManagerMock.Object,
+            null,
+            logStreamer,
+            configuration,
             NullLogger<WorkflowCompletionHandler>.Instance);
     }
 

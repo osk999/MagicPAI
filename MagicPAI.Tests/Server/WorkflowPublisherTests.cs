@@ -4,6 +4,17 @@ namespace MagicPAI.Tests.Server;
 
 public class WorkflowPublisherTests
 {
+    [Fact]
+    public void Catalog_Contains_Template_For_Each_Workflow()
+    {
+        Assert.Contains(WorkflowCatalog.Entries, x => x.DefinitionId == "WebsiteAuditCoreWorkflow");
+        Assert.All(WorkflowCatalog.Entries, entry =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(entry.FriendlyName));
+            Assert.EndsWith(".json", entry.TemplateFileName);
+        });
+    }
+
     [Theory]
     [InlineData("FullOrchestrateWorkflow", "FullOrchestrateWorkflow")]
     [InlineData("SimpleAgentWorkflow", "SimpleAgentWorkflow")]
@@ -23,6 +34,7 @@ public class WorkflowPublisherTests
     [InlineData("prompt-enhancer", "PromptEnhancerWorkflow")]
     [InlineData("prompt-grounding", "PromptGroundingWorkflow")]
     [InlineData("loop-verifier", "LoopVerifierWorkflow")]
+    [InlineData("website-audit-core", "WebsiteAuditCoreWorkflow")]
     [InlineData("website-audit-loop", "WebsiteAuditLoopWorkflow")]
     [InlineData("claw-eval-agent", "ClawEvalAgentWorkflow")]
     public void ResolveDefinitionId_FromFriendlyName_ReturnsClassName(string input, string expected)

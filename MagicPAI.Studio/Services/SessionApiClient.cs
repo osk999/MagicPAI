@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using MagicPAI.Shared.Models;
 using MagicPAI.Studio.Models;
 
@@ -10,6 +11,10 @@ namespace MagicPAI.Studio.Services;
 public class SessionApiClient
 {
     private readonly HttpClient _http;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public Uri BaseAddress => _http.BaseAddress!;
 
@@ -91,10 +96,26 @@ public class SessionApiClient
     {
         try
         {
-            return await _http.GetFromJsonAsync<List<ActivityStateDto>>($"api/sessions/{id}/activities")
-                ?? [];
+            return await _http.GetFromJsonAsync<List<ActivityStateDto>>(
+                $"api/sessions/{id}/activities",
+                JsonOptions) ?? [];
         }
-        catch (HttpRequestException)
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Get tracked workflow insights for a session.</summary>
+    public async Task<List<TaskInsightEvent>> GetInsightsAsync(string id)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<List<TaskInsightEvent>>(
+                $"api/sessions/{id}/insights",
+                JsonOptions) ?? [];
+        }
+        catch (Exception)
         {
             return [];
         }

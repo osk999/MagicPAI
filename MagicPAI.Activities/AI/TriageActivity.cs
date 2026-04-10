@@ -22,6 +22,11 @@ public class TriageActivity : Activity
     [Input(DisplayName = "Container ID")]
     public Input<string> ContainerId { get; set; } = default!;
 
+    [Input(DisplayName = "Classification Instructions",
+        UIHint = InputUIHints.MultiLine,
+        Description = "Optional override instructions for how the prompt should be classified")]
+    public Input<string?> ClassificationInstructions { get; set; } = default!;
+
     [Output(DisplayName = "Complexity")]
     public Output<int> Complexity { get; set; } = default!;
 
@@ -57,7 +62,8 @@ public class TriageActivity : Activity
                 : context.GetOptionalWorkflowInput<string>("WorkspacePath")
                     ?? config.WorkspacePath
                     ?? ".";
-            var triagePrompt = BuildTriagePrompt(prompt);
+            var instructions = ClassificationInstructions.GetOrDefault(context, () => null);
+            var triagePrompt = BuildTriagePrompt(prompt, instructions);
             var triageSchema = SchemaGenerator.FromType<TriageResult>();
             var request = new AgentRequest
             {
@@ -77,7 +83,7 @@ public class TriageActivity : Activity
             if (string.IsNullOrWhiteSpace(cid))
                 throw new InvalidOperationException("Container ID is required. Triage runs inside the spawned worker container.");
 
-            foreach (var setupRequest in plan.SetupRequests)
+            foreach (var setupRequest in plan.SetupRequests ?? [])
                 await containerMgr.ExecAsync(cid, setupRequest, context.CancellationToken);
 
             var result = await containerMgr.ExecAsync(
@@ -111,24 +117,25 @@ public class TriageActivity : Activity
             RecommendedModel.Set(context, recommendedModel);
             RecommendedModelPower.Set(context, parsed.RecommendedModelPower);
 
-            context.AddExecutionLogEntry("TriageResult",
-                $"Complexity={parsed.Complexity}, Category={parsed.Category}");
-
             var threshold = config.ComplexityThreshold;
             var outcome = parsed.Complexity >= threshold ? "Complex" : "Simple";
+            context.AddExecutionLogEntry("TriageResult",
+                JsonSerializer.Serialize(new
+                {
+                    complexity = parsed.Complexity,
+                    category = parsed.Category,
+                    recommendedModel,
+                    recommendedModelPower = parsed.RecommendedModelPower,
+                    needsDecomposition = parsed.NeedsDecomposition,
+                    threshold,
+                    outcome
+                }));
             await context.CompleteActivityWithOutcomesAsync(outcome);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            context.AddExecutionLogEntry("TriageFailed", ex.Message);
-            Complexity.Set(context, 5);
-            Category.Set(context, "code_gen");
-            RecommendedModel.Set(context, AiAssistantResolver.ResolveModelForPower(
-                agentFactory.Create(AiAssistantResolver.NormalizeAssistant(config.DefaultAgent, config.DefaultAgent)),
-                config,
-                2));
-            RecommendedModelPower.Set(context, 2);
-            await context.CompleteActivityWithOutcomesAsync("Simple");
+            context.AddExecutionLogEntry("TriageFailed", ex.ToString());
+            throw;
         }
     }
 
@@ -151,9 +158,15 @@ public class TriageActivity : Activity
         return value.Length <= maxLength ? value : value[..maxLength];
     }
 
-    private static string BuildTriagePrompt(string userPrompt) =>
+    private static string BuildTriagePrompt(string userPrompt, string? classificationInstructions)
+    {
+        var instructionBlock = string.IsNullOrWhiteSpace(classificationInstructions)
+            ? "Analyze this coding task and respond with JSON only:"
+            : $"{classificationInstructions.Trim()}\nRespond with JSON only:";
+
+        return
         $$"""
-        Analyze this coding task and respond with JSON only:
+        {{instructionBlock}}
         {
           "complexity": <1-10>,
           "category": "<code_gen|bug_fix|refactor|architecture|testing|docs>",
@@ -168,6 +181,7 @@ public class TriageActivity : Activity
 
         Task: {{userPrompt}}
         """;
+    }
 
     private static TriageResult ParseTriageResponse(string output)
     {

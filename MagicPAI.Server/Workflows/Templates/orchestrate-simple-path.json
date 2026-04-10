@@ -1,42 +1,432 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
   "definitionId": "OrchestrateSimplePathWorkflow",
   "name": "Orchestrate Simple Path",
   "description": "Single-agent execution with prompt assembly, context, and verification",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
+  "variables": [
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": "claude"
+    },
+    {
+      "id": "modelVariable",
+      "name": "Model",
+      "typeName": "String",
+      "isArray": false,
+      "value": "auto"
+    },
+    {
+      "id": "modelPowerVariable",
+      "name": "ModelPower",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    },
+    {
+      "id": "assembledPromptVariable",
+      "name": "AssembledPrompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "variables": [
-    { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "ContainerId", "typeName": "String", "value": "" },
-    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "auto" }
-  ],
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
   "root": {
-    "type": "Elsa.Flowchart",
     "id": "orchestrate-simple-path-flow",
-    "start": "assemble-prompt",
+    "nodeId": "Workflow1:orchestrate-simple-path-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "OrchestrateSimplePathWorkflow.cs:60"
+    },
+    "metadata": {},
     "activities": [
       {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "assembledPromptVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "simple-assemble-prompt",
+        "nodeId": "Workflow1:orchestrate-simple-path-flow:simple-assemble-prompt",
+        "name": null,
         "type": "MagicPAI.AiAssistantActivity",
-        "id": "assemble-prompt",
-        "name": "Assemble Prompt"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "assembledPromptVariable",
+              "name": "AssembledPrompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "modelVariable",
+              "name": "Model",
+              "typeName": "String",
+              "value": "auto"
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "modelPowerVariable",
+              "name": "ModelPower",
+              "typeName": "Int32",
+              "value": "0"
+            }
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "simple-agent",
+        "nodeId": "Workflow1:orchestrate-simple-path-flow:simple-agent",
+        "name": null,
         "type": "MagicPAI.AiAssistantActivity",
-        "id": "simple-execute",
-        "name": "Simple Execute"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.RunVerificationActivity",
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "gates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Literal",
+            "value": [
+              "compile",
+              "test",
+              "hallucination"
+            ]
+          }
+        },
+        "workerOutput": null,
+        "allPassed": null,
+        "failedGates": null,
+        "gateResultsJson": null,
         "id": "simple-verify",
-        "name": "Verify"
+        "nodeId": "Workflow1:orchestrate-simple-path-flow:simple-verify",
+        "name": null,
+        "type": "MagicPAI.RunVerificationActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": "claude"
+      },
+      {
+        "id": "modelVariable",
+        "name": "Model",
+        "typeName": "String",
+        "value": "auto"
+      },
+      {
+        "id": "modelPowerVariable",
+        "name": "ModelPower",
+        "typeName": "Int32",
+        "value": "0"
+      },
+      {
+        "id": "assembledPromptVariable",
+        "name": "AssembledPrompt",
+        "typeName": "String",
+        "value": ""
       }
     ],
     "connections": [
-      { "source": { "activity": "assemble-prompt", "port": "Done" }, "target": { "activity": "simple-execute" } },
-      { "source": { "activity": "assemble-prompt", "port": "Failed" }, "target": { "activity": "simple-execute" } },
-      { "source": { "activity": "simple-execute", "port": "Done" }, "target": { "activity": "simple-verify" } }
+      {
+        "source": {
+          "activity": "simple-assemble-prompt",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "simple-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "simple-assemble-prompt",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "simple-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "simple-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "simple-verify"
+        },
+        "vertices": []
+      }
     ]
   }
 }

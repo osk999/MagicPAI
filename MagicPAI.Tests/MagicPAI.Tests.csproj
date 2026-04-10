@@ -14,6 +14,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\MagicPAI.Shared\MagicPAI.Shared.csproj" />
     <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />
     <ProjectReference Include="..\MagicPAI.Activities\MagicPAI.Activities.csproj" />
     <ProjectReference Include="..\MagicPAI.Server\MagicPAI.Server.csproj" />

@@ -1,19 +1,15 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
-using MagicPAI.Activities.AI;
+using Elsa.Workflows.Runtime.Activities;
+using MagicPAI.Activities.Docker;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Four-phase autonomous website audit:
-///   Phase 1: Discovery loop - crawl and map pages
-///   Phase 2: Visual audit loop - screenshot and analyze each page
-///   Phase 3: Interaction + scroll loop - test forms, buttons, scrolling
-///   Phase 4: Opus sweep - deep analysis and final report
-/// Each phase uses AiAssistantActivity in a while-like loop pattern via Flowchart
-/// connections that loop back from a classifier to the phase runner.
+/// Standalone wrapper for the spawnless website-audit core.
 /// </summary>
 public class WebsiteAuditLoopWorkflow : WorkflowBase
 {
@@ -21,127 +17,50 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
     {
         builder.Name = "Website Audit Loop";
         builder.Description =
-            "Four-phase autonomous website audit: discovery, visual, interaction, and Opus sweep";
+            "Standalone website audit with container lifecycle and GUI-enabled browser execution";
 
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var agent = builder.WithVariable<string>("AiAssistant", "claude");
         var containerId = builder.WithVariable<string>("ContainerId", "");
 
-        // --- Phase 1: Discovery Loop ---
-        var discoveryRunner = new AiAssistantActivity
+        var spawn = new SpawnContainerActivity
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
-            Id = "phase1-discovery-runner"
+            WorkspacePath = new Input<string>(""),
+            EnableGui = new Input<bool>(ctx => ctx.GetInput<bool?>("EnableGui") ?? true),
+            ContainerId = new Output<string>(containerId),
+            Id = "audit-spawn"
         };
 
-        var discoveryCheck = new TriageActivity
+        var runAudit = new ExecuteWorkflow
         {
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Id = "phase1-discovery-check"
+            WorkflowDefinitionId = new Input<string>(nameof(WebsiteAuditCoreWorkflow)),
+            WaitForCompletion = new Input<bool>(true),
+            Input = new Input<IDictionary<string, object>?>(ctx => new Dictionary<string, object>
+            {
+                ["Prompt"] = ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? "",
+                ["AiAssistant"] = ctx.GetInput<string>("AiAssistant") ?? "claude",
+                ["ContainerId"] = ctx.GetVariable<string>("ContainerId") ?? ""
+            }),
+            Id = "audit-core"
         };
 
-        // --- Phase 2: Visual Audit Loop ---
-        var visualRunner = new AiAssistantActivity
+        var destroy = new DestroyContainerActivity
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Id = "phase2-visual-runner"
-        };
-
-        var visualCheck = new TriageActivity
-        {
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Id = "phase2-visual-check"
-        };
-
-        // --- Phase 3: Interaction + Scroll Loop ---
-        var interactionRunner = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Id = "phase3-interaction-runner"
-        };
-
-        var interactionCheck = new TriageActivity
-        {
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Id = "phase3-interaction-check"
-        };
-
-        // --- Phase 4: Opus Sweep ---
-        var opusSweep = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(1),
-            Id = "phase4-opus-sweep"
+            ContainerId = new Input<string>(ctx =>
+                ctx.GetVariable<string>("ContainerId")
+                ?? ctx.GetInput<string>("ContainerId")
+                ?? ""),
+            Id = "audit-destroy"
         };
 
         var flowchart = new Flowchart
         {
             Id = "website-audit-loop-flow",
-            Start = discoveryRunner,
-            Activities = { discoveryRunner, discoveryCheck, visualRunner, visualCheck, interactionRunner, interactionCheck, opusSweep },
+            Start = spawn,
+            Activities = { spawn, runAudit, destroy },
             Connections =
             {
-                // Phase 1: Discovery loop
-                new Connection(
-                    new Endpoint(discoveryRunner, "Done"),
-                    new Endpoint(discoveryCheck)),
-                new Connection(
-                    new Endpoint(discoveryRunner, "Failed"),
-                    new Endpoint(discoveryCheck)),
-                // Not done -> loop back
-                new Connection(
-                    new Endpoint(discoveryCheck, "Complex"),
-                    new Endpoint(discoveryRunner)),
-                // Done -> Phase 2
-                new Connection(
-                    new Endpoint(discoveryCheck, "Simple"),
-                    new Endpoint(visualRunner)),
-
-                // Phase 2: Visual audit loop
-                new Connection(
-                    new Endpoint(visualRunner, "Done"),
-                    new Endpoint(visualCheck)),
-                new Connection(
-                    new Endpoint(visualRunner, "Failed"),
-                    new Endpoint(visualCheck)),
-                // Not done -> loop back
-                new Connection(
-                    new Endpoint(visualCheck, "Complex"),
-                    new Endpoint(visualRunner)),
-                // Done -> Phase 3
-                new Connection(
-                    new Endpoint(visualCheck, "Simple"),
-                    new Endpoint(interactionRunner)),
-
-                // Phase 3: Interaction + scroll loop
-                new Connection(
-                    new Endpoint(interactionRunner, "Done"),
-                    new Endpoint(interactionCheck)),
-                new Connection(
-                    new Endpoint(interactionRunner, "Failed"),
-                    new Endpoint(interactionCheck)),
-                // Not done -> loop back
-                new Connection(
-                    new Endpoint(interactionCheck, "Complex"),
-                    new Endpoint(interactionRunner)),
-                // Done -> Phase 4
-                new Connection(
-                    new Endpoint(interactionCheck, "Simple"),
-                    new Endpoint(opusSweep)),
+                new Connection(new Endpoint(spawn, "Done"), new Endpoint(runAudit)),
+                new Connection(new Endpoint(spawn, "Failed"), new Endpoint(destroy)),
+                new Connection(new Endpoint(runAudit, "Done"), new Endpoint(destroy)),
             }
         };
 

@@ -1,80 +1,1002 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
   "definitionId": "PostExecutionPipelineWorkflow",
   "name": "Post-Execution Pipeline",
   "description": "Post-execution quality: audit, review, quality gates, E2E test, verify and repair",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
+  "variables": [
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": "claude"
+    },
+    {
+      "id": "modelVariable",
+      "name": "Model",
+      "typeName": "String",
+      "isArray": false,
+      "value": "auto"
+    },
+    {
+      "id": "modelPowerVariable",
+      "name": "ModelPower",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    },
+    {
+      "id": "workerOutputVariable",
+      "name": "WorkerOutput",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "failedGatesVariable",
+      "name": "FailedGates",
+      "typeName": "String",
+      "isArray": true,
+      "value": "[]"
+    },
+    {
+      "id": "gateResultsJsonVariable",
+      "name": "GateResultsJson",
+      "typeName": "String",
+      "isArray": false,
+      "value": "[]"
+    },
+    {
+      "id": "repairPromptVariable",
+      "name": "RepairPrompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "repairAttemptsVariable",
+      "name": "RepairAttempts",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "variables": [
-    { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "ContainerId", "typeName": "String", "value": "" },
-    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "auto" },
-    { "name": "WorkerOutput", "typeName": "String", "value": "" }
-  ],
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
   "root": {
-    "type": "Elsa.Flowchart",
     "id": "post-execution-pipeline-flow",
-    "start": "completeness-audit",
+    "nodeId": "Workflow1:post-execution-pipeline-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "PostExecutionPipelineWorkflow.cs:112"
+    },
+    "metadata": {},
     "activities": [
       {
-        "type": "MagicPAI.AiAssistantActivity",
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "completeness-audit",
-        "name": "Completeness Audit"
+        "nodeId": "Workflow1:post-execution-pipeline-flow:completeness-audit",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "review-agent",
-        "name": "Review Agent"
+        "nodeId": "Workflow1:post-execution-pipeline-flow:review-agent",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.TriageActivity",
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "classificationInstructions": null,
+        "complexity": null,
+        "category": null,
+        "recommendedModel": null,
+        "recommendedModelPower": null,
         "id": "review-check",
-        "name": "Review Check"
+        "nodeId": "Workflow1:post-execution-pipeline-flow:review-check",
+        "name": null,
+        "type": "MagicPAI.TriageActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.RunVerificationActivity",
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "gates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Literal",
+            "value": [
+              "compile",
+              "test",
+              "hallucination"
+            ]
+          }
+        },
+        "workerOutput": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "workerOutputVariable",
+              "name": "WorkerOutput",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "allPassed": null,
+        "failedGates": {
+          "typeName": "System.String[], System.Private.CoreLib",
+          "memoryReference": {
+            "id": "failedGatesVariable"
+          }
+        },
+        "gateResultsJson": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "gateResultsJsonVariable"
+          }
+        },
         "id": "quality-gates",
-        "name": "Quality Gates"
-      },
-      {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "e2e-test",
-        "name": "E2E Test"
-      },
-      {
+        "nodeId": "Workflow1:post-execution-pipeline-flow:quality-gates",
+        "name": null,
         "type": "MagicPAI.RunVerificationActivity",
-        "id": "final-verify",
-        "name": "Final Verify"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.RepairActivity",
-        "id": "post-repair",
-        "name": "Repair"
-      },
-      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "e2e-test",
+        "nodeId": "Workflow1:post-execution-pipeline-flow:e2e-test",
+        "name": null,
         "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "gates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Literal",
+            "value": [
+              "compile",
+              "test",
+              "hallucination"
+            ]
+          }
+        },
+        "workerOutput": null,
+        "allPassed": null,
+        "failedGates": {
+          "typeName": "System.String[], System.Private.CoreLib",
+          "memoryReference": {
+            "id": "failedGatesVariable"
+          }
+        },
+        "gateResultsJson": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "gateResultsJsonVariable"
+          }
+        },
+        "id": "final-verify",
+        "nodeId": "Workflow1:post-execution-pipeline-flow:final-verify",
+        "name": null,
+        "type": "MagicPAI.RunVerificationActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "failedGates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "failedGatesVariable",
+              "name": "FailedGates",
+              "typeName": "System.String[], System.Private.CoreLib",
+              "value": "[]"
+            }
+          }
+        },
+        "originalPrompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "gateResultsJson": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "gateResultsJsonVariable",
+              "name": "GateResultsJson",
+              "typeName": "String",
+              "value": "[]"
+            }
+          }
+        },
+        "repairPrompt": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "repairPromptVariable"
+          }
+        },
+        "id": "post-repair",
+        "nodeId": "Workflow1:post-execution-pipeline-flow:post-repair",
+        "name": null,
+        "type": "MagicPAI.RepairActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "repairPromptVariable",
+              "name": "RepairPrompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "modelVariable",
+              "name": "Model",
+              "typeName": "String",
+              "value": "auto"
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "modelPowerVariable",
+              "name": "ModelPower",
+              "typeName": "Int32",
+              "value": "0"
+            }
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "post-repair-agent",
-        "name": "Repair Agent"
+        "nodeId": "Workflow1:post-execution-pipeline-flow:post-repair-agent",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": "claude"
+      },
+      {
+        "id": "modelVariable",
+        "name": "Model",
+        "typeName": "String",
+        "value": "auto"
+      },
+      {
+        "id": "modelPowerVariable",
+        "name": "ModelPower",
+        "typeName": "Int32",
+        "value": "0"
+      },
+      {
+        "id": "workerOutputVariable",
+        "name": "WorkerOutput",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "failedGatesVariable",
+        "name": "FailedGates",
+        "typeName": "System.String[], System.Private.CoreLib",
+        "value": "[]"
+      },
+      {
+        "id": "gateResultsJsonVariable",
+        "name": "GateResultsJson",
+        "typeName": "String",
+        "value": "[]"
+      },
+      {
+        "id": "repairPromptVariable",
+        "name": "RepairPrompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "repairAttemptsVariable",
+        "name": "RepairAttempts",
+        "typeName": "Int32",
+        "value": "0"
       }
     ],
     "connections": [
-      { "source": { "activity": "completeness-audit", "port": "Done" }, "target": { "activity": "review-agent" } },
-      { "source": { "activity": "completeness-audit", "port": "Failed" }, "target": { "activity": "review-agent" } },
-      { "source": { "activity": "review-agent", "port": "Done" }, "target": { "activity": "review-check" } },
-      { "source": { "activity": "review-agent", "port": "Failed" }, "target": { "activity": "quality-gates" } },
-      { "source": { "activity": "review-check", "port": "Complex" }, "target": { "activity": "review-agent" } },
-      { "source": { "activity": "review-check", "port": "Simple" }, "target": { "activity": "quality-gates" } },
-      { "source": { "activity": "quality-gates", "port": "Passed" }, "target": { "activity": "e2e-test" } },
-      { "source": { "activity": "quality-gates", "port": "Inconclusive" }, "target": { "activity": "e2e-test" } },
-      { "source": { "activity": "quality-gates", "port": "Failed" }, "target": { "activity": "post-repair" } },
-      { "source": { "activity": "e2e-test", "port": "Done" }, "target": { "activity": "final-verify" } },
-      { "source": { "activity": "e2e-test", "port": "Failed" }, "target": { "activity": "final-verify" } },
-      { "source": { "activity": "final-verify", "port": "Failed" }, "target": { "activity": "post-repair" } },
-      { "source": { "activity": "post-repair", "port": "Done" }, "target": { "activity": "post-repair-agent" } },
-      { "source": { "activity": "post-repair-agent", "port": "Done" }, "target": { "activity": "final-verify" } },
-      { "source": { "activity": "post-repair-agent", "port": "Failed" }, "target": { "activity": "final-verify" } }
+      {
+        "source": {
+          "activity": "completeness-audit",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "review-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "completeness-audit",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "review-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "review-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "review-check"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "review-agent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "quality-gates"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "review-check",
+          "port": "Complex"
+        },
+        "target": {
+          "activity": "review-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "review-check",
+          "port": "Simple"
+        },
+        "target": {
+          "activity": "quality-gates"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "quality-gates",
+          "port": "Passed"
+        },
+        "target": {
+          "activity": "e2e-test"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "quality-gates",
+          "port": "Inconclusive"
+        },
+        "target": {
+          "activity": "e2e-test"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "quality-gates",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "post-repair"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "e2e-test",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "final-verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "e2e-test",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "final-verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "final-verify",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "post-repair"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "post-repair",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "post-repair-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "post-repair-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "final-verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "post-repair-agent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "final-verify"
+        },
+        "vertices": []
+      }
     ]
   }
 }

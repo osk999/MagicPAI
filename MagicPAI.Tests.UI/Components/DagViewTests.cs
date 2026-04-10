@@ -1,5 +1,6 @@
 using Bunit;
 using MagicPAI.Studio.Components;
+using MagicPAI.Studio.Models;
 
 namespace MagicPAI.Tests.UI.Components;
 
@@ -9,7 +10,7 @@ public class DagViewTests : TestContext
     public void NoActivities_ShowsEmptyState()
     {
         var cut = RenderComponent<DagView>(parameters => parameters
-            .Add(p => p.Activities, new List<(string, string)>()));
+            .Add(p => p.Activities, new List<ActivityStateDto>()));
 
         Assert.Contains("No activity data yet", cut.Markup);
         Assert.Empty(cut.FindAll(".dag-node"));
@@ -19,9 +20,9 @@ public class DagViewTests : TestContext
     public void RunningActivity_ShowsRunningIcon()
     {
         var cut = RenderComponent<DagView>(parameters => parameters
-            .Add(p => p.Activities, new List<(string, string)>
+            .Add(p => p.Activities, new List<ActivityStateDto>
             {
-                ("SpawnContainer", "running")
+                new() { Name = "SpawnContainer", Status = "running" }
             }));
 
         var node = cut.Find(".dag-node");
@@ -34,9 +35,9 @@ public class DagViewTests : TestContext
     public void CompletedActivity_ShowsCompletedIcon()
     {
         var cut = RenderComponent<DagView>(parameters => parameters
-            .Add(p => p.Activities, new List<(string, string)>
+            .Add(p => p.Activities, new List<ActivityStateDto>
             {
-                ("SpawnContainer", "completed")
+                new() { Name = "SpawnContainer", Status = "completed" }
             }));
 
         Assert.Contains("[+]", cut.Find(".dag-status-icon").TextContent);
@@ -46,9 +47,9 @@ public class DagViewTests : TestContext
     public void FailedActivity_ShowsFailedIcon()
     {
         var cut = RenderComponent<DagView>(parameters => parameters
-            .Add(p => p.Activities, new List<(string, string)>
+            .Add(p => p.Activities, new List<ActivityStateDto>
             {
-                ("RunCliAgent", "failed")
+                new() { Name = "RunCliAgent", Status = "failed" }
             }));
 
         Assert.Contains("[x]", cut.Find(".dag-status-icon").TextContent);
@@ -58,11 +59,11 @@ public class DagViewTests : TestContext
     public void MultipleActivities_RendersAll()
     {
         var cut = RenderComponent<DagView>(parameters => parameters
-            .Add(p => p.Activities, new List<(string, string)>
+            .Add(p => p.Activities, new List<ActivityStateDto>
             {
-                ("SpawnContainer", "completed"),
-                ("RunCliAgent", "running"),
-                ("RunVerification", "pending")
+                new() { Name = "SpawnContainer", Status = "completed" },
+                new() { Name = "RunCliAgent", Status = "running" },
+                new() { Name = "RunVerification", Status = "pending" }
             }));
 
         var nodes = cut.FindAll(".dag-node");

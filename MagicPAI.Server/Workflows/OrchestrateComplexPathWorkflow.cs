@@ -37,7 +37,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
         {
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Id = "architect-decompose"
+            Id = "architect"
         };
 
         // Step 2: Model router selects best model for the task
@@ -58,7 +58,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(selectedModel),
-            Id = "complex-worker"
+            Id = "complex-agent"
         };
 
         // Step 4: Verify results
@@ -88,7 +88,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             Prompt = new Input<string>(repairPrompt),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(selectedModel),
-            Id = "complex-repair-agent"
+            Id = "repair-agent"
         };
 
         // Step 7: Merge results

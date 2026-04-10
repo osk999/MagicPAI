@@ -55,7 +55,7 @@ public class DockerContainerManager : IContainerManager, IDisposable
         }
 
         string? guiUrl = config.EnableGui && config.GuiPort.HasValue
-            ? $"http://localhost:{config.GuiPort.Value}"
+            ? $"http://127.0.0.1:{config.GuiPort.Value}/vnc.html?autoconnect=1&resize=scale"
             : null;
 
         _guiUrls[containerId] = guiUrl;
@@ -317,6 +317,45 @@ public class DockerContainerManager : IContainerManager, IDisposable
     public string? GetGuiUrl(string containerId) =>
         _guiUrls.TryGetValue(containerId, out var url) ? url : null;
 
+    public async Task StreamLogsAsync(string containerId, Action<string> onLog, CancellationToken ct)
+    {
+        var psi = CreateDockerCliStartInfo();
+        psi.ArgumentList.Add("logs");
+        psi.ArgumentList.Add("--follow");
+        psi.ArgumentList.Add(containerId);
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+
+        using var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start docker logs process");
+
+        var stdoutTask = ReadLogLinesAsync(process.StandardOutput, onLog, ct);
+        var stderrTask = ReadLogLinesAsync(process.StandardError, onLog, ct);
+
+        try
+        {
+            await process.WaitForExitAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+            }
+
+            throw;
+        }
+        finally
+        {
+            await DrainStreamTaskAsync(stdoutTask);
+            await DrainStreamTaskAsync(stderrTask);
+        }
+    }
+
     /// <summary>
     /// Build container env vars, auto-injecting host API keys for CLI agents.
     /// </summary>
@@ -482,6 +521,28 @@ public class DockerContainerManager : IContainerManager, IDisposable
         }
     }
 
+    private static async Task ReadLogLinesAsync(StreamReader reader, Action<string> onLog,
+        CancellationToken ct)
+    {
+        try
+        {
+            while (true)
+            {
+                var line = await reader.ReadLineAsync(ct);
+                if (line is null)
+                    break;
+
+                onLog(line);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
     private static async Task DrainStreamTaskAsync(Task task)
     {
         try
@@ -555,7 +616,7 @@ public class DockerContainerManager : IContainerManager, IDisposable
         if (config.EnableGui && config.GuiPort.HasValue)
         {
             psi.ArgumentList.Add("-p");
-            psi.ArgumentList.Add($"{config.GuiPort.Value}:7900");
+            psi.ArgumentList.Add($"127.0.0.1:{config.GuiPort.Value}:7900");
         }
 
         psi.ArgumentList.Add(config.Image);

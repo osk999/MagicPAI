@@ -1,24 +1,188 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
   "definitionId": "TestSetPromptWorkflow",
   "name": "Test Set Prompt",
   "description": "Minimal test workflow for verifying prompt enhancement",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
+  "variables": [
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": "claude"
+    },
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "variables": [
-    { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "ContainerId", "typeName": "String", "value": "" }
-  ],
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
   "root": {
-    "type": "Elsa.Flowchart",
     "id": "test-set-prompt-flow",
-    "start": "test-prompt-agent",
+    "nodeId": "Workflow1:test-set-prompt-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "TestSetPromptWorkflow.cs:34"
+    },
+    "metadata": {},
     "activities": [
       {
-        "type": "MagicPAI.AiAssistantActivity",
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "test-prompt-agent",
-        "name": "Test Prompt Agent"
+        "nodeId": "Workflow1:test-set-prompt-flow:test-prompt-agent",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": "claude"
+      },
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
       }
     ],
     "connections": []

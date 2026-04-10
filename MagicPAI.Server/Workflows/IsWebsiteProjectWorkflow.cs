@@ -22,7 +22,7 @@ public class IsWebsiteProjectWorkflow : WorkflowBase
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
 
-        var classify = new TriageActivity
+        var classify = new WebsiteTaskClassifierActivity
         {
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),

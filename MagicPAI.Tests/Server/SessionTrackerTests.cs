@@ -104,6 +104,30 @@ public class SessionTrackerTests
         Assert.Null(_tracker.GetSession("s1")!.ContainerId);
     }
 
+    [Fact]
+    public void UpdateContainer_ClearingContainer_PreservesLastGuiUrl()
+    {
+        _tracker.RegisterSession("s1", new SessionInfo { Id = "s1", ContainerId = "ctr-abc", GuiUrl = "http://localhost:6080" });
+
+        _tracker.UpdateContainer("s1", null);
+
+        var session = _tracker.GetSession("s1")!;
+        Assert.Null(session.ContainerId);
+        Assert.Equal("http://localhost:6080", session.GuiUrl);
+    }
+
+    [Fact]
+    public void UpdateContainer_PersistsGuiUrl()
+    {
+        _tracker.RegisterSession("s1", new SessionInfo { Id = "s1" });
+
+        _tracker.UpdateContainer("s1", "ctr-abc", "http://localhost:6080");
+
+        var session = _tracker.GetSession("s1")!;
+        Assert.Equal("ctr-abc", session.ContainerId);
+        Assert.Equal("http://localhost:6080", session.GuiUrl);
+    }
+
     // --- AppendOutput / GetOutput ---
 
     [Fact]
@@ -140,6 +164,20 @@ public class SessionTrackerTests
 
         var output = _tracker.GetOutput("unregistered");
         Assert.Equal(["text"], output);
+        Assert.NotNull(_tracker.GetSession("unregistered")!.LastOutputAt);
+    }
+
+    [Fact]
+    public void AppendContainerLog_StoresLogLine_AndUpdatesTimestamp()
+    {
+        _tracker.RegisterSession("s1", new SessionInfo { Id = "s1" });
+
+        _tracker.AppendContainerLog("s1", "worker booting");
+
+        var session = _tracker.GetSession("s1")!;
+        var output = _tracker.GetOutput("s1");
+        Assert.NotNull(session.LastContainerLogAt);
+        Assert.Contains(output, x => x.Contains("[container] worker booting", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -162,6 +200,51 @@ public class SessionTrackerTests
         Assert.Single(activities);
         Assert.Equal("RunCliAgent", activities[0].Name);
         Assert.Equal("running", activities[0].Status);
+        Assert.Equal("RunCliAgent", _tracker.GetSession("s1")!.LastActivityName);
+        Assert.NotNull(_tracker.GetSession("s1")!.LastActivityAt);
+    }
+
+    [Fact]
+    public void AppendInsight_StoresInsightAndUpdatesTimestamp()
+    {
+        _tracker.RegisterSession("s1", new SessionInfo { Id = "s1" });
+        var insight = new TaskInsightEvent(
+            "s1",
+            Kind: "classifier",
+            Title: "Classifier Verdict",
+            Summary: "Complexity 8",
+            Verdict: "Complex",
+            BeforeText: null,
+            AfterText: null,
+            RawPayload: "{}",
+            TimestampUtc: DateTime.UtcNow);
+
+        _tracker.AppendInsight("s1", insight);
+
+        var insights = _tracker.GetInsights("s1");
+        Assert.Single(insights);
+        Assert.Equal("Complex", insights[0].Verdict);
+        Assert.NotNull(_tracker.GetSession("s1")!.LastUpdatedAt);
+    }
+
+    [Fact]
+    public void UpdateCost_PreservesSessionMetadata()
+    {
+        _tracker.RegisterSession("s1", new SessionInfo
+        {
+            Id = "s1",
+            State = "running",
+            Agent = "claude",
+            WorkflowId = "full-orchestrate"
+        });
+
+        _tracker.UpdateCost("s1", 1.25m);
+
+        var session = _tracker.GetSession("s1")!;
+        Assert.Equal(1.25m, session.TotalCostUsd);
+        Assert.Equal("claude", session.Agent);
+        Assert.Equal("full-orchestrate", session.WorkflowId);
+        Assert.NotNull(session.LastUpdatedAt);
     }
 
     [Fact]

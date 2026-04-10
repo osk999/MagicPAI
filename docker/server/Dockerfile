@@ -3,16 +3,19 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy solution and project files for restore
+COPY MagicPAI.Shared/MagicPAI.Shared.csproj MagicPAI.Shared/
 COPY MagicPAI.Core/MagicPAI.Core.csproj MagicPAI.Core/
 COPY MagicPAI.Activities/MagicPAI.Activities.csproj MagicPAI.Activities/
 COPY MagicPAI.Server/MagicPAI.Server.csproj MagicPAI.Server/
+COPY MagicPAI.Server/Directory.Build.props MagicPAI.Server/
 COPY MagicPAI.Studio/MagicPAI.Studio.csproj MagicPAI.Studio/
+COPY MagicPAI.Studio/Directory.Build.props MagicPAI.Studio/
 RUN dotnet restore MagicPAI.Server/MagicPAI.Server.csproj
 
 # Copy everything and publish
 COPY . .
 RUN dotnet publish MagicPAI.Server/MagicPAI.Server.csproj \
-    -c Release -o /app --no-restore
+    -c Release -o /app
 
 # Runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0

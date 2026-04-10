@@ -29,6 +29,7 @@ public class FullOrchestrateWorkflowTests
         [typeof(StandardOrchestrateWorkflow)],
         [typeof(TestSetPromptWorkflow)],
         [typeof(ClawEvalAgentWorkflow)],
+        [typeof(WebsiteAuditCoreWorkflow)],
     ];
 
     [Theory]
@@ -71,7 +72,7 @@ public class FullOrchestrateWorkflowTests
     }
 
     [Fact]
-    public void AllWorkflows_Count_Is_17()
+    public void AllWorkflows_Count_Is_18()
     {
         // Ensure we haven't missed any workflow types
         var workflowTypes = typeof(FullOrchestrateWorkflow).Assembly
@@ -79,7 +80,7 @@ public class FullOrchestrateWorkflowTests
             .Where(t => t.IsClass && !t.IsAbstract && typeof(WorkflowBase).IsAssignableFrom(t))
             .ToList();
 
-        Assert.Equal(17, workflowTypes.Count);
+        Assert.Equal(18, workflowTypes.Count);
     }
 
     [Fact]

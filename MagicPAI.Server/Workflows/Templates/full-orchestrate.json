@@ -1,94 +1,446 @@
 {
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
   "definitionId": "FullOrchestrateWorkflow",
   "name": "Full Orchestrate",
-  "description": "Complete AI orchestration: triage, agent execution, verification, and repair",
+  "description": "Complete AI orchestration: website routing, triage, child workflow execution, and cleanup",
+  "createdAt": "0001-01-01T00:00:00+00:00",
   "version": 1,
+  "variables": [
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "modelVariable",
+      "name": "Model",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "modelPowerVariable",
+      "name": "ModelPower",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    },
+    {
+      "id": "recommendedModelVariable",
+      "name": "RecommendedModel",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "variables": [
-    { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "WorkspacePath", "typeName": "String", "value": "/workspace" },
-    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "auto" },
-    { "name": "ContainerId", "typeName": "String", "value": "" }
-  ],
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
   "root": {
-    "type": "Elsa.Flowchart",
     "id": "full-orchestrate-flow",
-    "start": "spawn-container",
+    "nodeId": "Workflow1:full-orchestrate-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "FullOrchestrateWorkflow.json"
+    },
+    "metadata": {},
     "activities": [
       {
-        "type": "MagicPAI.SpawnContainerActivity",
+        "image": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "magicpai-env:latest"
+          }
+        },
+        "workspacePath": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "memoryLimitMb": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 4096
+          }
+        },
+        "enableGui": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
+        "envVars": null,
+        "containerId": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "containerIdVariable"
+          }
+        },
+        "guiUrl": null,
         "id": "spawn-container",
-        "name": "Spawn Container"
+        "nodeId": "Workflow1:full-orchestrate-flow:spawn-container",
+        "name": null,
+        "type": "MagicPAI.SpawnContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.TriageActivity",
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "isWebsiteTask": null,
+        "confidence": null,
+        "rationale": null,
+        "id": "website-classifier",
+        "nodeId": "Workflow1:full-orchestrate-flow:website-classifier",
+        "name": null,
+        "type": "MagicPAI.WebsiteTaskClassifierActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "classificationInstructions": null,
+        "complexity": null,
+        "category": null,
+        "recommendedModel": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "recommendedModelVariable"
+          }
+        },
+        "recommendedModelPower": {
+          "typeName": "Int32",
+          "memoryReference": {
+            "id": "modelPowerVariable"
+          }
+        },
         "id": "triage",
-        "name": "Triage"
+        "nodeId": "Workflow1:full-orchestrate-flow:triage",
+        "name": null,
+        "type": "MagicPAI.TriageActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "simple-agent",
-        "name": "Simple Agent"
+        "workflowDefinitionId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "WebsiteAuditCoreWorkflow"
+          }
+        },
+        "waitForCompletion": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
+        "input": {
+          "typeName": "Object",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var assistant = getVariable('AiAssistant') || ''; var requestedModel = getVariable('Model') || ''; var resolvedModel = (!requestedModel || requestedModel.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || getVariable('Model') || '') : requestedModel; return { Prompt: getVariable('Prompt') || '', AiAssistant: assistant, Agent: assistant, Model: resolvedModel, ModelPower: getVariable('ModelPower') || 0, ContainerId: getVariable('ContainerId') || '', EnableGui: true };"
+          }
+        },
+        "id": "website-audit",
+        "nodeId": "Workflow1:full-orchestrate-flow:website-audit",
+        "name": null,
+        "type": "Elsa.ExecuteWorkflow",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.RunVerificationActivity",
-        "id": "simple-verify",
-        "name": "Verify (Simple)"
+        "workflowDefinitionId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "OrchestrateSimplePathWorkflow"
+          }
+        },
+        "waitForCompletion": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
+        "input": {
+          "typeName": "Object",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var assistant = getVariable('AiAssistant') || ''; var requestedModel = getVariable('Model') || ''; var resolvedModel = (!requestedModel || requestedModel.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || getVariable('Model') || '') : requestedModel; return { Prompt: getVariable('Prompt') || '', AiAssistant: assistant, Agent: assistant, Model: resolvedModel, ModelPower: getVariable('ModelPower') || 0, ContainerId: getVariable('ContainerId') || '', EnableGui: true };"
+          }
+        },
+        "id": "simple-path",
+        "nodeId": "Workflow1:full-orchestrate-flow:simple-path",
+        "name": null,
+        "type": "Elsa.ExecuteWorkflow",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.ArchitectActivity",
-        "id": "architect",
-        "name": "Architect"
+        "workflowDefinitionId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "OrchestrateComplexPathWorkflow"
+          }
+        },
+        "waitForCompletion": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
+        "input": {
+          "typeName": "Object",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var assistant = getVariable('AiAssistant') || ''; var requestedModel = getVariable('Model') || ''; var resolvedModel = (!requestedModel || requestedModel.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || getVariable('Model') || '') : requestedModel; return { Prompt: getVariable('Prompt') || '', AiAssistant: assistant, Agent: assistant, Model: resolvedModel, ModelPower: getVariable('ModelPower') || 0, ContainerId: getVariable('ContainerId') || '', EnableGui: true };"
+          }
+        },
+        "id": "complex-path",
+        "nodeId": "Workflow1:full-orchestrate-flow:complex-path",
+        "name": null,
+        "type": "Elsa.ExecuteWorkflow",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "complex-agent",
-        "name": "Complex Agent"
-      },
-      {
-        "type": "MagicPAI.RunVerificationActivity",
-        "id": "complex-verify",
-        "name": "Verify (Complex)"
-      },
-      {
-        "type": "MagicPAI.RepairActivity",
-        "id": "repair",
-        "name": "Repair"
-      },
-      {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "repair-agent",
-        "name": "Repair Agent"
-      },
-      {
-        "type": "MagicPAI.DestroyContainerActivity",
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
         "id": "destroy-container",
-        "name": "Destroy Container"
+        "nodeId": "Workflow1:full-orchestrate-flow:destroy-container",
+        "name": null,
+        "type": "MagicPAI.DestroyContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "modelVariable",
+        "name": "Model",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "modelPowerVariable",
+        "name": "ModelPower",
+        "typeName": "Int32",
+        "value": "0"
+      },
+      {
+        "id": "recommendedModelVariable",
+        "name": "RecommendedModel",
+        "typeName": "String",
+        "value": ""
       }
     ],
     "connections": [
-      { "source": { "activity": "spawn-container", "port": "Done" }, "target": { "activity": "triage" } },
-      { "source": { "activity": "spawn-container", "port": "Failed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "triage", "port": "Simple" }, "target": { "activity": "simple-agent" } },
-      { "source": { "activity": "triage", "port": "Complex" }, "target": { "activity": "architect" } },
-      { "source": { "activity": "simple-agent", "port": "Done" }, "target": { "activity": "simple-verify" } },
-      { "source": { "activity": "simple-agent", "port": "Failed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "simple-verify", "port": "Passed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "simple-verify", "port": "Failed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "simple-verify", "port": "Inconclusive" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "architect", "port": "Done" }, "target": { "activity": "complex-agent" } },
-      { "source": { "activity": "architect", "port": "Failed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "complex-agent", "port": "Done" }, "target": { "activity": "complex-verify" } },
-      { "source": { "activity": "complex-agent", "port": "Failed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "complex-verify", "port": "Passed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "complex-verify", "port": "Inconclusive" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "complex-verify", "port": "Failed" }, "target": { "activity": "repair" } },
-      { "source": { "activity": "repair", "port": "Done" }, "target": { "activity": "repair-agent" } },
-      { "source": { "activity": "repair-agent", "port": "Done" }, "target": { "activity": "complex-verify" } },
-      { "source": { "activity": "repair-agent", "port": "Failed" }, "target": { "activity": "destroy-container" } }
+      {
+        "source": {
+          "activity": "spawn-container",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "website-classifier"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "spawn-container",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "website-classifier",
+          "port": "Website"
+        },
+        "target": {
+          "activity": "website-audit"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "website-classifier",
+          "port": "NonWebsite"
+        },
+        "target": {
+          "activity": "triage"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "triage",
+          "port": "Simple"
+        },
+        "target": {
+          "activity": "simple-path"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "triage",
+          "port": "Complex"
+        },
+        "target": {
+          "activity": "complex-path"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "website-audit",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "simple-path",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "complex-path",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      }
     ]
   }
 }

@@ -1,69 +1,842 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
   "definitionId": "OrchestrateComplexPathWorkflow",
   "name": "Orchestrate Complex Path",
   "description": "Multi-agent decomposition: architect, model routing, parallel workers, verify and repair",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
+  "variables": [
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": "claude"
+    },
+    {
+      "id": "modelVariable",
+      "name": "Model",
+      "typeName": "String",
+      "isArray": false,
+      "value": "auto"
+    },
+    {
+      "id": "modelPowerVariable",
+      "name": "ModelPower",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    },
+    {
+      "id": "selectedAgentVariable",
+      "name": "SelectedAgent",
+      "typeName": "String",
+      "isArray": false,
+      "value": "claude"
+    },
+    {
+      "id": "selectedModelVariable",
+      "name": "SelectedModel",
+      "typeName": "String",
+      "isArray": false,
+      "value": "sonnet"
+    },
+    {
+      "id": "failedGatesVariable",
+      "name": "FailedGates",
+      "typeName": "String",
+      "isArray": true,
+      "value": "[]"
+    },
+    {
+      "id": "gateResultsJsonVariable",
+      "name": "GateResultsJson",
+      "typeName": "String",
+      "isArray": false,
+      "value": "[]"
+    },
+    {
+      "id": "repairPromptVariable",
+      "name": "RepairPrompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "repairAttemptsVariable",
+      "name": "RepairAttempts",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "variables": [
-    { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "ContainerId", "typeName": "String", "value": "" },
-    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "auto" }
-  ],
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
   "root": {
-    "type": "Elsa.Flowchart",
     "id": "orchestrate-complex-path-flow",
-    "start": "architect-decompose",
+    "nodeId": "Workflow1:orchestrate-complex-path-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "OrchestrateComplexPathWorkflow.cs:104"
+    },
+    "metadata": {},
     "activities": [
       {
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "gapContext": null,
+        "taskListJson": null,
+        "taskCount": null,
+        "id": "architect",
+        "nodeId": "Workflow1:orchestrate-complex-path-flow:architect",
+        "name": null,
         "type": "MagicPAI.ArchitectActivity",
-        "id": "architect-decompose",
-        "name": "Architect Decompose"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.ModelRouterActivity",
+        "taskCategory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "code_gen"
+          }
+        },
+        "complexity": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 8
+          }
+        },
+        "preferredAgent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "selectedAgent": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "selectedAgentVariable"
+          }
+        },
+        "selectedModel": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "selectedModelVariable"
+          }
+        },
         "id": "model-router",
-        "name": "Model Router"
+        "nodeId": "Workflow1:orchestrate-complex-path-flow:model-router",
+        "name": null,
+        "type": "MagicPAI.ModelRouterActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "selectedAgentVariable",
+              "name": "SelectedAgent",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "selectedModelVariable",
+              "name": "SelectedModel",
+              "typeName": "String",
+              "value": "sonnet"
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 0
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "complex-agent",
+        "nodeId": "Workflow1:orchestrate-complex-path-flow:complex-agent",
+        "name": null,
         "type": "MagicPAI.AiAssistantActivity",
-        "id": "complex-worker",
-        "name": "Complex Worker"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.RunVerificationActivity",
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "gates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Literal",
+            "value": [
+              "compile",
+              "test",
+              "hallucination"
+            ]
+          }
+        },
+        "workerOutput": null,
+        "allPassed": null,
+        "failedGates": {
+          "typeName": "System.String[], System.Private.CoreLib",
+          "memoryReference": {
+            "id": "failedGatesVariable"
+          }
+        },
+        "gateResultsJson": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "gateResultsJsonVariable"
+          }
+        },
         "id": "complex-verify",
-        "name": "Verify"
+        "nodeId": "Workflow1:orchestrate-complex-path-flow:complex-verify",
+        "name": null,
+        "type": "MagicPAI.RunVerificationActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.RepairActivity",
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "failedGates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "failedGatesVariable",
+              "name": "FailedGates",
+              "typeName": "System.String[], System.Private.CoreLib",
+              "value": "[]"
+            }
+          }
+        },
+        "originalPrompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "gateResultsJson": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "gateResultsJsonVariable",
+              "name": "GateResultsJson",
+              "typeName": "String",
+              "value": "[]"
+            }
+          }
+        },
+        "repairPrompt": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "repairPromptVariable"
+          }
+        },
         "id": "complex-repair",
-        "name": "Repair"
+        "nodeId": "Workflow1:orchestrate-complex-path-flow:complex-repair",
+        "name": null,
+        "type": "MagicPAI.RepairActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "selectedAgentVariable",
+              "name": "SelectedAgent",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "repairPromptVariable",
+              "name": "RepairPrompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "selectedModelVariable",
+              "name": "SelectedModel",
+              "typeName": "String",
+              "value": "sonnet"
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 0
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "repair-agent",
+        "nodeId": "Workflow1:orchestrate-complex-path-flow:repair-agent",
+        "name": null,
         "type": "MagicPAI.AiAssistantActivity",
-        "id": "complex-repair-agent",
-        "name": "Repair Agent"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "merge-results",
-        "name": "Merge Results"
+        "nodeId": "Workflow1:orchestrate-complex-path-flow:merge-results",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": "claude"
+      },
+      {
+        "id": "modelVariable",
+        "name": "Model",
+        "typeName": "String",
+        "value": "auto"
+      },
+      {
+        "id": "modelPowerVariable",
+        "name": "ModelPower",
+        "typeName": "Int32",
+        "value": "0"
+      },
+      {
+        "id": "selectedAgentVariable",
+        "name": "SelectedAgent",
+        "typeName": "String",
+        "value": "claude"
+      },
+      {
+        "id": "selectedModelVariable",
+        "name": "SelectedModel",
+        "typeName": "String",
+        "value": "sonnet"
+      },
+      {
+        "id": "failedGatesVariable",
+        "name": "FailedGates",
+        "typeName": "System.String[], System.Private.CoreLib",
+        "value": "[]"
+      },
+      {
+        "id": "gateResultsJsonVariable",
+        "name": "GateResultsJson",
+        "typeName": "String",
+        "value": "[]"
+      },
+      {
+        "id": "repairPromptVariable",
+        "name": "RepairPrompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "repairAttemptsVariable",
+        "name": "RepairAttempts",
+        "typeName": "Int32",
+        "value": "0"
       }
     ],
     "connections": [
-      { "source": { "activity": "architect-decompose", "port": "Done" }, "target": { "activity": "model-router" } },
-      { "source": { "activity": "model-router", "port": "Done" }, "target": { "activity": "complex-worker" } },
-      { "source": { "activity": "complex-worker", "port": "Done" }, "target": { "activity": "complex-verify" } },
-      { "source": { "activity": "complex-worker", "port": "Failed" }, "target": { "activity": "merge-results" } },
-      { "source": { "activity": "complex-verify", "port": "Passed" }, "target": { "activity": "merge-results" } },
-      { "source": { "activity": "complex-verify", "port": "Inconclusive" }, "target": { "activity": "merge-results" } },
-      { "source": { "activity": "complex-verify", "port": "Failed" }, "target": { "activity": "complex-repair" } },
-      { "source": { "activity": "complex-repair", "port": "Done" }, "target": { "activity": "complex-repair-agent" } },
-      { "source": { "activity": "complex-repair-agent", "port": "Done" }, "target": { "activity": "complex-verify" } },
-      { "source": { "activity": "complex-repair-agent", "port": "Failed" }, "target": { "activity": "merge-results" } }
+      {
+        "source": {
+          "activity": "architect",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "model-router"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "model-router",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "complex-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "complex-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "complex-verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "complex-agent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "merge-results"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "complex-verify",
+          "port": "Passed"
+        },
+        "target": {
+          "activity": "merge-results"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "complex-verify",
+          "port": "Inconclusive"
+        },
+        "target": {
+          "activity": "merge-results"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "complex-verify",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "complex-repair"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "complex-repair",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "repair-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "complex-repair",
+          "port": "Exceeded"
+        },
+        "target": {
+          "activity": "merge-results"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "repair-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "complex-verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "repair-agent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "merge-results"
+        },
+        "vertices": []
+      }
     ]
   }
 }

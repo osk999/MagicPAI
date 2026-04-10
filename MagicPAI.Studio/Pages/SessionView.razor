@@ -17,6 +17,21 @@
     <!-- Sidebar: Status + Verification -->
     <div class="session-sidebar">
         <h3>Status: <span class="status-badge @state">@state</span></h3>
+        <p class="session-liveness">@GetLivenessSummary()</p>
+
+        @if (lastActivityAt is not null || lastOutputAt is not null)
+        {
+            <div class="session-meta">
+                @if (lastActivityAt is not null)
+                {
+                    <div>Last activity: @(lastActivityName ?? "workflow") at @lastActivityAt.Value.ToLocalTime().ToString("HH:mm:ss")</div>
+                }
+                @if (lastOutputAt is not null)
+                {
+                    <div>Last output: @lastOutputAt.Value.ToLocalTime().ToString("HH:mm:ss")</div>
+                }
+            </div>
+        }
 
         <CostTracker SessionId="@SessionId" />
 
@@ -31,6 +46,38 @@
         }
 
         <DagView Activities="@activities" />
+
+        @if (insights.Count > 0)
+        {
+            <div class="workflow-insights">
+                <h4>Workflow Insights</h4>
+                @foreach (var insight in insights.OrderByDescending(x => x.TimestampUtc))
+                {
+                    <div class="card">
+                        <strong>@insight.Title</strong>
+                        <div>@insight.Summary</div>
+                        @if (!string.IsNullOrWhiteSpace(insight.Verdict))
+                        {
+                            <div>Verdict: @insight.Verdict</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(insight.BeforeText))
+                        {
+                            <details>
+                                <summary>Before</summary>
+                                <pre>@insight.BeforeText</pre>
+                            </details>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(insight.AfterText))
+                        {
+                            <details>
+                                <summary>After</summary>
+                                <pre>@insight.AfterText</pre>
+                            </details>
+                        }
+                    </div>
+                }
+            </div>
+        }
 
         @if (!string.IsNullOrEmpty(workflowId))
         {
@@ -66,10 +113,16 @@
     private string? workflowId;
     private string? errorMessage;
     private VerificationUpdateEvent? verificationUpdate;
-    private List<(string Name, string Status)> activities = new();
+    private List<ActivityStateDto> activities = new();
+    private List<TaskInsightEvent> insights = new();
     private string initialOutput = "";
     private bool joinedSession;
     private string lastOutputText = "";
+    private DateTime? lastActivityAt;
+    private string? lastActivityName;
+    private DateTime? lastOutputAt;
+    private DateTime? lastContainerLogAt;
+    private DateTime? lastUpdatedAt;
     private CancellationTokenSource? pollingCts;
 
     protected override async Task OnInitializedAsync()
@@ -79,6 +132,8 @@
         Hub.OnVerificationUpdate += OnVerification;
         Hub.OnWorkflowProgress += OnProgress;
         Hub.OnContainerSpawned += OnContainer;
+        Hub.OnContainerLog += OnContainerLog;
+        Hub.OnTaskInsight += OnTaskInsight;
         Hub.OnError += OnError;
 
         try
@@ -109,6 +164,8 @@
         if (e.SessionId != SessionId) return;
         lastOutputText += e.Text;
         initialOutput = lastOutputText;
+        lastOutputAt = DateTime.UtcNow;
+        lastUpdatedAt = lastOutputAt;
         outputPanel?.AppendText(e.Text);
         InvokeAsync(StateHasChanged);
     }
@@ -134,9 +191,12 @@
         if (e.SessionId != SessionId) return;
         var existing = activities.FindIndex(a => a.Name == e.ActivityName);
         if (existing >= 0)
-            activities[existing] = (e.ActivityName, e.Status);
+            activities[existing] = new ActivityStateDto { Name = e.ActivityName, Status = e.Status };
         else
-            activities.Add((e.ActivityName, e.Status));
+            activities.Add(new ActivityStateDto { Name = e.ActivityName, Status = e.Status });
+        lastActivityName = e.ActivityName;
+        lastActivityAt = DateTime.UtcNow;
+        lastUpdatedAt = lastActivityAt;
         InvokeAsync(StateHasChanged);
     }
 
@@ -145,6 +205,29 @@
         if (e.SessionId != SessionId) return;
         containerId = e.ContainerId;
         guiUrl = e.GuiUrl;
+        lastUpdatedAt = DateTime.UtcNow;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnTaskInsight(TaskInsightEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+
+        var existing = insights.FindIndex(x =>
+            x.Kind == e.Kind &&
+            x.Title == e.Title &&
+            x.TimestampUtc == e.TimestampUtc);
+        if (existing < 0)
+            insights.Add(e);
+        lastUpdatedAt = e.TimestampUtc;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnContainerLog(ContainerLogEvent e)
+    {
+        if (e.SessionId != SessionId) return;
+        lastContainerLogAt = e.TimestampUtc;
+        lastUpdatedAt = e.TimestampUtc;
         InvokeAsync(StateHasChanged);
     }
 
@@ -164,6 +247,7 @@
         var session = await Api.GetSessionAsync(SessionId);
         var output = await Api.GetOutputAsync(SessionId);
         var trackedActivities = await Api.GetActivitiesAsync(SessionId);
+        var trackedInsights = await Api.GetInsightsAsync(SessionId);
 
         await InvokeAsync(() =>
         {
@@ -171,15 +255,39 @@
             {
                 state = session.State;
                 containerId = session.ContainerId ?? "";
+                guiUrl = session.GuiUrl;
                 workflowId = session.WorkflowId;
+                lastActivityAt = session.LastActivityAt;
+                lastActivityName = session.LastActivityName;
+                lastOutputAt = session.LastOutputAt;
+                lastContainerLogAt = session.LastContainerLogAt;
+                lastUpdatedAt = session.LastUpdatedAt;
             }
 
             ApplyOutput(output);
-            activities = trackedActivities
-                .Select(x => (x.Name, x.Status))
-                .ToList();
+            activities = trackedActivities;
+            insights = trackedInsights;
             StateHasChanged();
         });
+    }
+
+    private string GetLivenessSummary()
+    {
+        if (!string.Equals(state, "running", StringComparison.OrdinalIgnoreCase))
+            return $"Session is {state}.";
+
+        var lastSignal = new[] { lastOutputAt, lastActivityAt, lastContainerLogAt, lastUpdatedAt }
+            .Where(x => x.HasValue)
+            .Select(x => x!.Value)
+            .DefaultIfEmpty(DateTime.UtcNow)
+            .Max();
+        var silence = DateTime.UtcNow - lastSignal;
+
+        if (silence < TimeSpan.FromSeconds(5))
+            return "Receiving recent workflow activity.";
+        if (silence < TimeSpan.FromSeconds(30))
+            return $"No new signal for {(int)silence.TotalSeconds}s. Monitoring for progress.";
+        return $"Possibly stuck: no workflow signal for {(int)silence.TotalSeconds}s.";
     }
 
     private void ApplyOutput(string[] chunks)
@@ -234,6 +342,8 @@
         Hub.OnVerificationUpdate -= OnVerification;
         Hub.OnWorkflowProgress -= OnProgress;
         Hub.OnContainerSpawned -= OnContainer;
+        Hub.OnContainerLog -= OnContainerLog;
+        Hub.OnTaskInsight -= OnTaskInsight;
         Hub.OnError -= OnError;
         pollingCts?.Cancel();
         pollingCts?.Dispose();

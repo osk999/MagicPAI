@@ -8,6 +8,7 @@ using Elsa.Workflows.Runtime.Requests;
 using MagicPAI.Core.Models;
 using MagicPAI.Core.Services;
 using MagicPAI.Server.Bridge;
+using MagicPAI.Server.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -25,6 +26,7 @@ public class SessionHub : Hub
     private readonly IWorkflowDefinitionService _workflowDefinitionService;
     private readonly IWorkflowCancellationDispatcher _cancellationDispatcher;
     private readonly SessionTracker _tracker;
+    private readonly SessionLaunchPlanner _launchPlanner;
     private readonly ILogger<SessionHub> _logger;
 
     // Map connectionId -> sessionIds for cleanup on disconnect
@@ -35,12 +37,14 @@ public class SessionHub : Hub
         IWorkflowDefinitionService workflowDefinitionService,
         IWorkflowCancellationDispatcher cancellationDispatcher,
         SessionTracker tracker,
+        SessionLaunchPlanner launchPlanner,
         ILogger<SessionHub> logger)
     {
         _dispatcher = dispatcher;
         _workflowDefinitionService = workflowDefinitionService;
         _cancellationDispatcher = cancellationDispatcher;
         _tracker = tracker;
+        _launchPlanner = launchPlanner;
         _logger = logger;
     }
 
@@ -58,46 +62,43 @@ public class SessionHub : Hub
         string structuredOutputSchema = "",
         string workflowName = "full-orchestrate")
     {
-        var resolvedAssistant = AiAssistantResolver.NormalizeAssistant(
-            string.IsNullOrWhiteSpace(aiAssistant) ? agent : aiAssistant,
-            "claude");
         var addedToGroup = false;
         string? instanceId = null;
 
         try
         {
-            var definitionId = WorkflowPublisher.ResolveDefinitionId(workflowName);
-            instanceId = Guid.NewGuid().ToString("N");
-            var input = BuildWorkflowInput(
+            var launch = _launchPlanner.Plan(
                 prompt,
                 workspacePath,
-                resolvedAssistant,
+                aiAssistant,
+                agent,
                 model,
                 modelPower,
-                structuredOutputSchema);
-            var correlationId = Guid.NewGuid().ToString("N");
-            var definitionVersionId = await ResolveDefinitionVersionIdAsync(definitionId, CancellationToken.None);
-            var dispatchRequest = new DispatchWorkflowDefinitionRequest
-            {
-                DefinitionVersionId = definitionVersionId,
-                InstanceId = instanceId,
-                CorrelationId = correlationId,
-                Input = input
-            };
-            var dispatchResponse = await _dispatcher.DispatchAsync(dispatchRequest, CancellationToken.None);
-            dispatchResponse.ThrowIfFailed();
-
+                structuredOutputSchema,
+                workflowName);
+            instanceId = Guid.NewGuid().ToString("N");
             var sessionInfo = new SessionInfo
             {
                 Id = instanceId,
-                WorkflowId = workflowName,
+                WorkflowId = launch.RequestedWorkflowName,
                 State = "running",
-                Agent = resolvedAssistant,
+                Agent = launch.ResolvedAssistant,
                 PromptPreview = prompt.Length > 100 ? prompt[..100] + "..." : prompt,
                 CreatedAt = DateTime.UtcNow
             };
 
             _tracker.RegisterSession(instanceId, sessionInfo);
+            var correlationId = Guid.NewGuid().ToString("N");
+            var definitionVersionId = await ResolveDefinitionVersionIdAsync(launch.DefinitionId, CancellationToken.None);
+            var dispatchRequest = new DispatchWorkflowDefinitionRequest
+            {
+                DefinitionVersionId = definitionVersionId,
+                InstanceId = instanceId,
+                CorrelationId = correlationId,
+                Input = launch.Input
+            };
+            var dispatchResponse = await _dispatcher.DispatchAsync(dispatchRequest, CancellationToken.None);
+            dispatchResponse.ThrowIfFailed();
             var sessions = ConnectionSessions.GetOrAdd(Context.ConnectionId, _ => new HashSet<string>());
             lock (sessions) { sessions.Add(instanceId); }
 
@@ -106,9 +107,9 @@ public class SessionHub : Hub
 
             _logger.LogInformation(
                 "Session {SessionId} created for workflow {Workflow} by connection {ConnectionId}",
-                instanceId, workflowName, Context.ConnectionId);
+                instanceId, launch.RequestedWorkflowName, Context.ConnectionId);
 
-            return new CreateSessionResult(instanceId, workflowName);
+            return new CreateSessionResult(instanceId, launch.RequestedWorkflowName);
         }
         catch (Exception ex)
         {
@@ -234,26 +235,11 @@ public class SessionHub : Hub
         await base.OnDisconnectedAsync(exception);
     }
 
-    private static Dictionary<string, object> BuildWorkflowInput(
-        string prompt,
-        string workspacePath,
-        string resolvedAssistant,
-        string model,
-        int modelPower,
-        string structuredOutputSchema) =>
-        new()
-        {
-            ["Prompt"] = prompt,
-            ["WorkspacePath"] = workspacePath,
-            ["AiAssistant"] = resolvedAssistant,
-            ["Agent"] = resolvedAssistant,
-            ["Model"] = string.IsNullOrWhiteSpace(model) ? "auto" : model,
-            ["ModelPower"] = modelPower,
-            ["StructuredOutputSchema"] = structuredOutputSchema
-        };
-
     private async Task<string> ResolveDefinitionVersionIdAsync(string definitionId, CancellationToken cancellationToken)
     {
+        if (!WorkflowCatalog.RequiresPublishedDefinitionDispatch(definitionId))
+            return WorkflowCatalog.ResolveDefinitionVersionId(definitionId);
+
         var definition = await _workflowDefinitionService.FindWorkflowDefinitionAsync(
             WorkflowDefinitionHandle.ByDefinitionId(definitionId, VersionOptions.Published),
             cancellationToken);

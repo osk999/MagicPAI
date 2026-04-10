@@ -77,9 +77,18 @@ public class SessionHistoryReader
 
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT "ActivityId", "ActivityName", "ActivityType", "EventName", "Timestamp", "Sequence"
-                FROM "Elsa"."WorkflowExecutionLogRecords"
-                WHERE "WorkflowInstanceId" = @id
+                WITH RECURSIVE workflow_tree AS (
+                    SELECT "Id"
+                    FROM "Elsa"."WorkflowInstances"
+                    WHERE "Id" = @id
+                    UNION ALL
+                    SELECT child."Id"
+                    FROM "Elsa"."WorkflowInstances" child
+                    INNER JOIN workflow_tree parent ON child."ParentWorkflowInstanceId" = parent."Id"
+                )
+                SELECT logs."ActivityId", logs."ActivityName", logs."ActivityType", logs."EventName", logs."Timestamp", logs."Sequence"
+                FROM "Elsa"."WorkflowExecutionLogRecords" logs
+                INNER JOIN workflow_tree tree ON tree."Id" = logs."WorkflowInstanceId"
                 ORDER BY "Timestamp" ASC, "Sequence" ASC;
                 """;
             cmd.Parameters.AddWithValue("id", sessionId);
@@ -138,10 +147,19 @@ public class SessionHistoryReader
 
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT "Message"
-                FROM "Elsa"."WorkflowExecutionLogRecords"
-                WHERE "WorkflowInstanceId" = @id
-                  AND "EventName" IN ('OutputChunk', 'StreamChunk')
+                WITH RECURSIVE workflow_tree AS (
+                    SELECT "Id"
+                    FROM "Elsa"."WorkflowInstances"
+                    WHERE "Id" = @id
+                    UNION ALL
+                    SELECT child."Id"
+                    FROM "Elsa"."WorkflowInstances" child
+                    INNER JOIN workflow_tree parent ON child."ParentWorkflowInstanceId" = parent."Id"
+                )
+                SELECT logs."Message"
+                FROM "Elsa"."WorkflowExecutionLogRecords" logs
+                INNER JOIN workflow_tree tree ON tree."Id" = logs."WorkflowInstanceId"
+                WHERE logs."EventName" IN ('OutputChunk', 'StreamChunk')
                 ORDER BY "Timestamp" ASC, "Sequence" ASC;
                 """;
             cmd.Parameters.AddWithValue("id", sessionId);
@@ -156,7 +174,20 @@ public class SessionHistoryReader
                 chunks.Add(ExtractOutputText(message));
             }
 
-            return chunks.Count > 0 ? chunks.ToArray() : tracked;
+            if (chunks.Count == 0)
+                return tracked;
+
+            if (tracked.Length == 0)
+                return chunks.ToArray();
+
+            var merged = new List<string>(chunks);
+            foreach (var trackedChunk in tracked)
+            {
+                if (!merged.Contains(trackedChunk, StringComparer.Ordinal))
+                    merged.Add(trackedChunk);
+            }
+
+            return merged.ToArray();
         }
         catch
         {

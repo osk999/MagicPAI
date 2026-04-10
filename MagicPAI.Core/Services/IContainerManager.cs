@@ -29,6 +29,9 @@ public interface IContainerManager
     /// <summary>Check if container is running.</summary>
     Task<bool> IsRunningAsync(string containerId, CancellationToken ct);
 
+    /// <summary>Stream container logs until the token is cancelled or the stream ends.</summary>
+    Task StreamLogsAsync(string containerId, Action<string> onLog, CancellationToken ct);
+
     /// <summary>Get container GUI URL (if noVNC enabled).</summary>
     string? GetGuiUrl(string containerId);
 }

@@ -291,6 +291,9 @@ public class LocalContainerManager : IContainerManager
         return Task.FromResult(_activeContainers.Contains(containerId));
     }
 
+    public Task StreamLogsAsync(string containerId, Action<string> onLog, CancellationToken ct) =>
+        Task.CompletedTask;
+
     public string? GetGuiUrl(string containerId) => null;
 
     private static ProcessStartInfo CreateProcessStartInfo(string command, string workDir)

@@ -10,15 +10,24 @@ public class SessionE2ETests : E2ETestBase
 {
     public SessionE2ETests(PlaywrightFixture fixture) : base(fixture) { }
 
+    private static object CreateSessionRequest(string prompt) => new
+    {
+        Prompt = prompt,
+        WorkspacePath = "/tmp",
+        WorkflowName = "standard-orchestrate",
+        AiAssistant = "claude"
+    };
+
     [Fact]
     public async Task CreateSession_ViaApi_AppearsInDashboard()
     {
         // Create a session via REST API
         var response = await Page.APIRequest.PostAsync(
             $"{BaseUrl}/api/sessions",
-            new() { DataObject = new { Prompt = "E2E test task", WorkspacePath = "/tmp" } });
+            new() { DataObject = CreateSessionRequest("E2E test task") });
 
-        Assert.True(response.Ok, $"Create session returned {response.Status}");
+        var body = await response.TextAsync();
+        Assert.True(response.Ok, $"Create session returned {response.Status}: {body}");
 
         // Navigate to dashboard and verify session appears
         await NavigateAsync("/magic/dashboard");
@@ -31,7 +40,7 @@ public class SessionE2ETests : E2ETestBase
         // Create a session
         var response = await Page.APIRequest.PostAsync(
             $"{BaseUrl}/api/sessions",
-            new() { DataObject = new { Prompt = "E2E session view test", WorkspacePath = "/tmp" } });
+            new() { DataObject = CreateSessionRequest("E2E session view test") });
 
         var json = await response.JsonAsync();
         var sessionId = json?.GetProperty("sessionId").GetString();
@@ -51,7 +60,7 @@ public class SessionE2ETests : E2ETestBase
         // Create a session
         var response = await Page.APIRequest.PostAsync(
             $"{BaseUrl}/api/sessions",
-            new() { DataObject = new { Prompt = "Status badge test", WorkspacePath = "/tmp" } });
+            new() { DataObject = CreateSessionRequest("Status badge test") });
 
         var json = await response.JsonAsync();
         var sessionId = json?.GetProperty("sessionId").GetString();

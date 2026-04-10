@@ -58,6 +58,16 @@ public class RunCliAgentActivity : Activity
         Category = "Structured Output")]
     public Input<string> StructuredOutputSchema { get; set; } = new("");
 
+    [Input(DisplayName = "Track Prompt Transform",
+        Description = "Emit before/after prompt insight for enhancement-style activities",
+        Category = "Diagnostics")]
+    public Input<bool> TrackPromptTransform { get; set; } = new(false);
+
+    [Input(DisplayName = "Prompt Transform Label",
+        Description = "User-facing label for prompt transform diagnostics",
+        Category = "Diagnostics")]
+    public Input<string> PromptTransformLabel { get; set; } = new("Prompt Transform");
+
     [Input(DisplayName = "Max Turns", Category = "Limits")]
     public Input<int> MaxTurns { get; set; } = new(20);
 
@@ -217,6 +227,27 @@ public class RunCliAgentActivity : Activity
             context.SetVariable("LastAgentStructuredOutputJson", structuredOutput ?? "");
             context.SetVariable("LastAgentExitCode", result.ExitCode);
             context.SetVariable("LastAgentSucceeded", succeeded);
+
+            if (GetOrDefault(TrackPromptTransform, context, false))
+            {
+                var verdict = string.Equals(prompt.Trim(), response.Trim(), StringComparison.Ordinal)
+                    ? "unchanged"
+                    : "changed";
+                context.AddExecutionLogEntry("PromptTransform",
+                    JsonSerializer.Serialize(new
+                    {
+                        label = FirstNonEmpty(
+                            Optional(PromptTransformLabel, context),
+                            context.Activity.Id,
+                            "Prompt Transform"),
+                        summary = verdict == "changed"
+                            ? "Prompt was transformed before downstream execution."
+                            : "Prompt transform produced no material change.",
+                        verdict,
+                        before = prompt,
+                        after = response
+                    }));
+            }
 
             if (string.Equals(context.Activity.Id, "simple-agent", StringComparison.OrdinalIgnoreCase))
                 context.SetVariable("SimpleWorkerOutput", response);

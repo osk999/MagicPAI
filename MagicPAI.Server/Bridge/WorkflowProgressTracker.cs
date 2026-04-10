@@ -32,7 +32,10 @@ public class WorkflowProgressTracker : INotificationHandler<ActivityExecutionRec
     public async Task HandleAsync(ActivityExecutionRecordUpdated notification, CancellationToken ct)
     {
         var record = notification.Record;
-        var sessionId = record.WorkflowInstanceId;
+        var schedulingWorkflowInstanceId = record.GetType().GetProperty("SchedulingWorkflowInstanceId")?.GetValue(record)?.ToString();
+        var sessionId = !string.IsNullOrWhiteSpace(schedulingWorkflowInstanceId)
+            ? schedulingWorkflowInstanceId
+            : record.WorkflowInstanceId;
         var session = _tracker.GetSession(sessionId);
         if (session is null)
             return;

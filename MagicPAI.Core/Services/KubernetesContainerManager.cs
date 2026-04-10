@@ -316,6 +316,9 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
     public string? GetGuiUrl(string containerId) =>
         _guiUrls.TryGetValue(containerId, out var url) ? url : null;
 
+    public Task StreamLogsAsync(string containerId, Action<string> onLog, CancellationToken ct) =>
+        Task.CompletedTask;
+
     public void Dispose()
     {
         _client.Dispose();

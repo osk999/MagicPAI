@@ -1,0 +1,868 @@
+{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
+  "definitionId": "WebsiteAuditCoreWorkflow",
+  "name": "Website Audit Core",
+  "description": "Four-phase autonomous website audit core: discovery, visual, interaction, and final synthesis",
+  "createdAt": "0001-01-01T00:00:00+00:00",
+  "version": 1,
+  "variables": [
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": "claude"
+    },
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "discoveryOutputVariable",
+      "name": "DiscoveryOutput",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "visualOutputVariable",
+      "name": "VisualOutput",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "interactionOutputVariable",
+      "name": "InteractionOutput",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "discoveryAttemptsVariable",
+      "name": "DiscoveryAttempts",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
+  "isLatest": true,
+  "isPublished": true,
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
+  "root": {
+    "id": "website-audit-core-flow",
+    "nodeId": "Workflow1:website-audit-core-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "WebsiteAuditCoreWorkflow.json"
+    },
+    "metadata": {},
+    "activities": [
+      {
+        "currentCount": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "discoveryAttemptsVariable",
+              "name": "DiscoveryAttempts",
+              "typeName": "Int32",
+              "value": "0"
+            }
+          }
+        },
+        "maxIterations": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "label": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Discovery"
+          }
+        },
+        "nextCount": {
+          "typeName": "Int32",
+          "memoryReference": {
+            "id": "discoveryAttemptsVariable"
+          }
+        },
+        "id": "phase1-discovery-gate",
+        "nodeId": "Workflow1:website-audit-core-flow:phase1-discovery-gate",
+        "name": null,
+        "type": "MagicPAI.IterationGateActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return 'Website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nPhase 1: Discovery.\\nUse Playwright with headed Chromium inside the provided GUI container.\\nMap the website, list key pages, identify core user journeys, and call out unknown areas.\\nEnd with DISCOVERY_DONE only when the page map is sufficient for visual review.';"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "discoveryOutputVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "phase1-discovery-runner",
+        "nodeId": "Workflow1:website-audit-core-flow:phase1-discovery-runner",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return 'Original website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nLatest discovery report:\\n' + (getVariable('DiscoveryOutput') || '');"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "classificationInstructions": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Determine whether website discovery is complete.\nReturn low complexity (1-4) when the discovery report is sufficient to move to the visual audit phase.\nReturn high complexity (8-10) when additional discovery is still required.\nSet category to \"docs\"."
+          }
+        },
+        "complexity": null,
+        "category": null,
+        "recommendedModel": null,
+        "recommendedModelPower": null,
+        "id": "phase1-discovery-check",
+        "nodeId": "Workflow1:website-audit-core-flow:phase1-discovery-check",
+        "name": null,
+        "type": "MagicPAI.TriageActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return 'Website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nPhase 2: Visual audit.\\nUse Playwright with headed Chromium inside the provided GUI container.\\nReview layout consistency, hierarchy, spacing, responsiveness risks, and visual defects.\\nUse the discovery findings below.\\n\\nDiscovery findings:\\n' + (getVariable('DiscoveryOutput') || '') + '\\n\\nEnd with VISUAL_DONE only when visual review is complete.';"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "visualOutputVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "phase2-visual-runner",
+        "nodeId": "Workflow1:website-audit-core-flow:phase2-visual-runner",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return 'Original website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nLatest visual audit report:\\n' + (getVariable('VisualOutput') || '');"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "classificationInstructions": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Determine whether the visual audit is complete.\nReturn low complexity (1-4) when the report is sufficient to proceed to interaction testing.\nReturn high complexity (8-10) when another visual pass is needed.\nSet category to \"docs\"."
+          }
+        },
+        "complexity": null,
+        "category": null,
+        "recommendedModel": null,
+        "recommendedModelPower": null,
+        "id": "phase2-visual-check",
+        "nodeId": "Workflow1:website-audit-core-flow:phase2-visual-check",
+        "name": null,
+        "type": "MagicPAI.TriageActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return 'Website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nPhase 3: Interaction and scroll audit.\\nUse Playwright with headed Chromium inside the provided GUI container.\\nReview forms, buttons, navigation flow, focus order, and scrolling behavior.\\nUse these prior findings.\\n\\nDiscovery findings:\\n' + (getVariable('DiscoveryOutput') || '') + '\\n\\nVisual findings:\\n' + (getVariable('VisualOutput') || '') + '\\n\\nEnd with INTERACTION_DONE only when interaction coverage is complete.';"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "interactionOutputVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "phase3-interaction-runner",
+        "nodeId": "Workflow1:website-audit-core-flow:phase3-interaction-runner",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return 'Original website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nLatest interaction audit report:\\n' + (getVariable('InteractionOutput') || '');"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "classificationInstructions": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Determine whether the interaction audit is complete.\nReturn low complexity (1-4) when interaction review is sufficient for the final synthesis pass.\nReturn high complexity (8-10) when more interaction testing is required.\nSet category to \"testing\"."
+          }
+        },
+        "complexity": null,
+        "category": null,
+        "recommendedModel": null,
+        "recommendedModelPower": null,
+        "id": "phase3-interaction-check",
+        "nodeId": "Workflow1:website-audit-core-flow:phase3-interaction-check",
+        "name": null,
+        "type": "MagicPAI.TriageActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return 'Website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nPhase 4: Final audit synthesis.\\nProduce a prioritized report with critical issues, user-impact summary, and remediation guidance.\\n\\nDiscovery findings:\\n' + (getVariable('DiscoveryOutput') || '') + '\\n\\nVisual findings:\\n' + (getVariable('VisualOutput') || '') + '\\n\\nInteraction findings:\\n' + (getVariable('InteractionOutput') || '');"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 1
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "phase4-opus-sweep",
+        "nodeId": "Workflow1:website-audit-core-flow:phase4-opus-sweep",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": "claude"
+      },
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "discoveryOutputVariable",
+        "name": "DiscoveryOutput",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "visualOutputVariable",
+        "name": "VisualOutput",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "interactionOutputVariable",
+        "name": "InteractionOutput",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "discoveryAttemptsVariable",
+        "name": "DiscoveryAttempts",
+        "typeName": "Int32",
+        "value": "0"
+      }
+    ],
+    "connections": [
+      {
+        "source": {
+          "activity": "phase1-discovery-gate",
+          "port": "Continue"
+        },
+        "target": {
+          "activity": "phase1-discovery-runner"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase1-discovery-runner",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "phase1-discovery-check"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase1-discovery-runner",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "phase1-discovery-check"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase1-discovery-check",
+          "port": "Complex"
+        },
+        "target": {
+          "activity": "phase1-discovery-gate"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase1-discovery-check",
+          "port": "Simple"
+        },
+        "target": {
+          "activity": "phase2-visual-runner"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase2-visual-runner",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "phase2-visual-check"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase2-visual-runner",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "phase2-visual-check"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase2-visual-check",
+          "port": "Complex"
+        },
+        "target": {
+          "activity": "phase2-visual-runner"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase2-visual-check",
+          "port": "Simple"
+        },
+        "target": {
+          "activity": "phase3-interaction-runner"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase3-interaction-runner",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "phase3-interaction-check"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase3-interaction-runner",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "phase3-interaction-check"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase3-interaction-check",
+          "port": "Complex"
+        },
+        "target": {
+          "activity": "phase3-interaction-runner"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "phase3-interaction-check",
+          "port": "Simple"
+        },
+        "target": {
+          "activity": "phase4-opus-sweep"
+        },
+        "vertices": []
+      }
+    ]
+  }
+}

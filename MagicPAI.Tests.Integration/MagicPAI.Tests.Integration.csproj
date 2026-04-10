@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MagicPAI.Shared\MagicPAI.Shared.csproj" />
     <ProjectReference Include="..\MagicPAI.Server\MagicPAI.Server.csproj" />
     <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />
     <ProjectReference Include="..\MagicPAI.Activities\MagicPAI.Activities.csproj" />

@@ -42,7 +42,11 @@ public class SpawnContainerActivity : Activity
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
         var docker = context.GetRequiredService<IContainerManager>();
+        var guiPortAllocator = context.GetService<IGuiPortAllocator>();
+        var sessionRegistry = context.GetService<ISessionContainerRegistry>();
+        var logStreamer = context.GetService<ISessionContainerLogStreamer>();
         var logger = context.GetRequiredService<ILogger<SpawnContainerActivity>>();
+        var appConfig = context.GetService<MagicPAI.Core.Config.MagicPaiConfig>();
         var workspacePath = context.GetOptionalWorkflowInput<string>("WorkspacePath");
         if (string.IsNullOrWhiteSpace(workspacePath))
             workspacePath = GetOrDefault(WorkspacePath, context, "");
@@ -55,6 +59,15 @@ public class SpawnContainerActivity : Activity
             EnableGui = GetOrDefault(EnableGui, context, false),
             Env = EnvVars.GetOrDefault(context, () => null) ?? new Dictionary<string, string>()
         };
+
+        var ownerId = context.WorkflowExecutionContext.Id;
+        var shouldAllocateGuiPort = config.EnableGui
+            && guiPortAllocator is not null
+            && appConfig is not null
+            && string.Equals(appConfig.ExecutionBackend, "docker", StringComparison.OrdinalIgnoreCase);
+
+        if (shouldAllocateGuiPort)
+            config.GuiPort = guiPortAllocator.Reserve(ownerId);
 
         logger.LogInformation(
             "Spawn container activity starting. WorkspacePath={WorkspacePath} Image={Image}",
@@ -75,10 +88,14 @@ public class SpawnContainerActivity : Activity
 
             // Also set as workflow variable so downstream activities can access it
             context.SetVariable("ContainerId", result.ContainerId);
+            sessionRegistry?.UpdateContainer(context.WorkflowExecutionContext.Id, result.ContainerId, result.GuiUrl);
+            logStreamer?.StartStreaming(context.WorkflowExecutionContext.Id, result.ContainerId);
             logger.LogInformation("Spawn container activity variable set for {ContainerId}", result.ContainerId);
 
             context.AddExecutionLogEntry("ContainerSpawned",
-                $"Container {result.ContainerId[..Math.Min(12, result.ContainerId.Length)]} started (workspace={config.WorkspacePath})");
+                $$"""
+                {"containerId":"{{result.ContainerId}}","guiUrl":"{{result.GuiUrl ?? ""}}","workspace":"{{config.WorkspacePath}}"}
+                """);
             logger.LogInformation("Spawn container activity completion starting for {ContainerId}", result.ContainerId);
 
             await context.CompleteActivityWithOutcomesAsync("Done");
@@ -86,6 +103,9 @@ public class SpawnContainerActivity : Activity
         }
         catch (Exception ex)
         {
+            if (shouldAllocateGuiPort)
+                guiPortAllocator?.Release(ownerId);
+
             logger.LogError(ex, "Container spawn failed");
             context.AddExecutionLogEntry("ContainerSpawnFailed", ex.ToString());
             await context.CompleteActivityWithOutcomesAsync("Failed");

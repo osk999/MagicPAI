@@ -1,4 +1,0 @@
-# Temp note: keep this local session trace for debugging.
-# Temp comment: safe to ignore during normal development.
-[POST] http://localhost:5222/hub/negotiate?negotiateVersion=1 => [200] OK
-[GET] http://localhost:5222/api/sessions => [200] OK

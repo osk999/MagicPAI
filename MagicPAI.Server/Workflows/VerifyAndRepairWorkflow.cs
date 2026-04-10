@@ -5,6 +5,7 @@ using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Verification;
+using MagicPAI.Server.Workflows.Components;
 
 namespace MagicPAI.Server.Workflows;
 
@@ -32,78 +33,36 @@ public class VerifyAndRepairWorkflow : WorkflowBase
         var repairPrompt = builder.WithVariable<string>("RepairPrompt", "");
         var repairAttempts = builder.WithVariable<int>("RepairAttempts", 0);
 
-        // Activities
-        var initialVerify = new RunVerificationActivity
-        {
-            ContainerId = new Input<string>(containerId),
-            WorkerOutput = new Input<string?>(workerOutput),
-            FailedGates = new Output<string[]>(failedGates),
-            GateResultsJson = new Output<string>(gateResultsJson),
-            Id = "initial-verify"
-        };
-
-        var repair = new RepairActivity
-        {
-            ContainerId = new Input<string>(containerId),
-            FailedGates = new Input<string[]>(failedGates),
-            OriginalPrompt = new Input<string>(prompt),
-            GateResultsJson = new Input<string>(gateResultsJson),
-            RepairPrompt = new Output<string>(repairPrompt),
-            Id = "repair"
-        };
-
-        var repairAgent = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(repairPrompt),
-            ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
-            ModelPower = new Input<int>(modelPower),
-            Id = "repair-agent"
-        };
-
-        var retryVerify = new RunVerificationActivity
-        {
-            ContainerId = new Input<string>(containerId),
-            FailedGates = new Output<string[]>(failedGates),
-            GateResultsJson = new Output<string>(gateResultsJson),
-            Id = "retry-verify"
-        };
+        var loop = VerifyAndRepairLoop.Create(
+            verifyId: "verify",
+            repairId: "repair",
+            repairAgentId: "repair-agent",
+            containerId: new Input<string>(containerId),
+            originalPrompt: new Input<string>(prompt),
+            assistant: new Input<string>(agent),
+            model: new Input<string>(model),
+            modelPower: new Input<int>(modelPower),
+            workerOutput: new Input<string?>(workerOutput),
+            failedGates: new Output<string[]>(failedGates),
+            gateResultsJson: new Output<string>(gateResultsJson),
+            repairPrompt: new Output<string>(repairPrompt));
+        var verify = loop.Verify;
+        var repair = loop.Repair;
+        var repairAgent = loop.RepairAgent;
 
         // Build a flowchart for the verify-repair loop
         var flowchart = new Flowchart
         {
             Id = "verify-repair-flow",
-            Start = initialVerify,
-            Activities = { initialVerify, repair, repairAgent, retryVerify },
+            Start = verify,
+            Activities = { verify, repair, repairAgent },
             Connections =
             {
-                // Initial verify fails -> repair
-                new Connection(
-                    new Endpoint(initialVerify, "Failed"),
-                    new Endpoint(repair)),
-
-                // Repair -> RepairAgent
-                new Connection(
-                    new Endpoint(repair, "Done"),
-                    new Endpoint(repairAgent)),
-
-                // RepairAgent done -> retry verification
-                new Connection(
-                    new Endpoint(repairAgent, "Done"),
-                    new Endpoint(retryVerify)),
-
-                // RepairAgent failed -> retry verification anyway
-                new Connection(
-                    new Endpoint(repairAgent, "Failed"),
-                    new Endpoint(retryVerify)),
-
-                // Retry verify failed -> loop back to repair
-                new Connection(
-                    new Endpoint(retryVerify, "Failed"),
-                    new Endpoint(repair)),
             }
         };
+
+        foreach (var connection in loop.InternalConnections)
+            flowchart.Connections.Add(connection);
 
         builder.Root = flowchart.WithAttachedVariables(builder);
     }

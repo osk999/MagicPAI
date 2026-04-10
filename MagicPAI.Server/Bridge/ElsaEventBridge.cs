@@ -33,7 +33,7 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
         if (notification.WorkflowExecutionContext is null)
             return;
 
-        var workflowInstanceId = notification.WorkflowExecutionContext.Id;
+        var workflowInstanceId = ResolveSessionId(notification.WorkflowExecutionContext);
 
         foreach (var record in notification.Records)
         {
@@ -62,8 +62,10 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
                         break;
 
                     case "TriageResult":
+                    case "WebsiteTaskResult":
                     case "ArchitectResult":
                     case "RepairPromptGenerated":
+                    case "PromptTransform":
                         await HandleTaskEvent(workflowInstanceId, eventName, message, ct);
                         break;
 
@@ -159,6 +161,15 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
     private static object? GetProperty(object instance, string name) =>
         instance.GetType().GetProperty(name)?.GetValue(instance);
 
+    private string ResolveSessionId(Elsa.Workflows.WorkflowExecutionContext workflowExecutionContext)
+    {
+        var parentWorkflowInstanceId = workflowExecutionContext.ParentWorkflowInstanceId;
+        if (!string.IsNullOrWhiteSpace(parentWorkflowInstanceId) && _tracker.GetSession(parentWorkflowInstanceId) is not null)
+            return parentWorkflowInstanceId;
+
+        return workflowExecutionContext.Id;
+    }
+
     private async Task HandleOutputChunk(
         string sessionId, string? activityName, string message, CancellationToken ct)
     {
@@ -207,6 +218,7 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
             var cost = root.TryGetProperty("costUsd", out var costProp) ? costProp.GetDecimal() : 0m;
             var inputTokens = root.TryGetProperty("inputTokens", out var inputProp) ? inputProp.GetInt32() : 0;
             var outputTokens = root.TryGetProperty("outputTokens", out var outputProp) ? outputProp.GetInt32() : 0;
+            _tracker.UpdateCost(sessionId, cost);
 
             await _hubContext.Clients.Group(sessionId).SendAsync(
                 "costUpdate",
@@ -231,10 +243,9 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
         }
         else if (!string.IsNullOrWhiteSpace(containerId))
         {
-            _tracker.UpdateContainer(sessionId, containerId);
-
             // Try to extract GuiUrl from the message or resolve from container manager
             guiUrl = ExtractGuiUrl(message);
+            _tracker.UpdateContainer(sessionId, containerId, guiUrl);
         }
 
         await _hubContext.Clients.Group(sessionId).SendAsync(
@@ -269,6 +280,13 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
     private async Task HandleTaskEvent(
         string sessionId, string eventName, string message, CancellationToken ct)
     {
+        var insight = BuildInsight(sessionId, eventName, message);
+        if (insight is not null)
+        {
+            _tracker.AppendInsight(sessionId, insight);
+            await _hubContext.Clients.Group(sessionId).SendAsync("taskInsight", insight, ct);
+        }
+
         // Task events use workflowProgress channel
         await _hubContext.Clients.Group(sessionId).SendAsync(
             "workflowProgress",
@@ -297,6 +315,16 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
         if (string.IsNullOrWhiteSpace(message))
             return null;
 
+        try
+        {
+            using var doc = JsonDocument.Parse(message);
+            if (doc.RootElement.TryGetProperty("containerId", out var containerId))
+                return containerId.GetString();
+        }
+        catch (JsonException)
+        {
+        }
+
         var parts = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2)
             return null;
@@ -306,4 +334,97 @@ public class ElsaEventBridge : INotificationHandler<ActivityExecutionLogUpdated>
 
         return parts[1];
     }
+
+    private static TaskInsightEvent BuildInsight(string sessionId, string eventName, string message)
+    {
+        var timestamp = DateTime.UtcNow;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(message);
+            var root = doc.RootElement;
+            return eventName switch
+            {
+                "TriageResult" => new TaskInsightEvent(
+                    sessionId,
+                    Kind: "classifier",
+                    Title: "Classifier Verdict",
+                    Summary: $"Complexity {TryGetInt(root, "complexity", 5)}, category {TryGetString(root, "category", "code_gen")}",
+                    Verdict: TryGetString(root, "outcome", null),
+                    BeforeText: null,
+                    AfterText: null,
+                    RawPayload: message,
+                    TimestampUtc: timestamp),
+                "WebsiteTaskResult" => new TaskInsightEvent(
+                    sessionId,
+                    Kind: "classifier",
+                    Title: "Website Routing Verdict",
+                    Summary: TryGetString(root, "rationale", "Website routing evaluated") ?? "Website routing evaluated",
+                    Verdict: TryGetString(root, "verdict", null),
+                    BeforeText: null,
+                    AfterText: null,
+                    RawPayload: message,
+                    TimestampUtc: timestamp),
+                "ArchitectResult" => new TaskInsightEvent(
+                    sessionId,
+                    Kind: "architect",
+                    Title: "Architect Decomposition",
+                    Summary: $"Decomposed into {TryGetInt(root, "taskCount", 0)} sub-task(s)",
+                    Verdict: null,
+                    BeforeText: null,
+                    AfterText: root.TryGetProperty("tasks", out var tasks) ? tasks.GetRawText() : null,
+                    RawPayload: message,
+                    TimestampUtc: timestamp),
+                "RepairPromptGenerated" => new TaskInsightEvent(
+                    sessionId,
+                    Kind: "repair",
+                    Title: "Repair Prompt",
+                    Summary: $"Attempt {TryGetInt(root, "attempt", 0)}/{TryGetInt(root, "maxAttempts", 0)} for {TryGetString(root, "failedGatesSummary", "failed gates")}",
+                    Verdict: "repair",
+                    BeforeText: null,
+                    AfterText: TryGetString(root, "repairPrompt", null),
+                    RawPayload: message,
+                    TimestampUtc: timestamp),
+                "PromptTransform" => new TaskInsightEvent(
+                    sessionId,
+                    Kind: "prompt-transform",
+                    Title: TryGetString(root, "label", "Prompt Transform") ?? "Prompt Transform",
+                    Summary: TryGetString(root, "summary", "Prompt was transformed") ?? "Prompt was transformed",
+                    Verdict: TryGetString(root, "verdict", null),
+                    BeforeText: TryGetString(root, "before", null),
+                    AfterText: TryGetString(root, "after", null),
+                    RawPayload: message,
+                    TimestampUtc: timestamp),
+                _ => new TaskInsightEvent(
+                    sessionId,
+                    Kind: "workflow",
+                    Title: eventName,
+                    Summary: message,
+                    Verdict: null,
+                    BeforeText: null,
+                    AfterText: null,
+                    RawPayload: message,
+                    TimestampUtc: timestamp)
+            };
+        }
+        catch (JsonException)
+        {
+            return new TaskInsightEvent(
+                sessionId,
+                Kind: "workflow",
+                Title: eventName,
+                Summary: message,
+                Verdict: null,
+                BeforeText: null,
+                AfterText: null,
+                RawPayload: message,
+                TimestampUtc: timestamp);
+        }
+    }
+
+    private static int TryGetInt(JsonElement root, string propertyName, int fallback) =>
+        root.TryGetProperty(propertyName, out var value) && value.TryGetInt32(out var result) ? result : fallback;
+
+    private static string? TryGetString(JsonElement root, string propertyName, string? fallback) =>
+        root.TryGetProperty(propertyName, out var value) ? value.GetString() ?? fallback : fallback;
 }

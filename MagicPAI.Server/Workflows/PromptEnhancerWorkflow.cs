@@ -39,6 +39,8 @@ public class PromptEnhancerWorkflow : WorkflowBase
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
             ModelPower = new Input<int>(2),
+            TrackPromptTransform = new Input<bool>(true),
+            PromptTransformLabel = new Input<string>("Prompt Enhancement (Sonnet)"),
             Response = new Output<string>(enhancedPrompt),
             Id = "enhance-sonnet"
         };
@@ -61,6 +63,8 @@ public class PromptEnhancerWorkflow : WorkflowBase
                     : ctx.GetVariable<string>("EnhancedPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
             ModelPower = new Input<int>(1),
+            TrackPromptTransform = new Input<bool>(true),
+            PromptTransformLabel = new Input<string>("Prompt Enhancement (Opus)"),
             Response = new Output<string>(enhancedPrompt),
             Id = "enhance-opus"
         };

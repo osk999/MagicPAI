@@ -1,52 +1,396 @@
 {
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
   "definitionId": "SimpleAgentWorkflow",
   "name": "Simple Agent",
-  "description": "Execute a single AI agent task with verification",
+  "description": "Simple agent workflow: spawn container, run agent, verify, destroy",
+  "createdAt": "0001-01-01T00:00:00+00:00",
   "version": 1,
+  "variables": [
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "modelVariable",
+      "name": "Model",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "modelPowerVariable",
+      "name": "ModelPower",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "variables": [
-    { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "WorkspacePath", "typeName": "String", "value": "/workspace" },
-    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "auto" },
-    { "name": "ContainerId", "typeName": "String", "value": "" }
-  ],
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
   "root": {
-    "type": "Elsa.Flowchart",
     "id": "simple-agent-flow",
-    "start": "spawn-container",
+    "nodeId": "Workflow1:simple-agent-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "SimpleAgentWorkflow.cs"
+    },
+    "metadata": {},
     "activities": [
       {
+        "image": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "magicpai-env:latest"
+          }
+        },
+        "workspacePath": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "memoryLimitMb": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 4096
+          }
+        },
+        "enableGui": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "envVars": null,
+        "containerId": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "containerIdVariable"
+          }
+        },
+        "guiUrl": null,
+        "id": "spawn",
+        "nodeId": "Workflow1:simple-agent-flow:spawn",
+        "name": null,
         "type": "MagicPAI.SpawnContainerActivity",
-        "id": "spawn-container",
-        "name": "Spawn Container"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "modelVariable",
+              "name": "Model",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "modelPowerVariable",
+              "name": "ModelPower",
+              "typeName": "Int32",
+              "value": "0"
+            }
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "runAgent",
+        "nodeId": "Workflow1:simple-agent-flow:runAgent",
+        "name": null,
         "type": "MagicPAI.AiAssistantActivity",
-        "id": "run-agent",
-        "name": "Run Agent"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "gates": null,
+        "workerOutput": null,
+        "allPassed": null,
+        "failedGates": null,
+        "gateResultsJson": null,
+        "id": "verify",
+        "nodeId": "Workflow1:simple-agent-flow:verify",
+        "name": null,
         "type": "MagicPAI.RunVerificationActivity",
-        "id": "run-verification",
-        "name": "Run Verification"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "id": "destroy",
+        "nodeId": "Workflow1:simple-agent-flow:destroy",
+        "name": null,
         "type": "MagicPAI.DestroyContainerActivity",
-        "id": "destroy-container",
-        "name": "Destroy Container"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "modelVariable",
+        "name": "Model",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "modelPowerVariable",
+        "name": "ModelPower",
+        "typeName": "Int32",
+        "value": "0"
       }
     ],
     "connections": [
-      { "source": { "activity": "spawn-container", "port": "Done" }, "target": { "activity": "run-agent" } },
-      { "source": { "activity": "spawn-container", "port": "Failed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "run-agent", "port": "Done" }, "target": { "activity": "run-verification" } },
-      { "source": { "activity": "run-agent", "port": "Failed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "run-verification", "port": "Passed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "run-verification", "port": "Failed" }, "target": { "activity": "destroy-container" } },
-      { "source": { "activity": "run-verification", "port": "Inconclusive" }, "target": { "activity": "destroy-container" } }
+      {
+        "source": {
+          "activity": "spawn",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "runAgent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "spawn",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "runAgent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "runAgent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "verify",
+          "port": "Passed"
+        },
+        "target": {
+          "activity": "destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "verify",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "verify",
+          "port": "Inconclusive"
+        },
+        "target": {
+          "activity": "destroy"
+        },
+        "vertices": []
+      }
     ]
   }
 }

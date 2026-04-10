@@ -1,115 +1,1450 @@
 {
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
   "definitionId": "StandardOrchestrateWorkflow",
   "name": "Standard Orchestrate",
   "description": "Balanced pipeline: prompt enhancement, context, triage, complex/simple routing, verification",
+  "createdAt": "0001-01-01T00:00:00+00:00",
   "version": 1,
+  "variables": [
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "modelVariable",
+      "name": "Model",
+      "typeName": "String",
+      "isArray": false,
+      "value": "auto"
+    },
+    {
+      "id": "modelPowerVariable",
+      "name": "ModelPower",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    },
+    {
+      "id": "enhancedPromptVariable",
+      "name": "EnhancedPrompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "elaboratedPromptVariable",
+      "name": "ElaboratedPrompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "gatheredContextVariable",
+      "name": "GatheredContext",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "recommendedModelVariable",
+      "name": "RecommendedModel",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "recommendedModelPowerVariable",
+      "name": "RecommendedModelPower",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    },
+    {
+      "id": "architectTasksVariable",
+      "name": "ArchitectTasks",
+      "typeName": "System.String[], System.Private.CoreLib",
+      "isArray": true,
+      "value": "[]"
+    },
+    {
+      "id": "complexWorkerOutputVariable",
+      "name": "ComplexWorkerOutput",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "failedGatesVariable",
+      "name": "FailedGates",
+      "typeName": "System.String[], System.Private.CoreLib",
+      "isArray": true,
+      "value": "[]"
+    },
+    {
+      "id": "gateResultsJsonVariable",
+      "name": "GateResultsJson",
+      "typeName": "String",
+      "isArray": false,
+      "value": "[]"
+    },
+    {
+      "id": "repairPromptVariable",
+      "name": "RepairPrompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "repairAttemptsVariable",
+      "name": "RepairAttempts",
+      "typeName": "Int32",
+      "isArray": false,
+      "value": "0"
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "variables": [
-    { "name": "Prompt", "typeName": "String", "value": "" },
-    { "name": "WorkspacePath", "typeName": "String", "value": "/workspace" },
-    { "name": "AiAssistant", "typeName": "String", "value": "claude" },
-    { "name": "Model", "typeName": "String", "value": "auto" },
-    { "name": "ContainerId", "typeName": "String", "value": "" }
-  ],
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
   "root": {
-    "type": "Elsa.Flowchart",
     "id": "standard-orchestrate-flow",
-    "start": "std-spawn",
+    "nodeId": "Workflow1:standard-orchestrate-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "StandardOrchestrateWorkflow.json"
+    },
+    "metadata": {},
     "activities": [
       {
-        "type": "MagicPAI.SpawnContainerActivity",
+        "image": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "magicpai-env:latest"
+          }
+        },
+        "workspacePath": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "memoryLimitMb": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 4096
+          }
+        },
+        "enableGui": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "envVars": null,
+        "containerId": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "containerIdVariable"
+          }
+        },
+        "guiUrl": null,
         "id": "std-spawn",
-        "name": "Spawn Container"
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-spawn",
+        "name": null,
+        "type": "MagicPAI.SpawnContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Enhancement"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "enhancedPromptVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "std-enhance",
-        "name": "Enhance Prompt"
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-enhance",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return getVariable('EnhancedPrompt') || getVariable('Prompt') || '';"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "elaboratedPromptVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "std-elaborate",
-        "name": "Elaborate"
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-elaborate",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return getVariable('ElaboratedPrompt') || getVariable('Prompt') || '';"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "gatheredContextVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "std-context",
-        "name": "Gather Context"
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-context",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.TriageActivity",
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return getVariable('GatheredContext') || getVariable('Prompt') || '';"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "classificationInstructions": null,
+        "complexity": null,
+        "category": null,
+        "recommendedModel": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "recommendedModelVariable"
+          }
+        },
+        "recommendedModelPower": {
+          "typeName": "Int32",
+          "memoryReference": {
+            "id": "recommendedModelPowerVariable"
+          }
+        },
         "id": "std-triage",
-        "name": "Triage"
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-triage",
+        "name": null,
+        "type": "MagicPAI.TriageActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.AiAssistantActivity",
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return getVariable('GatheredContext') || getVariable('Prompt') || '';"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || m || '') : m;"
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModelPower') || 0) : (getVariable('ModelPower') || 0);"
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
         "id": "std-simple-agent",
-        "name": "Simple Agent"
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-simple-agent",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.RunVerificationActivity",
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "gates": null,
+        "workerOutput": null,
+        "allPassed": null,
+        "failedGates": null,
+        "gateResultsJson": null,
         "id": "std-simple-verify",
-        "name": "Verify (Simple)"
-      },
-      {
-        "type": "MagicPAI.ArchitectActivity",
-        "id": "std-architect",
-        "name": "Architect"
-      },
-      {
-        "type": "MagicPAI.AiAssistantActivity",
-        "id": "std-complex-agent",
-        "name": "Complex Agent"
-      },
-      {
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-simple-verify",
+        "name": null,
         "type": "MagicPAI.RunVerificationActivity",
-        "id": "std-complex-verify",
-        "name": "Verify (Complex)"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.RepairActivity",
-        "id": "std-repair",
-        "name": "Repair"
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "return getVariable('GatheredContext') || getVariable('Prompt') || '';"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "gapContext": null,
+        "taskListJson": {
+          "typeName": "System.String[], System.Private.CoreLib",
+          "memoryReference": {
+            "id": "architectTasksVariable"
+          }
+        },
+        "taskCount": null,
+        "id": "std-architect",
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-architect",
+        "name": null,
+        "type": "MagicPAI.ArchitectActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var context = getVariable('GatheredContext') || getVariable('Prompt') || ''; var tasks = getVariable('ArchitectTasks') || []; if (!tasks || tasks.length === 0) return context; var plan = ''; for (var i = 0; i < tasks.length; i++) { plan += (i+1) + '. ' + tasks[i] + '\\n'; } return 'Execute the task using the architected sub-task plan below.\\n\\nContext-rich prompt:\\n' + context + '\\n\\nSub-tasks:\\n' + plan;"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || m || '') : m;"
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModelPower') || 0) : (getVariable('ModelPower') || 0);"
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "complexWorkerOutputVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "std-complex-agent",
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-complex-agent",
+        "name": null,
         "type": "MagicPAI.AiAssistantActivity",
-        "id": "std-repair-agent",
-        "name": "Repair Agent"
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
       },
       {
-        "type": "MagicPAI.DestroyContainerActivity",
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "gates": null,
+        "workerOutput": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "complexWorkerOutputVariable",
+              "name": "ComplexWorkerOutput",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "allPassed": null,
+        "failedGates": {
+          "typeName": "System.String[], System.Private.CoreLib",
+          "memoryReference": {
+            "id": "failedGatesVariable"
+          }
+        },
+        "gateResultsJson": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "gateResultsJsonVariable"
+          }
+        },
+        "id": "std-complex-verify",
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-complex-verify",
+        "name": null,
+        "type": "MagicPAI.RunVerificationActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "failedGates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "failedGatesVariable",
+              "name": "FailedGates",
+              "typeName": "System.String[], System.Private.CoreLib",
+              "value": "[]"
+            }
+          }
+        },
+        "originalPrompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "promptVariable",
+              "name": "Prompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "gateResultsJson": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "gateResultsJsonVariable",
+              "name": "GateResultsJson",
+              "typeName": "String",
+              "value": "[]"
+            }
+          }
+        },
+        "repairPrompt": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "repairPromptVariable"
+          }
+        },
+        "id": "std-complex-repair",
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-complex-repair",
+        "name": null,
+        "type": "MagicPAI.RepairActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "repairPromptVariable",
+              "name": "RepairPrompt",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || m || '') : m;"
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "JavaScript",
+            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModelPower') || 0) : (getVariable('ModelPower') || 0);"
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "std-repair-agent",
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-repair-agent",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
         "id": "std-destroy",
-        "name": "Destroy Container"
+        "nodeId": "Workflow1:standard-orchestrate-flow:std-destroy",
+        "name": null,
+        "type": "MagicPAI.DestroyContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "modelVariable",
+        "name": "Model",
+        "typeName": "String",
+        "value": "auto"
+      },
+      {
+        "id": "modelPowerVariable",
+        "name": "ModelPower",
+        "typeName": "Int32",
+        "value": "0"
+      },
+      {
+        "id": "enhancedPromptVariable",
+        "name": "EnhancedPrompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "elaboratedPromptVariable",
+        "name": "ElaboratedPrompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "gatheredContextVariable",
+        "name": "GatheredContext",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "recommendedModelVariable",
+        "name": "RecommendedModel",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "recommendedModelPowerVariable",
+        "name": "RecommendedModelPower",
+        "typeName": "Int32",
+        "value": "0"
+      },
+      {
+        "id": "architectTasksVariable",
+        "name": "ArchitectTasks",
+        "typeName": "System.String[], System.Private.CoreLib",
+        "value": "[]"
+      },
+      {
+        "id": "complexWorkerOutputVariable",
+        "name": "ComplexWorkerOutput",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "failedGatesVariable",
+        "name": "FailedGates",
+        "typeName": "System.String[], System.Private.CoreLib",
+        "value": "[]"
+      },
+      {
+        "id": "gateResultsJsonVariable",
+        "name": "GateResultsJson",
+        "typeName": "String",
+        "value": "[]"
+      },
+      {
+        "id": "repairPromptVariable",
+        "name": "RepairPrompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "repairAttemptsVariable",
+        "name": "RepairAttempts",
+        "typeName": "Int32",
+        "value": "0"
       }
     ],
     "connections": [
-      { "source": { "activity": "std-spawn", "port": "Done" }, "target": { "activity": "std-enhance" } },
-      { "source": { "activity": "std-spawn", "port": "Failed" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-enhance", "port": "Done" }, "target": { "activity": "std-elaborate" } },
-      { "source": { "activity": "std-enhance", "port": "Failed" }, "target": { "activity": "std-elaborate" } },
-      { "source": { "activity": "std-elaborate", "port": "Done" }, "target": { "activity": "std-context" } },
-      { "source": { "activity": "std-elaborate", "port": "Failed" }, "target": { "activity": "std-context" } },
-      { "source": { "activity": "std-context", "port": "Done" }, "target": { "activity": "std-triage" } },
-      { "source": { "activity": "std-context", "port": "Failed" }, "target": { "activity": "std-triage" } },
-      { "source": { "activity": "std-triage", "port": "Simple" }, "target": { "activity": "std-simple-agent" } },
-      { "source": { "activity": "std-triage", "port": "Complex" }, "target": { "activity": "std-architect" } },
-      { "source": { "activity": "std-simple-agent", "port": "Done" }, "target": { "activity": "std-simple-verify" } },
-      { "source": { "activity": "std-simple-agent", "port": "Failed" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-simple-verify", "port": "Passed" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-simple-verify", "port": "Failed" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-simple-verify", "port": "Inconclusive" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-architect", "port": "Done" }, "target": { "activity": "std-complex-agent" } },
-      { "source": { "activity": "std-architect", "port": "Failed" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-complex-agent", "port": "Done" }, "target": { "activity": "std-complex-verify" } },
-      { "source": { "activity": "std-complex-agent", "port": "Failed" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-complex-verify", "port": "Passed" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-complex-verify", "port": "Inconclusive" }, "target": { "activity": "std-destroy" } },
-      { "source": { "activity": "std-complex-verify", "port": "Failed" }, "target": { "activity": "std-repair" } },
-      { "source": { "activity": "std-repair", "port": "Done" }, "target": { "activity": "std-repair-agent" } },
-      { "source": { "activity": "std-repair-agent", "port": "Done" }, "target": { "activity": "std-complex-verify" } },
-      { "source": { "activity": "std-repair-agent", "port": "Failed" }, "target": { "activity": "std-destroy" } }
+      {
+        "source": {
+          "activity": "std-spawn",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-enhance"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-spawn",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-enhance",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-elaborate"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-enhance",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-elaborate"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-elaborate",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-context"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-elaborate",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-context"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-context",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-triage"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-context",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-triage"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-triage",
+          "port": "Simple"
+        },
+        "target": {
+          "activity": "std-simple-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-triage",
+          "port": "Complex"
+        },
+        "target": {
+          "activity": "std-architect"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-simple-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-simple-verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-simple-agent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-simple-verify",
+          "port": "Passed"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-simple-verify",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-simple-verify",
+          "port": "Inconclusive"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-architect",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-complex-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-architect",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-complex-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-complex-verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-complex-agent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-complex-verify",
+          "port": "Passed"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-complex-verify",
+          "port": "Inconclusive"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-complex-verify",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-complex-repair"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-complex-repair",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-repair-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-complex-repair",
+          "port": "Exceeded"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-repair-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "std-complex-verify"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "std-repair-agent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "std-complex-verify"
+        },
+        "vertices": []
+      }
     ]
   }
 }

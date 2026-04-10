@@ -20,6 +20,8 @@ public class SessionHubClient : IAsyncDisposable
     public event Action<CostUpdateEvent>? OnCostUpdate;
     public event Action<SessionStateEvent>? OnSessionStateChanged;
     public event Action<ContainerEvent>? OnContainerSpawned;
+    public event Action<ContainerLogEvent>? OnContainerLog;
+    public event Action<TaskInsightEvent>? OnTaskInsight;
     public event Action<ErrorEvent>? OnError;
 
     public HubConnectionState State => _connection.State;
@@ -49,6 +51,10 @@ public class SessionHubClient : IAsyncDisposable
             e => OnSessionStateChanged?.Invoke(e));
         _connection.On<ContainerEvent>("containerEvent",
             e => OnContainerSpawned?.Invoke(e));
+        _connection.On<ContainerLogEvent>("containerLog",
+            e => OnContainerLog?.Invoke(e));
+        _connection.On<TaskInsightEvent>("taskInsight",
+            e => OnTaskInsight?.Invoke(e));
         _connection.On<ErrorEvent>("error",
             e => OnError?.Invoke(e));
     }
