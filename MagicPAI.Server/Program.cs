@@ -19,9 +19,9 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// NOTE: Do NOT use UseStaticWebAssets() — it rewrites index.html and removes
-// script tags that don't match the fingerprint map. UseBlazorFrameworkFiles()
-// + UseStaticFiles() handles WASM hosting without rewriting.
+// UseStaticWebAssets() discovers _framework/ files from the MagicPAI.Studio WASM project.
+// Required for both Development and Production when using `dotnet run`.
+builder.WebHost.UseStaticWebAssets();
 
 // Disable Elsa API security in Development (per Elsa docs)
 if (builder.Environment.IsDevelopment())
@@ -279,6 +279,8 @@ app.UseFastEndpoints(cfg =>
 {
     if (!cfg.Serializer.Options.Converters.OfType<MagicPAI.Server.Bridge.TypeJsonConverter>().Any())
         cfg.Serializer.Options.Converters.Add(new MagicPAI.Server.Bridge.TypeJsonConverter());
+    // Accept both string and integer enum values (Studio sends strings, server expects ints)
+    cfg.Serializer.Options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
 });
 
 // JSON error handler

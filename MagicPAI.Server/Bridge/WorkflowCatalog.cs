@@ -31,7 +31,11 @@ public static class WorkflowCatalog
         Create<LoopVerifierWorkflow>(),
         Create<WebsiteAuditCoreWorkflow>(),
         Create<WebsiteAuditLoopWorkflow>(useJsonTemplate: false),
-        Create<FullOrchestrateWorkflow>(useJsonTemplate: false)
+        Create<FullOrchestrateWorkflow>(useJsonTemplate: false),
+        Create<TestClassifierWorkflow>(),
+        Create<TestWebsiteClassifierWorkflow>(),
+        Create<TestPromptEnhancementWorkflow>(),
+        Create<TestFullFlowWorkflow>()
     ];
 
     public static string ResolveDefinitionId(string workflowName)

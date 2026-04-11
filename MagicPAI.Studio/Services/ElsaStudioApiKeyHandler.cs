@@ -13,7 +13,8 @@ public class ElsaStudioApiKeyHandler : DelegatingHandler
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
         // Add API key and JSON Accept header
-        request.Headers.Authorization = new AuthenticationHeaderValue("ApiKey", "AHF78HF0MF3PRH65");
+        // Elsa's AdminApiKeyProvider uses Guid.Empty as the default admin key
+        request.Headers.Authorization = new AuthenticationHeaderValue("ApiKey", "00000000-0000-0000-0000-000000000000");
         if (!request.Headers.Contains("Accept"))
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 

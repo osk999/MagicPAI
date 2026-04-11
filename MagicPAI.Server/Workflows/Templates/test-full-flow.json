@@ -1,0 +1,381 @@
+﻿{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
+  "definitionId": "TestFullFlowWorkflow",
+  "name": "Test Full Flow",
+  "description": "Test full orchestration: classify -\u003E enhance -\u003E execute",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
+  "version": 1,
+  "variables": [
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
+  "isLatest": true,
+  "isPublished": true,
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
+  "root": {
+    "id": "test-full-flow",
+    "nodeId": "Workflow1:test-full-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "TestFullFlowWorkflow.cs:78"
+    },
+    "metadata": {},
+    "activities": [
+      {
+        "image": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "magicpai-env:latest"
+          }
+        },
+        "workspacePath": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "C:\\Users\\PC\\AppData\\Local\\Temp\\magicpai-test"
+          }
+        },
+        "memoryLimitMb": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2048
+          }
+        },
+        "enableGui": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "envVars": null,
+        "containerId": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "containerIdVariable"
+          }
+        },
+        "guiUrl": null,
+        "id": "spawn-container",
+        "nodeId": "Workflow1:test-full-flow:spawn-container",
+        "name": null,
+        "type": "MagicPAI.SpawnContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Add input validation to the user registration form \u2014 check email format and password strength"
+          }
+        },
+        "classificationQuestion": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Does this task require multi-file changes, architectural decisions, or multi-step implementation?"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "result": null,
+        "confidence": null,
+        "rationale": null,
+        "id": "classify-complexity",
+        "nodeId": "Workflow1:test-full-flow:classify-complexity",
+        "name": null,
+        "type": "MagicPAI.ClassifierActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "originalPrompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Add input validation to the user registration form \u2014 check email format and password strength"
+          }
+        },
+        "enhancementInstructions": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "enhancedPrompt": null,
+        "wasEnhanced": null,
+        "rationale": null,
+        "id": "enhance-prompt",
+        "nodeId": "Workflow1:test-full-flow:enhance-prompt",
+        "name": null,
+        "type": "MagicPAI.PromptEnhancementActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "claude"
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "List 3 specific validation rules for a user registration form with email and password fields. Just list them, no code."
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 5
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 5
+          }
+        },
+        "response": null,
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "run-agent",
+        "nodeId": "Workflow1:test-full-flow:run-agent",
+        "name": null,
+        "type": "MagicPAI.RunCliAgentActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "id": "destroy-container",
+        "nodeId": "Workflow1:test-full-flow:destroy-container",
+        "name": null,
+        "type": "MagicPAI.DestroyContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      }
+    ],
+    "connections": [
+      {
+        "source": {
+          "activity": "spawn-container",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "classify-complexity"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "classify-complexity",
+          "port": "True"
+        },
+        "target": {
+          "activity": "enhance-prompt"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "enhance-prompt",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "run-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "enhance-prompt",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "run-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "classify-complexity",
+          "port": "False"
+        },
+        "target": {
+          "activity": "run-agent"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "run-agent",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "run-agent",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      }
+    ]
+  }
+}

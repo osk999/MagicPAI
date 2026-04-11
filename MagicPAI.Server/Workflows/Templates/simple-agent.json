@@ -1,10 +1,10 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "SimpleAgentWorkflow",
   "name": "Simple Agent",
-  "description": "Simple agent workflow: spawn container, run agent, verify, destroy",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "description": "Execute a single AI agent task with verification",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
     {
@@ -60,7 +60,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "SimpleAgentWorkflow.cs"
+      "source": "SimpleAgentWorkflow.cs:66"
     },
     "metadata": {},
     "activities": [
@@ -101,8 +101,8 @@
           }
         },
         "guiUrl": null,
-        "id": "spawn",
-        "nodeId": "Workflow1:simple-agent-flow:spawn",
+        "id": "spawn-container",
+        "nodeId": "Workflow1:simple-agent-flow:spawn-container",
         "name": null,
         "type": "MagicPAI.SpawnContainerActivity",
         "version": 1,
@@ -111,16 +111,7 @@
       },
       {
         "aiAssistant": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "aiAssistantVariable",
-              "name": "AiAssistant",
-              "typeName": "String",
-              "value": ""
-            }
-          }
+          "typeName": "String"
         },
         "agent": {
           "typeName": "String",
@@ -161,16 +152,7 @@
           }
         },
         "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "modelVariable",
-              "name": "Model",
-              "typeName": "String",
-              "value": ""
-            }
-          }
+          "typeName": "String"
         },
         "modelPower": {
           "typeName": "Int32",
@@ -225,8 +207,8 @@
         "costUsd": null,
         "filesModified": null,
         "exitCode": null,
-        "id": "runAgent",
-        "nodeId": "Workflow1:simple-agent-flow:runAgent",
+        "id": "run-agent",
+        "nodeId": "Workflow1:simple-agent-flow:run-agent",
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
@@ -253,13 +235,23 @@
             "value": "/workspace"
           }
         },
-        "gates": null,
+        "gates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Literal",
+            "value": [
+              "compile",
+              "test",
+              "hallucination"
+            ]
+          }
+        },
         "workerOutput": null,
         "allPassed": null,
         "failedGates": null,
         "gateResultsJson": null,
-        "id": "verify",
-        "nodeId": "Workflow1:simple-agent-flow:verify",
+        "id": "run-verification",
+        "nodeId": "Workflow1:simple-agent-flow:run-verification",
         "name": null,
         "type": "MagicPAI.RunVerificationActivity",
         "version": 1,
@@ -279,8 +271,8 @@
             }
           }
         },
-        "id": "destroy",
-        "nodeId": "Workflow1:simple-agent-flow:destroy",
+        "id": "destroy-container",
+        "nodeId": "Workflow1:simple-agent-flow:destroy-container",
         "name": null,
         "type": "MagicPAI.DestroyContainerActivity",
         "version": 1,
@@ -323,71 +315,71 @@
     "connections": [
       {
         "source": {
-          "activity": "spawn",
+          "activity": "spawn-container",
           "port": "Done"
         },
         "target": {
-          "activity": "runAgent"
+          "activity": "run-agent"
         },
         "vertices": []
       },
       {
         "source": {
-          "activity": "spawn",
+          "activity": "spawn-container",
           "port": "Failed"
         },
         "target": {
-          "activity": "destroy"
+          "activity": "destroy-container"
         },
         "vertices": []
       },
       {
         "source": {
-          "activity": "runAgent",
+          "activity": "run-agent",
           "port": "Done"
         },
         "target": {
-          "activity": "verify"
+          "activity": "run-verification"
         },
         "vertices": []
       },
       {
         "source": {
-          "activity": "runAgent",
+          "activity": "run-agent",
           "port": "Failed"
         },
         "target": {
-          "activity": "destroy"
+          "activity": "destroy-container"
         },
         "vertices": []
       },
       {
         "source": {
-          "activity": "verify",
+          "activity": "run-verification",
           "port": "Passed"
         },
         "target": {
-          "activity": "destroy"
+          "activity": "destroy-container"
         },
         "vertices": []
       },
       {
         "source": {
-          "activity": "verify",
+          "activity": "run-verification",
           "port": "Failed"
         },
         "target": {
-          "activity": "destroy"
+          "activity": "destroy-container"
         },
         "vertices": []
       },
       {
         "source": {
-          "activity": "verify",
+          "activity": "run-verification",
           "port": "Inconclusive"
         },
         "target": {
-          "activity": "destroy"
+          "activity": "destroy-container"
         },
         "vertices": []
       }

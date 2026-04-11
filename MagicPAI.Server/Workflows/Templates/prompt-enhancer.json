@@ -1,10 +1,10 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "PromptEnhancerWorkflow",
   "name": "Prompt Enhancer",
-  "description": "Enhance vague prompts: classify vagueness, enhance with Sonnet, quality-check, escalate to Opus if needed",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "description": "Classify prompt vagueness and enhance using Sonnet, escalating to Opus if needed",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
     {
@@ -53,7 +53,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "PromptEnhancerWorkflow.cs"
+      "source": "PromptEnhancerWorkflow.cs:73"
     },
     "metadata": {},
     "activities": [
@@ -273,11 +273,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return getVariable('EnhancedPrompt') || getVariable('Prompt') || '';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -426,8 +422,8 @@
       },
       {
         "source": {
-          "activity": "enhance-sonnet",
-          "port": "Failed"
+          "activity": "quality-check",
+          "port": "Complex"
         },
         "target": {
           "activity": "enhance-opus"
@@ -436,8 +432,8 @@
       },
       {
         "source": {
-          "activity": "quality-check",
-          "port": "Complex"
+          "activity": "enhance-sonnet",
+          "port": "Failed"
         },
         "target": {
           "activity": "enhance-opus"

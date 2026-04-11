@@ -1,10 +1,10 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "ContextGathererWorkflow",
   "name": "Context Gatherer",
   "description": "Collect context in parallel: research, repo-map, and memory, then merge",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
     {
@@ -69,132 +69,358 @@
     "autoUpdateConsumingWorkflows": false
   },
   "root": {
-    "id": "context-gatherer-flow",
-    "nodeId": "Workflow1:context-gatherer-flow",
-    "type": "Elsa.Flowchart",
-    "version": 1,
-    "customProperties": {
-      "source": "ContextGathererWorkflow.cs"
-    },
-    "metadata": {},
     "activities": [
       {
-        "aiAssistant": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "aiAssistantVariable",
-              "name": "AiAssistant",
+        "activities": [
+          {
+            "aiAssistant": {
               "typeName": "String",
-              "value": "claude"
-            }
-          }
-        },
-        "agent": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "promptVariable",
-              "name": "Prompt",
+              "expression": {
+                "type": "Variable",
+                "value": {
+                  "id": "aiAssistantVariable",
+                  "name": "AiAssistant",
+                  "typeName": "String",
+                  "value": "claude"
+                }
+              }
+            },
+            "agent": {
               "typeName": "String",
-              "value": ""
-            }
-          }
-        },
-        "containerId": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "containerIdVariable",
-              "name": "ContainerId",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "prompt": {
               "typeName": "String",
-              "value": ""
-            }
+              "expression": {
+                "type": "Variable",
+                "value": {
+                  "id": "promptVariable",
+                  "name": "Prompt",
+                  "typeName": "String",
+                  "value": ""
+                }
+              }
+            },
+            "containerId": {
+              "typeName": "String",
+              "expression": {
+                "type": "Variable",
+                "value": {
+                  "id": "containerIdVariable",
+                  "name": "ContainerId",
+                  "typeName": "String",
+                  "value": ""
+                }
+              }
+            },
+            "workingDirectory": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": "/workspace"
+              }
+            },
+            "model": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "modelPower": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 3
+              }
+            },
+            "structuredOutputSchema": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "trackPromptTransform": {
+              "typeName": "Boolean",
+              "expression": {
+                "type": "Literal",
+                "value": false
+              }
+            },
+            "promptTransformLabel": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": "Prompt Transform"
+              }
+            },
+            "maxTurns": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 20
+              }
+            },
+            "timeoutMinutes": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 30
+              }
+            },
+            "response": {
+              "typeName": "String",
+              "memoryReference": {
+                "id": "researchContextVariable"
+              }
+            },
+            "structuredOutputJson": null,
+            "success": null,
+            "costUsd": null,
+            "filesModified": null,
+            "exitCode": null,
+            "id": "research-context",
+            "nodeId": "Workflow1:Sequence1:Parallel1:research-context",
+            "name": null,
+            "type": "MagicPAI.AiAssistantActivity",
+            "version": 1,
+            "customProperties": {},
+            "metadata": {}
+          },
+          {
+            "aiAssistant": {
+              "typeName": "String",
+              "expression": {
+                "type": "Variable",
+                "value": {
+                  "id": "aiAssistantVariable",
+                  "name": "AiAssistant",
+                  "typeName": "String",
+                  "value": "claude"
+                }
+              }
+            },
+            "agent": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "prompt": {
+              "typeName": "String"
+            },
+            "containerId": {
+              "typeName": "String",
+              "expression": {
+                "type": "Variable",
+                "value": {
+                  "id": "containerIdVariable",
+                  "name": "ContainerId",
+                  "typeName": "String",
+                  "value": ""
+                }
+              }
+            },
+            "workingDirectory": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": "/workspace"
+              }
+            },
+            "model": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "modelPower": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 3
+              }
+            },
+            "structuredOutputSchema": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "trackPromptTransform": {
+              "typeName": "Boolean",
+              "expression": {
+                "type": "Literal",
+                "value": false
+              }
+            },
+            "promptTransformLabel": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": "Prompt Transform"
+              }
+            },
+            "maxTurns": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 20
+              }
+            },
+            "timeoutMinutes": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 30
+              }
+            },
+            "response": {
+              "typeName": "String",
+              "memoryReference": {
+                "id": "repoMapContextVariable"
+              }
+            },
+            "structuredOutputJson": null,
+            "success": null,
+            "costUsd": null,
+            "filesModified": null,
+            "exitCode": null,
+            "id": "repo-map-context",
+            "nodeId": "Workflow1:Sequence1:Parallel1:repo-map-context",
+            "name": null,
+            "type": "MagicPAI.AiAssistantActivity",
+            "version": 1,
+            "customProperties": {},
+            "metadata": {}
+          },
+          {
+            "aiAssistant": {
+              "typeName": "String",
+              "expression": {
+                "type": "Variable",
+                "value": {
+                  "id": "aiAssistantVariable",
+                  "name": "AiAssistant",
+                  "typeName": "String",
+                  "value": "claude"
+                }
+              }
+            },
+            "agent": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "prompt": {
+              "typeName": "String"
+            },
+            "containerId": {
+              "typeName": "String",
+              "expression": {
+                "type": "Variable",
+                "value": {
+                  "id": "containerIdVariable",
+                  "name": "ContainerId",
+                  "typeName": "String",
+                  "value": ""
+                }
+              }
+            },
+            "workingDirectory": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": "/workspace"
+              }
+            },
+            "model": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "modelPower": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 3
+              }
+            },
+            "structuredOutputSchema": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": ""
+              }
+            },
+            "trackPromptTransform": {
+              "typeName": "Boolean",
+              "expression": {
+                "type": "Literal",
+                "value": false
+              }
+            },
+            "promptTransformLabel": {
+              "typeName": "String",
+              "expression": {
+                "type": "Literal",
+                "value": "Prompt Transform"
+              }
+            },
+            "maxTurns": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 20
+              }
+            },
+            "timeoutMinutes": {
+              "typeName": "Int32",
+              "expression": {
+                "type": "Literal",
+                "value": 30
+              }
+            },
+            "response": {
+              "typeName": "String",
+              "memoryReference": {
+                "id": "memoryContextVariable"
+              }
+            },
+            "structuredOutputJson": null,
+            "success": null,
+            "costUsd": null,
+            "filesModified": null,
+            "exitCode": null,
+            "id": "memory-context",
+            "nodeId": "Workflow1:Sequence1:Parallel1:memory-context",
+            "name": null,
+            "type": "MagicPAI.AiAssistantActivity",
+            "version": 1,
+            "customProperties": {},
+            "metadata": {}
           }
-        },
-        "workingDirectory": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "/workspace"
-          }
-        },
-        "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "modelPower": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 3
-          }
-        },
-        "structuredOutputSchema": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "trackPromptTransform": {
-          "typeName": "Boolean",
-          "expression": {
-            "type": "Literal",
-            "value": false
-          }
-        },
-        "promptTransformLabel": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "Prompt Transform"
-          }
-        },
-        "maxTurns": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 20
-          }
-        },
-        "timeoutMinutes": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 30
-          }
-        },
-        "response": {
-          "typeName": "String",
-          "memoryReference": {
-            "id": "researchContextVariable"
-          }
-        },
-        "structuredOutputJson": null,
-        "success": null,
-        "costUsd": null,
-        "filesModified": null,
-        "exitCode": null,
-        "id": "research-context",
-        "nodeId": "Workflow1:context-gatherer-flow:research-context",
+        ],
+        "variables": [],
+        "id": "Parallel1",
+        "nodeId": "Workflow1:Sequence1:Parallel1",
         "name": null,
-        "type": "MagicPAI.AiAssistantActivity",
+        "type": "Elsa.Parallel",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "source": "Parallel.cs:22"
+        },
         "metadata": {}
       },
       {
@@ -218,239 +444,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Create a repo-map style implementation context for this task:\\n\\n' + (getVariable('Prompt') || '');"
-          }
-        },
-        "containerId": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "containerIdVariable",
-              "name": "ContainerId",
-              "typeName": "String",
-              "value": ""
-            }
-          }
-        },
-        "workingDirectory": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "/workspace"
-          }
-        },
-        "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "modelPower": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 3
-          }
-        },
-        "structuredOutputSchema": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "trackPromptTransform": {
-          "typeName": "Boolean",
-          "expression": {
-            "type": "Literal",
-            "value": false
-          }
-        },
-        "promptTransformLabel": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "Prompt Transform"
-          }
-        },
-        "maxTurns": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 20
-          }
-        },
-        "timeoutMinutes": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 30
-          }
-        },
-        "response": {
-          "typeName": "String",
-          "memoryReference": {
-            "id": "repoMapContextVariable"
-          }
-        },
-        "structuredOutputJson": null,
-        "success": null,
-        "costUsd": null,
-        "filesModified": null,
-        "exitCode": null,
-        "id": "repo-map-context",
-        "nodeId": "Workflow1:context-gatherer-flow:repo-map-context",
-        "name": null,
-        "type": "MagicPAI.AiAssistantActivity",
-        "version": 1,
-        "customProperties": {},
-        "metadata": {}
-      },
-      {
-        "aiAssistant": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "aiAssistantVariable",
-              "name": "AiAssistant",
-              "typeName": "String",
-              "value": "claude"
-            }
-          }
-        },
-        "agent": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Load any relevant prior constraints, conventions, or remembered context for this task:\\n\\n' + (getVariable('Prompt') || '');"
-          }
-        },
-        "containerId": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "containerIdVariable",
-              "name": "ContainerId",
-              "typeName": "String",
-              "value": ""
-            }
-          }
-        },
-        "workingDirectory": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "/workspace"
-          }
-        },
-        "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "modelPower": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 3
-          }
-        },
-        "structuredOutputSchema": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "trackPromptTransform": {
-          "typeName": "Boolean",
-          "expression": {
-            "type": "Literal",
-            "value": false
-          }
-        },
-        "promptTransformLabel": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "Prompt Transform"
-          }
-        },
-        "maxTurns": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 20
-          }
-        },
-        "timeoutMinutes": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 30
-          }
-        },
-        "response": {
-          "typeName": "String",
-          "memoryReference": {
-            "id": "memoryContextVariable"
-          }
-        },
-        "structuredOutputJson": null,
-        "success": null,
-        "costUsd": null,
-        "filesModified": null,
-        "exitCode": null,
-        "id": "memory-context",
-        "nodeId": "Workflow1:context-gatherer-flow:memory-context",
-        "name": null,
-        "type": "MagicPAI.AiAssistantActivity",
-        "version": 1,
-        "customProperties": {},
-        "metadata": {}
-      },
-      {
-        "aiAssistant": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "aiAssistantVariable",
-              "name": "AiAssistant",
-              "typeName": "String",
-              "value": "claude"
-            }
-          }
-        },
-        "agent": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Combine the parallel context-gathering results into one concise execution brief.\\n\\n## Original Prompt\\n' + (getVariable('Prompt') || '') + '\\n\\n## Research\\n' + (getVariable('ResearchContext') || '') + '\\n\\n## Repo Map\\n' + (getVariable('RepoMapContext') || '') + '\\n\\n## Memory\\n' + (getVariable('MemoryContext') || '');"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -532,7 +526,7 @@
         "filesModified": null,
         "exitCode": null,
         "id": "merge-context",
-        "nodeId": "Workflow1:context-gatherer-flow:merge-context",
+        "nodeId": "Workflow1:Sequence1:merge-context",
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
@@ -541,45 +535,57 @@
       }
     ],
     "variables": [
-      { "id": "promptVariable", "name": "Prompt", "typeName": "String", "value": "" },
-      { "id": "aiAssistantVariable", "name": "AiAssistant", "typeName": "String", "value": "claude" },
-      { "id": "containerIdVariable", "name": "ContainerId", "typeName": "String", "value": "" },
-      { "id": "researchContextVariable", "name": "ResearchContext", "typeName": "String", "value": "" },
-      { "id": "repoMapContextVariable", "name": "RepoMapContext", "typeName": "String", "value": "" },
-      { "id": "memoryContextVariable", "name": "MemoryContext", "typeName": "String", "value": "" },
-      { "id": "mergedContextVariable", "name": "MergedContext", "typeName": "String", "value": "" }
-    ],
-    "connections": [
       {
-        "source": { "activity": "research-context", "port": "Done" },
-        "target": { "activity": "repo-map-context" },
-        "vertices": []
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
       },
       {
-        "source": { "activity": "research-context", "port": "Failed" },
-        "target": { "activity": "repo-map-context" },
-        "vertices": []
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": "claude"
       },
       {
-        "source": { "activity": "repo-map-context", "port": "Done" },
-        "target": { "activity": "memory-context" },
-        "vertices": []
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
       },
       {
-        "source": { "activity": "repo-map-context", "port": "Failed" },
-        "target": { "activity": "memory-context" },
-        "vertices": []
+        "id": "researchContextVariable",
+        "name": "ResearchContext",
+        "typeName": "String",
+        "value": ""
       },
       {
-        "source": { "activity": "memory-context", "port": "Done" },
-        "target": { "activity": "merge-context" },
-        "vertices": []
+        "id": "repoMapContextVariable",
+        "name": "RepoMapContext",
+        "typeName": "String",
+        "value": ""
       },
       {
-        "source": { "activity": "memory-context", "port": "Failed" },
-        "target": { "activity": "merge-context" },
-        "vertices": []
+        "id": "memoryContextVariable",
+        "name": "MemoryContext",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "mergedContextVariable",
+        "name": "MergedContext",
+        "typeName": "String",
+        "value": ""
       }
-    ]
+    ],
+    "id": "Sequence1",
+    "nodeId": "Workflow1:Sequence1",
+    "name": null,
+    "type": "Elsa.Sequence",
+    "version": 1,
+    "customProperties": {
+      "source": "ContextGathererWorkflow.cs:90"
+    },
+    "metadata": {}
   }
 }

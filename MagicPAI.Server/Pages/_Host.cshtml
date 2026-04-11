@@ -40,23 +40,32 @@
         <a class="dismiss" style="cursor:pointer;">Dismiss</a>
     </div>
 
-    <script src="/_content/BlazorMonaco/jsInterop.js"></script>
+    <!-- Monaco AMD loader (must load before editor.main) -->
     <script src="/_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
+    <script>require.config({ paths: { 'vs': '/_content/BlazorMonaco/lib/monaco-editor/min/vs' }});</script>
+
     <script src="/_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="/_content/CodeBeam.MudBlazor.Extensions/MudExtensions.min.js"></script>
     <script src="/_content/Radzen.Blazor/Radzen.Blazor.js"></script>
 
+    <!-- Blazor: delay start until Monaco is fully loaded -->
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            Blazor.start({
-                loadBootResource: function (type, name, defaultUri, integrity) {
-                    if (defaultUri.startsWith('http')) return defaultUri;
-                    if (!defaultUri.startsWith('/')) return '/' + defaultUri;
-                    return defaultUri;
+        (function () {
+            require(['vs/editor/editor.main'], function (m) {
+                // Monaco 0.50+ exports API nested under m.m instead of setting window.monaco
+                if (typeof window.monaco === 'undefined' && m && m.m) {
+                    window.monaco = m.m;
                 }
+                // Load BlazorMonaco interop AFTER monaco global is set
+                var script = document.createElement('script');
+                script.src = '/_content/BlazorMonaco/jsInterop.js';
+                script.onload = function () {
+                    Blazor.start();
+                };
+                document.head.appendChild(script);
             });
-        });
+        })();
     </script>
 </body>
 </html>

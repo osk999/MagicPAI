@@ -1,10 +1,10 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "VerifyAndRepairWorkflow",
   "name": "Verify and Repair",
-  "description": "Reusable sub-workflow: verify, repair on failure, re-run agent, loop until passed or max attempts exceeded",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "description": "Run verification gates and auto-repair on failure",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
     {
@@ -90,12 +90,12 @@
     "autoUpdateConsumingWorkflows": false
   },
   "root": {
-    "id": "verify-and-repair-flow",
-    "nodeId": "Workflow1:verify-and-repair-flow",
+    "id": "verify-repair-flow",
+    "nodeId": "Workflow1:verify-repair-flow",
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "VerifyAndRepairWorkflow.cs"
+      "source": "VerifyAndRepairWorkflow.cs:54"
     },
     "metadata": {},
     "activities": [
@@ -119,7 +119,17 @@
             "value": "/workspace"
           }
         },
-        "gates": null,
+        "gates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Literal",
+            "value": [
+              "compile",
+              "test",
+              "hallucination"
+            ]
+          }
+        },
         "workerOutput": {
           "typeName": "String",
           "expression": {
@@ -146,7 +156,7 @@
           }
         },
         "id": "verify",
-        "nodeId": "Workflow1:verify-and-repair-flow:verify",
+        "nodeId": "Workflow1:verify-repair-flow:verify",
         "name": null,
         "type": "MagicPAI.RunVerificationActivity",
         "version": 1,
@@ -166,18 +176,7 @@
             }
           }
         },
-        "failedGates": {
-          "typeName": "String[]",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "failedGatesVariable",
-              "name": "FailedGates",
-              "typeName": "System.String[], System.Private.CoreLib",
-              "value": "[]"
-            }
-          }
-        },
+        "failedGates": null,
         "originalPrompt": {
           "typeName": "String",
           "expression": {
@@ -190,18 +189,7 @@
             }
           }
         },
-        "gateResultsJson": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "gateResultsJsonVariable",
-              "name": "GateResultsJson",
-              "typeName": "String",
-              "value": "[]"
-            }
-          }
-        },
+        "gateResultsJson": null,
         "repairPrompt": {
           "typeName": "String",
           "memoryReference": {
@@ -209,7 +197,7 @@
           }
         },
         "id": "repair",
-        "nodeId": "Workflow1:verify-and-repair-flow:repair",
+        "nodeId": "Workflow1:verify-repair-flow:repair",
         "name": null,
         "type": "MagicPAI.RepairActivity",
         "version": 1,
@@ -232,21 +220,17 @@
         "agent": {
           "typeName": "String",
           "expression": {
-            "type": "Literal",
-            "value": ""
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude"
+            }
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "repairPromptVariable",
-              "name": "RepairPrompt",
-              "typeName": "String",
-              "value": ""
-            }
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -332,8 +316,8 @@
         "costUsd": null,
         "filesModified": null,
         "exitCode": null,
-        "id": "repairAgent",
-        "nodeId": "Workflow1:verify-and-repair-flow:repairAgent",
+        "id": "repair-agent",
+        "nodeId": "Workflow1:verify-repair-flow:repair-agent",
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
@@ -420,13 +404,13 @@
           "port": "Done"
         },
         "target": {
-          "activity": "repairAgent"
+          "activity": "repair-agent"
         },
         "vertices": []
       },
       {
         "source": {
-          "activity": "repairAgent",
+          "activity": "repair-agent",
           "port": "Done"
         },
         "target": {
@@ -436,7 +420,7 @@
       },
       {
         "source": {
-          "activity": "repairAgent",
+          "activity": "repair-agent",
           "port": "Failed"
         },
         "target": {

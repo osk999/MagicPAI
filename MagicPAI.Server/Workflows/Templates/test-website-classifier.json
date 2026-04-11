@@ -1,0 +1,192 @@
+﻿{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
+  "definitionId": "TestWebsiteClassifierWorkflow",
+  "name": "Test Website Classifier",
+  "description": "Test ClassifierActivity for website routing",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
+  "version": 1,
+  "variables": [
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
+  "isLatest": true,
+  "isPublished": true,
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
+  "root": {
+    "id": "test-website-classifier-flow",
+    "nodeId": "Workflow1:test-website-classifier-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "TestWebsiteClassifierWorkflow.cs:52"
+    },
+    "metadata": {},
+    "activities": [
+      {
+        "image": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "magicpai-env:latest"
+          }
+        },
+        "workspacePath": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "C:\\Users\\PC\\AppData\\Local\\Temp\\magicpai-test"
+          }
+        },
+        "memoryLimitMb": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2048
+          }
+        },
+        "enableGui": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "envVars": null,
+        "containerId": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "containerIdVariable"
+          }
+        },
+        "guiUrl": null,
+        "id": "spawn-container",
+        "nodeId": "Workflow1:test-website-classifier-flow:spawn-container",
+        "name": null,
+        "type": "MagicPAI.SpawnContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "prompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Audit the marketing website at example.com for accessibility issues, check mobile responsiveness and WCAG 2.1 AA compliance"
+          }
+        },
+        "classificationQuestion": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Does this task involve browser-based website auditing, UI/UX review, frontend interaction, layout analysis, or accessibility review?"
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "result": null,
+        "confidence": null,
+        "rationale": null,
+        "id": "test-website-classifier",
+        "nodeId": "Workflow1:test-website-classifier-flow:test-website-classifier",
+        "name": null,
+        "type": "MagicPAI.ClassifierActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "id": "destroy-container",
+        "nodeId": "Workflow1:test-website-classifier-flow:destroy-container",
+        "name": null,
+        "type": "MagicPAI.DestroyContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      }
+    ],
+    "connections": [
+      {
+        "source": {
+          "activity": "spawn-container",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "test-website-classifier"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "test-website-classifier",
+          "port": "True"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "test-website-classifier",
+          "port": "False"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      }
+    ]
+  }
+}

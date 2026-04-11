@@ -1,10 +1,10 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "PromptGroundingWorkflow",
   "name": "Prompt Grounding",
-  "description": "Ground a prompt against the codebase: analyze codebase structure, then rewrite prompt into implementation-ready form",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "description": "Analyze codebase and rewrite vague prompts into precise, file-specific instructions",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
     {
@@ -60,7 +60,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "PromptGroundingWorkflow.cs"
+      "source": "PromptGroundingWorkflow.cs:60"
     },
     "metadata": {},
     "activities": [
@@ -204,11 +204,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Rewrite this task into a precise, implementation-ready prompt using the codebase analysis below.\\n\\n## Original Prompt\\n' + (getVariable('Prompt') || '') + '\\n\\n## Codebase Analysis\\n' + (getVariable('CodebaseAnalysis') || '');"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",

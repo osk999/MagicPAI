@@ -1,46 +1,18 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "StandardOrchestrateWorkflow",
   "name": "Standard Orchestrate",
   "description": "Balanced pipeline: prompt enhancement, context, triage, complex/simple routing, verification",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
-    {
-      "id": "promptVariable",
-      "name": "Prompt",
-      "typeName": "String",
-      "isArray": false,
-      "value": ""
-    },
     {
       "id": "containerIdVariable",
       "name": "ContainerId",
       "typeName": "String",
       "isArray": false,
       "value": ""
-    },
-    {
-      "id": "aiAssistantVariable",
-      "name": "AiAssistant",
-      "typeName": "String",
-      "isArray": false,
-      "value": ""
-    },
-    {
-      "id": "modelVariable",
-      "name": "Model",
-      "typeName": "String",
-      "isArray": false,
-      "value": "auto"
-    },
-    {
-      "id": "modelPowerVariable",
-      "name": "ModelPower",
-      "typeName": "Int32",
-      "isArray": false,
-      "value": "0"
     },
     {
       "id": "enhancedPromptVariable",
@@ -80,7 +52,7 @@
     {
       "id": "architectTasksVariable",
       "name": "ArchitectTasks",
-      "typeName": "System.String[], System.Private.CoreLib",
+      "typeName": "String",
       "isArray": true,
       "value": "[]"
     },
@@ -90,34 +62,6 @@
       "typeName": "String",
       "isArray": false,
       "value": ""
-    },
-    {
-      "id": "failedGatesVariable",
-      "name": "FailedGates",
-      "typeName": "System.String[], System.Private.CoreLib",
-      "isArray": true,
-      "value": "[]"
-    },
-    {
-      "id": "gateResultsJsonVariable",
-      "name": "GateResultsJson",
-      "typeName": "String",
-      "isArray": false,
-      "value": "[]"
-    },
-    {
-      "id": "repairPromptVariable",
-      "name": "RepairPrompt",
-      "typeName": "String",
-      "isArray": false,
-      "value": ""
-    },
-    {
-      "id": "repairAttemptsVariable",
-      "name": "RepairAttempts",
-      "typeName": "Int32",
-      "isArray": false,
-      "value": "0"
     }
   ],
   "inputs": [],
@@ -137,7 +81,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "StandardOrchestrateWorkflow.json"
+      "source": "StandardOrchestrateWorkflow.cs:208"
     },
     "metadata": {},
     "activities": [
@@ -311,11 +255,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return getVariable('EnhancedPrompt') || getVariable('Prompt') || '';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -420,11 +360,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return getVariable('ElaboratedPrompt') || getVariable('Prompt') || '';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -515,11 +451,7 @@
       },
       {
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return getVariable('GatheredContext') || getVariable('Prompt') || '';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -572,11 +504,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return getVariable('GatheredContext') || getVariable('Prompt') || '';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -598,18 +526,10 @@
           }
         },
         "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || m || '') : m;"
-          }
+          "typeName": "String"
         },
         "modelPower": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModelPower') || 0) : (getVariable('ModelPower') || 0);"
-          }
+          "typeName": "Int32"
         },
         "structuredOutputSchema": {
           "typeName": "String",
@@ -680,7 +600,17 @@
             "value": "/workspace"
           }
         },
-        "gates": null,
+        "gates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Literal",
+            "value": [
+              "compile",
+              "test",
+              "hallucination"
+            ]
+          }
+        },
         "workerOutput": null,
         "allPassed": null,
         "failedGates": null,
@@ -695,11 +625,7 @@
       },
       {
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return getVariable('GatheredContext') || getVariable('Prompt') || '';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -745,11 +671,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var context = getVariable('GatheredContext') || getVariable('Prompt') || ''; var tasks = getVariable('ArchitectTasks') || []; if (!tasks || tasks.length === 0) return context; var plan = ''; for (var i = 0; i < tasks.length; i++) { plan += (i+1) + '. ' + tasks[i] + '\\n'; } return 'Execute the task using the architected sub-task plan below.\\n\\nContext-rich prompt:\\n' + context + '\\n\\nSub-tasks:\\n' + plan;"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -771,18 +693,10 @@
           }
         },
         "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || m || '') : m;"
-          }
+          "typeName": "String"
         },
         "modelPower": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModelPower') || 0) : (getVariable('ModelPower') || 0);"
-          }
+          "typeName": "Int32"
         },
         "structuredOutputSchema": {
           "typeName": "String",
@@ -858,7 +772,17 @@
             "value": "/workspace"
           }
         },
-        "gates": null,
+        "gates": {
+          "typeName": "String[]",
+          "expression": {
+            "type": "Literal",
+            "value": [
+              "compile",
+              "test",
+              "hallucination"
+            ]
+          }
+        },
         "workerOutput": {
           "typeName": "String",
           "expression": {
@@ -872,18 +796,8 @@
           }
         },
         "allPassed": null,
-        "failedGates": {
-          "typeName": "System.String[], System.Private.CoreLib",
-          "memoryReference": {
-            "id": "failedGatesVariable"
-          }
-        },
-        "gateResultsJson": {
-          "typeName": "String",
-          "memoryReference": {
-            "id": "gateResultsJsonVariable"
-          }
-        },
+        "failedGates": null,
+        "gateResultsJson": null,
         "id": "std-complex-verify",
         "nodeId": "Workflow1:standard-orchestrate-flow:std-complex-verify",
         "name": null,
@@ -905,48 +819,12 @@
             }
           }
         },
-        "failedGates": {
-          "typeName": "String[]",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "failedGatesVariable",
-              "name": "FailedGates",
-              "typeName": "System.String[], System.Private.CoreLib",
-              "value": "[]"
-            }
-          }
-        },
+        "failedGates": null,
         "originalPrompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "promptVariable",
-              "name": "Prompt",
-              "typeName": "String",
-              "value": ""
-            }
-          }
+          "typeName": "String"
         },
-        "gateResultsJson": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "gateResultsJsonVariable",
-              "name": "GateResultsJson",
-              "typeName": "String",
-              "value": "[]"
-            }
-          }
-        },
-        "repairPrompt": {
-          "typeName": "String",
-          "memoryReference": {
-            "id": "repairPromptVariable"
-          }
-        },
+        "gateResultsJson": null,
+        "repairPrompt": null,
         "id": "std-complex-repair",
         "nodeId": "Workflow1:standard-orchestrate-flow:std-complex-repair",
         "name": null,
@@ -957,30 +835,13 @@
       },
       {
         "aiAssistant": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
+          "typeName": "String"
         },
         "agent": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
+          "typeName": "String"
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "repairPromptVariable",
-              "name": "RepairPrompt",
-              "typeName": "String",
-              "value": ""
-            }
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -1002,18 +863,10 @@
           }
         },
         "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || m || '') : m;"
-          }
+          "typeName": "String"
         },
         "modelPower": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var m = getVariable('Model') || ''; return (!m || m.toLowerCase() === 'auto') ? (getVariable('RecommendedModelPower') || 0) : (getVariable('ModelPower') || 0);"
-          }
+          "typeName": "Int32"
         },
         "structuredOutputSchema": {
           "typeName": "String",
@@ -1066,16 +919,7 @@
       },
       {
         "containerId": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "containerIdVariable",
-              "name": "ContainerId",
-              "typeName": "String",
-              "value": ""
-            }
-          }
+          "typeName": "String"
         },
         "id": "std-destroy",
         "nodeId": "Workflow1:standard-orchestrate-flow:std-destroy",
@@ -1088,34 +932,10 @@
     ],
     "variables": [
       {
-        "id": "promptVariable",
-        "name": "Prompt",
-        "typeName": "String",
-        "value": ""
-      },
-      {
         "id": "containerIdVariable",
         "name": "ContainerId",
         "typeName": "String",
         "value": ""
-      },
-      {
-        "id": "aiAssistantVariable",
-        "name": "AiAssistant",
-        "typeName": "String",
-        "value": ""
-      },
-      {
-        "id": "modelVariable",
-        "name": "Model",
-        "typeName": "String",
-        "value": "auto"
-      },
-      {
-        "id": "modelPowerVariable",
-        "name": "ModelPower",
-        "typeName": "Int32",
-        "value": "0"
       },
       {
         "id": "enhancedPromptVariable",
@@ -1158,30 +978,6 @@
         "name": "ComplexWorkerOutput",
         "typeName": "String",
         "value": ""
-      },
-      {
-        "id": "failedGatesVariable",
-        "name": "FailedGates",
-        "typeName": "System.String[], System.Private.CoreLib",
-        "value": "[]"
-      },
-      {
-        "id": "gateResultsJsonVariable",
-        "name": "GateResultsJson",
-        "typeName": "String",
-        "value": "[]"
-      },
-      {
-        "id": "repairPromptVariable",
-        "name": "RepairPrompt",
-        "typeName": "String",
-        "value": ""
-      },
-      {
-        "id": "repairAttemptsVariable",
-        "name": "RepairAttempts",
-        "typeName": "Int32",
-        "value": "0"
       }
     ],
     "connections": [
@@ -1397,6 +1193,16 @@
       },
       {
         "source": {
+          "activity": "std-complex-repair",
+          "port": "Exceeded"
+        },
+        "target": {
+          "activity": "std-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
           "activity": "std-complex-verify",
           "port": "Failed"
         },
@@ -1412,16 +1218,6 @@
         },
         "target": {
           "activity": "std-repair-agent"
-        },
-        "vertices": []
-      },
-      {
-        "source": {
-          "activity": "std-complex-repair",
-          "port": "Exceeded"
-        },
-        "target": {
-          "activity": "std-destroy"
         },
         "vertices": []
       },

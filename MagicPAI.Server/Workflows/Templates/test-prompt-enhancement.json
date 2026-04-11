@@ -1,0 +1,192 @@
+﻿{
+  "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
+  "id": "",
+  "definitionId": "TestPromptEnhancementWorkflow",
+  "name": "Test Prompt Enhancement",
+  "description": "Test PromptEnhancementActivity with a vague prompt",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
+  "version": 1,
+  "variables": [
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "outcomes": [],
+  "customProperties": {},
+  "isReadonly": false,
+  "isSystem": false,
+  "isLatest": true,
+  "isPublished": true,
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
+  "root": {
+    "id": "test-enhancement-flow",
+    "nodeId": "Workflow1:test-enhancement-flow",
+    "type": "Elsa.Flowchart",
+    "version": 1,
+    "customProperties": {
+      "source": "TestPromptEnhancementWorkflow.cs:50"
+    },
+    "metadata": {},
+    "activities": [
+      {
+        "image": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "magicpai-env:latest"
+          }
+        },
+        "workspacePath": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "C:\\Users\\PC\\AppData\\Local\\Temp\\magicpai-test"
+          }
+        },
+        "memoryLimitMb": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2048
+          }
+        },
+        "enableGui": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "envVars": null,
+        "containerId": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "containerIdVariable"
+          }
+        },
+        "guiUrl": null,
+        "id": "spawn-container",
+        "nodeId": "Workflow1:test-enhancement-flow:spawn-container",
+        "name": null,
+        "type": "MagicPAI.SpawnContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "originalPrompt": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "make it work"
+          }
+        },
+        "enhancementInstructions": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 3
+          }
+        },
+        "enhancedPrompt": null,
+        "wasEnhanced": null,
+        "rationale": null,
+        "id": "test-enhancer",
+        "nodeId": "Workflow1:test-enhancement-flow:test-enhancer",
+        "name": null,
+        "type": "MagicPAI.PromptEnhancementActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      },
+      {
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "id": "destroy-container",
+        "nodeId": "Workflow1:test-enhancement-flow:destroy-container",
+        "name": null,
+        "type": "MagicPAI.DestroyContainerActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {}
+      }
+    ],
+    "variables": [
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      }
+    ],
+    "connections": [
+      {
+        "source": {
+          "activity": "spawn-container",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "test-enhancer"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "test-enhancer",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "test-enhancer",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "destroy-container"
+        },
+        "vertices": []
+      }
+    ]
+  }
+}

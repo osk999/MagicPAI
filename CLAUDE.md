@@ -95,6 +95,27 @@ all activity definitions, code examples, Docker setup, and file manifest.
   fix those in the MagicPAI codebase, then restart the workflow.
 - Use browser automation (Playwright/Chrome MCP) to visually verify results.
 
+## E2E Workflow Verification via UI (CRITICAL)
+- **Always run and verify workflows through the Elsa Studio UI**, not just via API.
+- Use Playwright MCP, Chrome DevTools MCP, or Chrome CDP to interact with
+  `http://localhost:5000` (MagicPAI Studio / Elsa Studio).
+- After creating a session, open the Studio and verify:
+  1. Navigate to **Workflow Definitions** — confirm all workflows from `WorkflowCatalog.cs` are listed
+  2. Navigate to **Workflow Instances** — find the running/completed instance
+  3. Open the instance — verify the **visual workflow graph** renders correctly
+  4. Check each activity node shows the right status (completed/failed/running)
+  5. Verify **no exceptions** in the activity execution logs
+  6. Take screenshots at each step as evidence
+- If any step shows an error, exception, or visual glitch in Studio:
+  1. Screenshot the problem
+  2. Check server logs for the root cause
+  3. Fix the MagicPAI/Elsa issue
+  4. Rebuild, restart, and re-run the workflow from scratch
+  5. Do NOT proceed until the workflow completes cleanly in the UI
+- **Workflow is not done until visually confirmed in Studio** — API completion
+  alone is not sufficient. The visual designer must show the full execution
+  path without errors.
+
 ## File Ownership (for parallel agents)
 - **core agent**: MagicPAI.Core/**
 - **activities agent**: MagicPAI.Activities/**

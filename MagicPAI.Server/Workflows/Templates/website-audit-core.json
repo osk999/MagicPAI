@@ -1,10 +1,10 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "WebsiteAuditCoreWorkflow",
   "name": "Website Audit Core",
   "description": "Four-phase autonomous website audit core: discovery, visual, interaction, and final synthesis",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
     {
@@ -74,7 +74,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "WebsiteAuditCoreWorkflow.json"
+      "source": "WebsiteAuditCoreWorkflow.cs:198"
     },
     "metadata": {},
     "activities": [
@@ -140,11 +140,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nPhase 1: Discovery.\\nUse Playwright with headed Chromium inside the provided GUI container.\\nMap the website, list key pages, identify core user journeys, and call out unknown areas.\\nEnd with DISCOVERY_DONE only when the page map is sufficient for visual review.';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -235,11 +231,7 @@
       },
       {
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Original website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nLatest discovery report:\\n' + (getVariable('DiscoveryOutput') || '');"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -257,7 +249,7 @@
           "typeName": "String",
           "expression": {
             "type": "Literal",
-            "value": "Determine whether website discovery is complete.\nReturn low complexity (1-4) when the discovery report is sufficient to move to the visual audit phase.\nReturn high complexity (8-10) when additional discovery is still required.\nSet category to \"docs\"."
+            "value": "Determine whether website discovery is complete.\nReturn low complexity (1-4) when the discovery report is sufficient to move to the visual audit phase.\nReturn high complexity (8-10) when additional discovery is still required.\nSet category to \u0022docs\u0022."
           }
         },
         "complexity": null,
@@ -293,11 +285,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nPhase 2: Visual audit.\\nUse Playwright with headed Chromium inside the provided GUI container.\\nReview layout consistency, hierarchy, spacing, responsiveness risks, and visual defects.\\nUse the discovery findings below.\\n\\nDiscovery findings:\\n' + (getVariable('DiscoveryOutput') || '') + '\\n\\nEnd with VISUAL_DONE only when visual review is complete.';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -388,11 +376,7 @@
       },
       {
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Original website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nLatest visual audit report:\\n' + (getVariable('VisualOutput') || '');"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -410,7 +394,7 @@
           "typeName": "String",
           "expression": {
             "type": "Literal",
-            "value": "Determine whether the visual audit is complete.\nReturn low complexity (1-4) when the report is sufficient to proceed to interaction testing.\nReturn high complexity (8-10) when another visual pass is needed.\nSet category to \"docs\"."
+            "value": "Determine whether the visual audit is complete.\nReturn low complexity (1-4) when the report is sufficient to proceed to interaction testing.\nReturn high complexity (8-10) when another visual pass is needed.\nSet category to \u0022docs\u0022."
           }
         },
         "complexity": null,
@@ -446,11 +430,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nPhase 3: Interaction and scroll audit.\\nUse Playwright with headed Chromium inside the provided GUI container.\\nReview forms, buttons, navigation flow, focus order, and scrolling behavior.\\nUse these prior findings.\\n\\nDiscovery findings:\\n' + (getVariable('DiscoveryOutput') || '') + '\\n\\nVisual findings:\\n' + (getVariable('VisualOutput') || '') + '\\n\\nEnd with INTERACTION_DONE only when interaction coverage is complete.';"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -541,11 +521,7 @@
       },
       {
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Original website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nLatest interaction audit report:\\n' + (getVariable('InteractionOutput') || '');"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -563,7 +539,7 @@
           "typeName": "String",
           "expression": {
             "type": "Literal",
-            "value": "Determine whether the interaction audit is complete.\nReturn low complexity (1-4) when interaction review is sufficient for the final synthesis pass.\nReturn high complexity (8-10) when more interaction testing is required.\nSet category to \"testing\"."
+            "value": "Determine whether the interaction audit is complete.\nReturn low complexity (1-4) when interaction review is sufficient for the final synthesis pass.\nReturn high complexity (8-10) when more interaction testing is required.\nSet category to \u0022testing\u0022."
           }
         },
         "complexity": null,
@@ -599,11 +575,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return 'Website audit request:\\n' + (getVariable('Prompt') || '') + '\\n\\nPhase 4: Final audit synthesis.\\nProduce a prioritized report with critical issues, user-impact summary, and remediation guidance.\\n\\nDiscovery findings:\\n' + (getVariable('DiscoveryOutput') || '') + '\\n\\nVisual findings:\\n' + (getVariable('VisualOutput') || '') + '\\n\\nInteraction findings:\\n' + (getVariable('InteractionOutput') || '');"
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
