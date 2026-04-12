@@ -5,6 +5,12 @@ namespace MagicPAI.Server.Workflows;
 
 public abstract class WorkflowBase : Elsa.Workflows.WorkflowBase
 {
+    /// <summary>
+    /// Helper to set visual designer position on an activity.
+    /// </summary>
+    protected static void Pos(IActivity activity, int x, int y) =>
+        activity.Metadata["designer"] = new { position = new { x, y } };
+
     protected override ValueTask AfterBuildAsync(IWorkflowBuilder builder, CancellationToken cancellationToken)
     {
         if (builder.Root is IVariableContainer variableContainer)

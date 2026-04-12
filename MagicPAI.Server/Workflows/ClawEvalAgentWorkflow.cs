@@ -32,6 +32,7 @@ public class ClawEvalAgentWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "eval-triage"
         };
+        Pos(triage, 400, 50);
 
         // Step 2: Context gathering
         var gatherContext = new AiAssistantActivity
@@ -42,6 +43,7 @@ public class ClawEvalAgentWorkflow : WorkflowBase
             ModelPower = new Input<int>(3),
             Id = "eval-context"
         };
+        Pos(gatherContext, 400, 220);
 
         // Step 3a: Simple execution
         var simpleExec = new AiAssistantActivity
@@ -53,6 +55,7 @@ public class ClawEvalAgentWorkflow : WorkflowBase
             ModelPower = new Input<int>(modelPower),
             Id = "eval-simple-exec"
         };
+        Pos(simpleExec, 250, 390);
 
         // Step 3b: Complex execution (uses Opus)
         var complexExec = new AiAssistantActivity
@@ -63,6 +66,7 @@ public class ClawEvalAgentWorkflow : WorkflowBase
             ModelPower = new Input<int>(1),
             Id = "eval-complex-exec"
         };
+        Pos(complexExec, 550, 390);
 
         var flowchart = new Flowchart
         {

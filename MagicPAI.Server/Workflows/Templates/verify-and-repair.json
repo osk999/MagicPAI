@@ -95,7 +95,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "VerifyAndRepairWorkflow.cs:54"
+      "source": "VerifyAndRepairWorkflow.cs:57"
     },
     "metadata": {},
     "activities": [
@@ -161,7 +161,14 @@
         "type": "MagicPAI.RunVerificationActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -202,7 +209,14 @@
         "type": "MagicPAI.RepairActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -322,7 +336,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 390
+            }
+          }
+        }
       }
     ],
     "variables": [

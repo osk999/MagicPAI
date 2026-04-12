@@ -32,6 +32,7 @@ public class TestFullFlowWorkflow : WorkflowBase
             ContainerId = new Output<string>(containerIdVar),
             Id = "spawn-container"
         };
+        Pos(spawn, 400, 50);
 
         // Step 1: Is this complex?
         var classify = new ClassifierActivity
@@ -44,6 +45,7 @@ public class TestFullFlowWorkflow : WorkflowBase
             ModelPower = new Input<int>(3),
             Id = "classify-complexity"
         };
+        Pos(classify, 400, 220);
 
         // Step 2a (complex path): Enhance the prompt
         var enhance = new PromptEnhancementActivity
@@ -54,6 +56,7 @@ public class TestFullFlowWorkflow : WorkflowBase
             ModelPower = new Input<int>(3),
             Id = "enhance-prompt"
         };
+        Pos(enhance, 200, 390);
 
         // Step 2b: Run the agent (simple path skips enhancement)
         var agent = new RunCliAgentActivity
@@ -68,12 +71,14 @@ public class TestFullFlowWorkflow : WorkflowBase
             TimeoutMinutes = new Input<int>(5),
             Id = "run-agent"
         };
+        Pos(agent, 400, 560);
 
         var destroy = new DestroyContainerActivity
         {
             ContainerId = new Input<string>(containerIdVar),
             Id = "destroy-container"
         };
+        Pos(destroy, 400, 730);
 
         builder.Root = new Flowchart
         {

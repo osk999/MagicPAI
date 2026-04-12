@@ -38,6 +38,7 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
             Response = new Output<string>(assembledPrompt),
             Id = "simple-assemble-prompt"
         };
+        Pos(assemblePrompt, 400, 50);
 
         // Step 2: Execute the main agent
         var runAgent = new AiAssistantActivity
@@ -49,6 +50,7 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
             ModelPower = new Input<int>(modelPower),
             Id = "simple-agent"
         };
+        Pos(runAgent, 400, 220);
 
         // Step 3: Verify results
         var verify = new RunVerificationActivity
@@ -56,6 +58,7 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "simple-verify"
         };
+        Pos(verify, 400, 390);
 
         var flowchart = new Flowchart
         {

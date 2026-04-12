@@ -32,7 +32,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "TestFullFlowWorkflow.cs:78"
+      "source": "TestFullFlowWorkflow.cs:83"
     },
     "metadata": {},
     "activities": [
@@ -79,7 +79,14 @@
         "type": "MagicPAI.SpawnContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -124,7 +131,14 @@
         "type": "MagicPAI.ClassifierActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "originalPrompt": {
@@ -169,7 +183,14 @@
         "type": "MagicPAI.PromptEnhancementActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 200,
+              "y": 390
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -273,7 +294,14 @@
         "type": "MagicPAI.RunCliAgentActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 560
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -294,7 +322,14 @@
         "type": "MagicPAI.DestroyContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 730
+            }
+          }
+        }
       }
     ],
     "variables": [

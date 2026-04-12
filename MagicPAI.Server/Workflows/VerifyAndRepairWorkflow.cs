@@ -49,6 +49,9 @@ public class VerifyAndRepairWorkflow : WorkflowBase
         var verify = loop.Verify;
         var repair = loop.Repair;
         var repairAgent = loop.RepairAgent;
+        Pos(verify, 400, 50);
+        Pos(repair, 400, 220);
+        Pos(repairAgent, 400, 390);
 
         // Build a flowchart for the verify-repair loop
         var flowchart = new Flowchart

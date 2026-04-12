@@ -102,7 +102,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "OrchestrateComplexPathWorkflow.cs:104"
+      "source": "OrchestrateComplexPathWorkflow.cs:111"
     },
     "metadata": {},
     "activities": [
@@ -140,7 +140,14 @@
         "type": "MagicPAI.ArchitectActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "taskCategory": {
@@ -187,7 +194,14 @@
         "type": "MagicPAI.ModelRouterActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -306,7 +320,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 390
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -359,7 +380,14 @@
         "type": "MagicPAI.RunVerificationActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 560
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -422,7 +450,14 @@
         "type": "MagicPAI.RepairActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 200,
+              "y": 730
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -541,7 +576,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 200,
+              "y": 900
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -655,7 +697,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 600,
+              "y": 730
+            }
+          }
+        }
       }
     ],
     "variables": [

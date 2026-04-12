@@ -31,6 +31,7 @@ public class TestWebsiteClassifierWorkflow : WorkflowBase
             ContainerId = new Output<string>(containerIdVar),
             Id = "spawn-container"
         };
+        Pos(spawn, 400, 50);
 
         var classifier = new ClassifierActivity
         {
@@ -42,12 +43,14 @@ public class TestWebsiteClassifierWorkflow : WorkflowBase
             ModelPower = new Input<int>(3),
             Id = "test-website-classifier"
         };
+        Pos(classifier, 400, 220);
 
         var destroy = new DestroyContainerActivity
         {
             ContainerId = new Input<string>(containerIdVar),
             Id = "destroy-container"
         };
+        Pos(destroy, 400, 390);
 
         builder.Root = new Flowchart
         {

@@ -40,6 +40,7 @@ public class ResearchPipelineWorkflow : WorkflowBase
             Response = new Output<string>(enhancedPrompt),
             Id = "research-enhance"
         };
+        Pos(enhance, 400, 50);
 
         // Step 2: Research context gathering
         var research = new AiAssistantActivity
@@ -54,6 +55,7 @@ public class ResearchPipelineWorkflow : WorkflowBase
             Response = new Output<string>(researchContext),
             Id = "research-gather"
         };
+        Pos(research, 400, 220);
 
         // Step 3: Triage for routing
         var triage = new TriageActivity
@@ -65,6 +67,7 @@ public class ResearchPipelineWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "research-triage"
         };
+        Pos(triage, 400, 390);
 
         // Step 4a: Simple execution path
         var simpleAgent = new AiAssistantActivity
@@ -79,6 +82,7 @@ public class ResearchPipelineWorkflow : WorkflowBase
             ModelPower = new Input<int>(modelPower),
             Id = "research-simple-exec"
         };
+        Pos(simpleAgent, 200, 560);
 
         // Step 4b: Complex decomposition path
         var architect = new ArchitectActivity
@@ -90,6 +94,7 @@ public class ResearchPipelineWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "research-architect"
         };
+        Pos(architect, 600, 560);
 
         var complexAgent = new AiAssistantActivity
         {
@@ -102,6 +107,7 @@ public class ResearchPipelineWorkflow : WorkflowBase
             ModelPower = new Input<int>(1),
             Id = "research-complex-exec"
         };
+        Pos(complexAgent, 600, 730);
 
         var flowchart = new Flowchart
         {

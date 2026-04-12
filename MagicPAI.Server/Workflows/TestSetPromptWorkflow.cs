@@ -30,6 +30,7 @@ public class TestSetPromptWorkflow : WorkflowBase
             ModelPower = new Input<int>(3),
             Id = "test-prompt-agent"
         };
+        Pos(testAgent, 400, 150);
 
         var flowchart = new Flowchart
         {

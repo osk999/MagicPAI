@@ -39,6 +39,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "architect"
         };
+        Pos(architect, 400, 50);
 
         // Step 2: Model router selects best model for the task
         var modelRouter = new ModelRouterActivity
@@ -50,6 +51,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             SelectedModel = new Output<string>(selectedModel),
             Id = "model-router"
         };
+        Pos(modelRouter, 400, 220);
 
         // Step 3: Execute worker agent (in production, ForEach over task list)
         var worker = new AiAssistantActivity
@@ -60,6 +62,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             Model = new Input<string>(selectedModel),
             Id = "complex-agent"
         };
+        Pos(worker, 400, 390);
 
         // Step 4: Verify results
         var verify = new RunVerificationActivity
@@ -69,6 +72,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             GateResultsJson = new Output<string>(gateResultsJson),
             Id = "complex-verify"
         };
+        Pos(verify, 400, 560);
 
         // Step 5: Repair on failure
         var repair = new RepairActivity
@@ -80,6 +84,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             RepairPrompt = new Output<string>(repairPrompt),
             Id = "complex-repair"
         };
+        Pos(repair, 200, 730);
 
         // Step 6: Repair agent
         var repairAgent = new AiAssistantActivity
@@ -90,6 +95,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             Model = new Input<string>(selectedModel),
             Id = "repair-agent"
         };
+        Pos(repairAgent, 200, 900);
 
         // Step 7: Merge results
         var merge = new AiAssistantActivity
@@ -100,6 +106,7 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             ModelPower = new Input<int>(2),
             Id = "merge-results"
         };
+        Pos(merge, 600, 730);
 
         var flowchart = new Flowchart
         {

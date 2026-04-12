@@ -31,6 +31,7 @@ public class TestPromptEnhancementWorkflow : WorkflowBase
             ContainerId = new Output<string>(containerIdVar),
             Id = "spawn-container"
         };
+        Pos(spawn, 400, 50);
 
         var enhance = new PromptEnhancementActivity
         {
@@ -40,12 +41,14 @@ public class TestPromptEnhancementWorkflow : WorkflowBase
             ModelPower = new Input<int>(3),
             Id = "test-enhancer"
         };
+        Pos(enhance, 400, 220);
 
         var destroy = new DestroyContainerActivity
         {
             ContainerId = new Input<string>(containerIdVar),
             Id = "destroy-container"
         };
+        Pos(destroy, 400, 390);
 
         builder.Root = new Flowchart
         {

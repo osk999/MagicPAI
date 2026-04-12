@@ -68,6 +68,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
             ContainerId = new Output<string>(containerId),
             Id = "spawn-container"
         };
+        Pos(spawn, 400, 50);
 
         var websiteClassifier = new WebsiteTaskClassifierActivity
         {
@@ -75,6 +76,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "website-classifier"
         };
+        Pos(websiteClassifier, 400, 220);
 
         var triage = new TriageActivity
         {
@@ -84,6 +86,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
             RecommendedModelPower = new Output<int>(modelPower),
             Id = "triage"
         };
+        Pos(triage, 600, 390);
 
         var websiteAudit = new ExecuteWorkflow
         {
@@ -92,6 +95,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
             Input = buildChildInput(),
             Id = "website-audit"
         };
+        Pos(websiteAudit, 200, 390);
 
         var simplePath = new ExecuteWorkflow
         {
@@ -100,6 +104,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
             Input = buildChildInput(),
             Id = "simple-path"
         };
+        Pos(simplePath, 500, 560);
 
         var complexPath = new ExecuteWorkflow
         {
@@ -108,12 +113,14 @@ public class FullOrchestrateWorkflow : WorkflowBase
             Input = buildChildInput(),
             Id = "complex-path"
         };
+        Pos(complexPath, 700, 560);
 
         var destroy = new DestroyContainerActivity
         {
             ContainerId = resolveContainerId(),
             Id = "destroy-container"
         };
+        Pos(destroy, 400, 730);
 
         var flowchart = new Flowchart
         {

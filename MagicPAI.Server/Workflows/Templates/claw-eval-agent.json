@@ -60,7 +60,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "ClawEvalAgentWorkflow.cs:67"
+      "source": "ClawEvalAgentWorkflow.cs:71"
     },
     "metadata": {},
     "activities": [
@@ -100,7 +100,14 @@
         "type": "MagicPAI.TriageActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -214,7 +221,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -338,7 +352,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 250,
+              "y": 390
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -452,7 +473,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 550,
+              "y": 390
+            }
+          }
+        }
       }
     ],
     "variables": [

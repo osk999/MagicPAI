@@ -36,6 +36,7 @@ public class PromptGroundingWorkflow : WorkflowBase
             Response = new Output<string>(codebaseAnalysis),
             Id = "analyze-codebase"
         };
+        Pos(analyzeCodebase, 400, 50);
 
         // Step 2: Rewrite the prompt with grounded context
         var rewritePrompt = new AiAssistantActivity
@@ -56,6 +57,7 @@ public class PromptGroundingWorkflow : WorkflowBase
             Response = new Output<string>(groundedPrompt),
             Id = "rewrite-prompt"
         };
+        Pos(rewritePrompt, 400, 220);
 
         var flowchart = new Flowchart
         {

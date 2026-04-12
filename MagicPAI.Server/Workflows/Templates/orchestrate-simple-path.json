@@ -67,7 +67,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "OrchestrateSimplePathWorkflow.cs:60"
+      "source": "OrchestrateSimplePathWorkflow.cs:63"
     },
     "metadata": {},
     "activities": [
@@ -188,7 +188,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -312,7 +319,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -355,7 +369,14 @@
         "type": "MagicPAI.RunVerificationActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 390
+            }
+          }
+        }
       }
     ],
     "variables": [

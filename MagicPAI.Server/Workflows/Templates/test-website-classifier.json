@@ -32,7 +32,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "TestWebsiteClassifierWorkflow.cs:52"
+      "source": "TestWebsiteClassifierWorkflow.cs:55"
     },
     "metadata": {},
     "activities": [
@@ -79,7 +79,14 @@
         "type": "MagicPAI.SpawnContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -124,7 +131,14 @@
         "type": "MagicPAI.ClassifierActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -145,7 +159,14 @@
         "type": "MagicPAI.DestroyContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 390
+            }
+          }
+        }
       }
     ],
     "variables": [

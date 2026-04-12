@@ -28,6 +28,7 @@ public class IsWebsiteProjectWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "website-classifier"
         };
+        Pos(classify, 400, 150);
 
         var flowchart = new Flowchart
         {

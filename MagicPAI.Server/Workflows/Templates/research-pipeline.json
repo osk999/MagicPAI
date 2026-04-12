@@ -74,7 +74,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "ResearchPipelineWorkflow.cs:106"
+      "source": "ResearchPipelineWorkflow.cs:112"
     },
     "metadata": {},
     "activities": [
@@ -195,7 +195,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -305,7 +312,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -334,7 +348,14 @@
         "type": "MagicPAI.TriageActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 390
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -449,7 +470,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 200,
+              "y": 560
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -476,7 +504,14 @@
         "type": "MagicPAI.ArchitectActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 600,
+              "y": 560
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -581,7 +616,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 600,
+              "y": 730
+            }
+          }
+        }
       }
     ],
     "variables": [

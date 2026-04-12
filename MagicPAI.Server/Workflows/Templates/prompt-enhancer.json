@@ -53,7 +53,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "PromptEnhancerWorkflow.cs:73"
+      "source": "PromptEnhancerWorkflow.cs:77"
     },
     "metadata": {},
     "activities": [
@@ -93,7 +93,14 @@
         "type": "MagicPAI.TriageActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -212,7 +219,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 200,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -250,7 +264,14 @@
         "type": "MagicPAI.TriageActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -360,7 +381,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 600,
+              "y": 390
+            }
+          }
+        }
       }
     ],
     "variables": [

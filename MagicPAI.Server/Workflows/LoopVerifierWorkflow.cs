@@ -36,6 +36,7 @@ public class LoopVerifierWorkflow : WorkflowBase
             ContainerId = new Output<string>(containerId),
             Id = "loop-spawn"
         };
+        Pos(spawn, 400, 50);
 
         var iterationGate = new IterationGateActivity
         {
@@ -45,6 +46,7 @@ public class LoopVerifierWorkflow : WorkflowBase
             Label = new Input<string>("Loop Verifier"),
             Id = "loop-iteration-gate"
         };
+        Pos(iterationGate, 400, 220);
 
         // Step 1: Run the agent
         var runAgent = new AiAssistantActivity
@@ -57,6 +59,7 @@ public class LoopVerifierWorkflow : WorkflowBase
             Response = new Output<string>(loopOutput),
             Id = "loop-runner"
         };
+        Pos(runAgent, 400, 390);
 
         // Step 2: Classify the latest agent output to decide whether another pass is required.
         var classify = new TriageActivity
@@ -83,6 +86,7 @@ public class LoopVerifierWorkflow : WorkflowBase
                 """),
             Id = "loop-classifier"
         };
+        Pos(classify, 400, 560);
 
         var destroy = new DestroyContainerActivity
         {
@@ -92,6 +96,7 @@ public class LoopVerifierWorkflow : WorkflowBase
                 ?? ""),
             Id = "loop-destroy"
         };
+        Pos(destroy, 400, 730);
 
         var flowchart = new Flowchart
         {

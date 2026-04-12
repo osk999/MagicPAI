@@ -83,6 +83,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             ContainerId = new Output<string>(containerId),
             Id = "std-spawn"
         };
+        Pos(spawn, 400, 50);
 
         // --- Prompt Enhancement Phase ---
         var enhancePrompt = new AiAssistantActivity
@@ -96,6 +97,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             Response = new Output<string>(enhancedPrompt),
             Id = "std-enhance"
         };
+        Pos(enhancePrompt, 400, 170);
 
         // --- Elaboration Phase ---
         var elaborate = new AiAssistantActivity
@@ -110,6 +112,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             Response = new Output<string>(elaboratedPrompt),
             Id = "std-elaborate"
         };
+        Pos(elaborate, 400, 290);
 
         // --- Context Gathering ---
         var gatherContext = new AiAssistantActivity
@@ -124,6 +127,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             Response = new Output<string>(gatheredContext),
             Id = "std-context"
         };
+        Pos(gatherContext, 400, 410);
 
         // --- Triage ---
         var triage = new TriageActivity
@@ -137,6 +141,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             RecommendedModelPower = new Output<int>(recommendedModelPower),
             Id = "std-triage"
         };
+        Pos(triage, 400, 530);
 
         // --- Simple Path ---
         var simpleAgent = new AiAssistantActivity
@@ -151,12 +156,14 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             ModelPower = resolveRecommendedPower(),
             Id = "std-simple-agent"
         };
+        Pos(simpleAgent, 200, 700);
 
         var simpleVerify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
             Id = "std-simple-verify"
         };
+        Pos(simpleVerify, 200, 870);
 
         // --- Complex Path ---
         var architect = new ArchitectActivity
@@ -169,6 +176,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             TaskListJson = new Output<string[]>(architectTasks),
             Id = "std-architect"
         };
+        Pos(architect, 600, 700);
 
         var complexAgent = new AiAssistantActivity
         {
@@ -180,6 +188,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             Response = new Output<string>(complexWorkerOutput),
             Id = "std-complex-agent"
         };
+        Pos(complexAgent, 600, 870);
 
         var complexLoop = VerifyAndRepairLoop.Create(
             verifyId: "std-complex-verify",
@@ -197,6 +206,9 @@ public class StandardOrchestrateWorkflow : WorkflowBase
         var complexVerify = complexLoop.Verify;
         var complexRepair = complexLoop.Repair;
         var repairAgent = complexLoop.RepairAgent;
+        Pos(complexVerify, 600, 1040);
+        Pos(complexRepair, 500, 1210);
+        Pos(repairAgent, 700, 1210);
 
         // --- Cleanup ---
         var destroy = new DestroyContainerActivity
@@ -204,6 +216,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
             ContainerId = resolveContainerId(),
             Id = "std-destroy"
         };
+        Pos(destroy, 400, 1380);
 
         var flowchart = new Flowchart
         {

@@ -27,6 +27,7 @@ public class IsComplexAppWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "complexity-classifier"
         };
+        Pos(classify, 400, 150);
 
         var flowchart = new Flowchart
         {

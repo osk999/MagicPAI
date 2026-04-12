@@ -36,6 +36,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Response = new Output<string>(researchContext),
             Id = "research-context"
         };
+        Pos(research, 100, 50);
 
         // Parallel branch 2: Repo-map analysis
         var repoMap = new AiAssistantActivity
@@ -48,6 +49,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Response = new Output<string>(repoMapContext),
             Id = "repo-map-context"
         };
+        Pos(repoMap, 400, 50);
 
         // Parallel branch 3: Memory loading
         var memoryLoad = new AiAssistantActivity
@@ -60,6 +62,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Response = new Output<string>(memoryContext),
             Id = "memory-context"
         };
+        Pos(memoryLoad, 700, 50);
 
         // Merge step: combine all context
         var mergeContext = new AiAssistantActivity
@@ -86,6 +89,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Response = new Output<string>(mergedContext),
             Id = "merge-context"
         };
+        Pos(mergeContext, 400, 220);
 
         builder.Root = new Sequence
         {

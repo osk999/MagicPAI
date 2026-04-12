@@ -39,7 +39,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "IsComplexAppWorkflow.cs:31"
+      "source": "IsComplexAppWorkflow.cs:32"
     },
     "metadata": {},
     "activities": [
@@ -79,7 +79,14 @@
         "type": "MagicPAI.TriageActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 150
+            }
+          }
+        }
       }
     ],
     "variables": [

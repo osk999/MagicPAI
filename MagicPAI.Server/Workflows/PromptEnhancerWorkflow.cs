@@ -31,6 +31,7 @@ public class PromptEnhancerWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "classify-vagueness"
         };
+        Pos(classifyVagueness, 400, 50);
 
         // Step 2: Enhance with Sonnet (for vague/complex prompts)
         var enhanceSonnet = new AiAssistantActivity
@@ -44,6 +45,7 @@ public class PromptEnhancerWorkflow : WorkflowBase
             Response = new Output<string>(enhancedPrompt),
             Id = "enhance-sonnet"
         };
+        Pos(enhanceSonnet, 200, 220);
 
         // Step 3: Quality check the enhanced prompt
         var qualityCheck = new TriageActivity
@@ -52,6 +54,7 @@ public class PromptEnhancerWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "quality-check"
         };
+        Pos(qualityCheck, 400, 220);
 
         // Step 4: Escalate to Opus if quality check shows still complex
         var enhanceOpus = new AiAssistantActivity
@@ -68,6 +71,7 @@ public class PromptEnhancerWorkflow : WorkflowBase
             Response = new Output<string>(enhancedPrompt),
             Id = "enhance-opus"
         };
+        Pos(enhanceOpus, 600, 390);
 
         // Simple prompts go directly to Sonnet enhancement (still benefit from it)
         var flowchart = new Flowchart

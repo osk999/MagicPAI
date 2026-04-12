@@ -39,7 +39,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "IsWebsiteProjectWorkflow.cs:32"
+      "source": "IsWebsiteProjectWorkflow.cs:33"
     },
     "metadata": {},
     "activities": [
@@ -77,7 +77,14 @@
         "type": "MagicPAI.WebsiteTaskClassifierActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 150
+            }
+          }
+        }
       }
     ],
     "variables": [

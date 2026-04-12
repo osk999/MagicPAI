@@ -46,7 +46,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "TestSetPromptWorkflow.cs:34"
+      "source": "TestSetPromptWorkflow.cs:35"
     },
     "metadata": {},
     "activities": [
@@ -162,7 +162,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 150
+            }
+          }
+        }
       }
     ],
     "variables": [

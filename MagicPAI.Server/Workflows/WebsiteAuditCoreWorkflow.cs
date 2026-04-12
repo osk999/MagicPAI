@@ -36,6 +36,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
             Label = new Input<string>("Discovery"),
             Id = "phase1-discovery-gate"
         };
+        Pos(discoveryGate, 400, 50);
 
         var discoveryRunner = new AiAssistantActivity
         {
@@ -55,6 +56,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
             Response = new Output<string>(discoveryOutput),
             Id = "phase1-discovery-runner"
         };
+        Pos(discoveryRunner, 400, 220);
 
         var discoveryCheck = new TriageActivity
         {
@@ -76,6 +78,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
                 """),
             Id = "phase1-discovery-check"
         };
+        Pos(discoveryCheck, 400, 390);
 
         var visualRunner = new AiAssistantActivity
         {
@@ -100,6 +103,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
             Response = new Output<string>(visualOutput),
             Id = "phase2-visual-runner"
         };
+        Pos(visualRunner, 400, 560);
 
         var visualCheck = new TriageActivity
         {
@@ -121,6 +125,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
                 """),
             Id = "phase2-visual-check"
         };
+        Pos(visualCheck, 400, 730);
 
         var interactionRunner = new AiAssistantActivity
         {
@@ -148,6 +153,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
             Response = new Output<string>(interactionOutput),
             Id = "phase3-interaction-runner"
         };
+        Pos(interactionRunner, 400, 900);
 
         var interactionCheck = new TriageActivity
         {
@@ -169,6 +175,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
                 """),
             Id = "phase3-interaction-check"
         };
+        Pos(interactionCheck, 400, 1070);
 
         var opusSweep = new AiAssistantActivity
         {
@@ -194,6 +201,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
             ModelPower = new Input<int>(1),
             Id = "phase4-opus-sweep"
         };
+        Pos(opusSweep, 400, 1240);
 
         var flowchart = new Flowchart
         {

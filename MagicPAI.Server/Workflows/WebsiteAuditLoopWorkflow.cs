@@ -28,6 +28,7 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
             ContainerId = new Output<string>(containerId),
             Id = "audit-spawn"
         };
+        Pos(spawn, 400, 50);
 
         var runAudit = new ExecuteWorkflow
         {
@@ -41,6 +42,7 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
             }),
             Id = "audit-core"
         };
+        Pos(runAudit, 400, 220);
 
         var destroy = new DestroyContainerActivity
         {
@@ -50,6 +52,7 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
                 ?? ""),
             Id = "audit-destroy"
         };
+        Pos(destroy, 400, 390);
 
         var flowchart = new Flowchart
         {

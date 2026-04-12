@@ -189,7 +189,14 @@
             "type": "MagicPAI.AiAssistantActivity",
             "version": 1,
             "customProperties": {},
-            "metadata": {}
+            "metadata": {
+              "designer": {
+                "position": {
+                  "x": 100,
+                  "y": 50
+                }
+              }
+            }
           },
           {
             "aiAssistant": {
@@ -299,7 +306,14 @@
             "type": "MagicPAI.AiAssistantActivity",
             "version": 1,
             "customProperties": {},
-            "metadata": {}
+            "metadata": {
+              "designer": {
+                "position": {
+                  "x": 400,
+                  "y": 50
+                }
+              }
+            }
           },
           {
             "aiAssistant": {
@@ -409,7 +423,14 @@
             "type": "MagicPAI.AiAssistantActivity",
             "version": 1,
             "customProperties": {},
-            "metadata": {}
+            "metadata": {
+              "designer": {
+                "position": {
+                  "x": 700,
+                  "y": 50
+                }
+              }
+            }
           }
         ],
         "variables": [],
@@ -531,7 +552,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       }
     ],
     "variables": [
@@ -584,7 +612,7 @@
     "type": "Elsa.Sequence",
     "version": 1,
     "customProperties": {
-      "source": "ContextGathererWorkflow.cs:90"
+      "source": "ContextGathererWorkflow.cs:94"
     },
     "metadata": {}
   }

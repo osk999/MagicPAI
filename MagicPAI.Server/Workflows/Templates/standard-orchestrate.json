@@ -81,7 +81,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "StandardOrchestrateWorkflow.cs:208"
+      "source": "StandardOrchestrateWorkflow.cs:221"
     },
     "metadata": {},
     "activities": [
@@ -128,7 +128,14 @@
         "type": "MagicPAI.SpawnContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -237,7 +244,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 170
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -342,7 +356,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 290
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -447,7 +468,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 410
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -486,7 +514,14 @@
         "type": "MagicPAI.TriageActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 530
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -578,7 +613,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 200,
+              "y": 700
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -621,7 +663,14 @@
         "type": "MagicPAI.RunVerificationActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 200,
+              "y": 870
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -653,7 +702,14 @@
         "type": "MagicPAI.ArchitectActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 600,
+              "y": 700
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -750,7 +806,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 600,
+              "y": 870
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -804,7 +867,14 @@
         "type": "MagicPAI.RunVerificationActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 600,
+              "y": 1040
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -831,7 +901,14 @@
         "type": "MagicPAI.RepairActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 500,
+              "y": 1210
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -915,7 +992,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 700,
+              "y": 1210
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -927,7 +1011,14 @@
         "type": "MagicPAI.DestroyContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 1380
+            }
+          }
+        }
       }
     ],
     "variables": [

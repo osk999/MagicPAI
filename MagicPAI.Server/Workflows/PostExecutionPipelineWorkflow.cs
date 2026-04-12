@@ -40,6 +40,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             ModelPower = new Input<int>(2),
             Id = "completeness-audit"
         };
+        Pos(completenessAudit, 400, 50);
 
         // Step 2: Review loop (code review agent)
         var reviewAgent = new AiAssistantActivity
@@ -50,6 +51,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             ModelPower = new Input<int>(2),
             Id = "review-agent"
         };
+        Pos(reviewAgent, 400, 220);
 
         // Step 3: Review check (is review satisfactory?)
         var reviewCheck = new TriageActivity
@@ -58,6 +60,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Id = "review-check"
         };
+        Pos(reviewCheck, 400, 390);
 
         // Step 4: Quality gates verification
         var qualityGates = new RunVerificationActivity
@@ -68,6 +71,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             GateResultsJson = new Output<string>(gateResultsJson),
             Id = "quality-gates"
         };
+        Pos(qualityGates, 400, 560);
 
         // Step 5: E2E test
         var e2eTest = new AiAssistantActivity
@@ -78,6 +82,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             ModelPower = new Input<int>(2),
             Id = "e2e-test"
         };
+        Pos(e2eTest, 400, 730);
 
         // Step 6: Final verify and repair
         var finalVerify = new RunVerificationActivity
@@ -87,6 +92,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             GateResultsJson = new Output<string>(gateResultsJson),
             Id = "final-verify"
         };
+        Pos(finalVerify, 400, 900);
 
         // Step 7: Repair on failure
         var repair = new RepairActivity
@@ -98,6 +104,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             RepairPrompt = new Output<string>(repairPrompt),
             Id = "post-repair"
         };
+        Pos(repair, 200, 1070);
 
         var repairAgent = new AiAssistantActivity
         {
@@ -108,6 +115,7 @@ public class PostExecutionPipelineWorkflow : WorkflowBase
             ModelPower = new Input<int>(modelPower),
             Id = "post-repair-agent"
         };
+        Pos(repairAgent, 200, 1240);
 
         var flowchart = new Flowchart
         {
