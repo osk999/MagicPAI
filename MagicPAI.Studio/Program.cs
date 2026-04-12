@@ -58,6 +58,7 @@ builder.Services.AddWorkflowsDesigner();
 
 // Custom MagicPAI menu provider + feature (for page discovery by Shell.App)
 builder.Services.AddScoped<IMenuProvider, MagicPaiMenuProvider>();
+builder.Services.AddScoped<IMenuGroupProvider, MagicPaiMenuGroupProvider>();
 builder.Services.AddScoped<IFeature, MagicPaiFeature>();
 
 var app = builder.Build();

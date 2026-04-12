@@ -19,7 +19,7 @@ public class MagicPaiMenuProvider : IMenuProvider
                 Text = "Dashboard",
                 Icon = "fa-solid fa-gauge-high",
                 Order = -10,
-                GroupName = "MagicPAI"
+                GroupName = "magicpai"
             },
             new()
             {
@@ -27,7 +27,7 @@ public class MagicPaiMenuProvider : IMenuProvider
                 Text = "Cost Analytics",
                 Icon = "fa-solid fa-dollar-sign",
                 Order = -8,
-                GroupName = "MagicPAI"
+                GroupName = "magicpai"
             },
             new()
             {
@@ -35,23 +35,23 @@ public class MagicPaiMenuProvider : IMenuProvider
                 Text = "Settings",
                 Icon = "fa-solid fa-gear",
                 Order = -7,
-                GroupName = "MagicPAI"
+                GroupName = "magicpai"
             },
             new()
             {
-                Href = "workflow-definitions",
+                Href = "workflows/definitions",
                 Text = "Workflows",
                 Icon = "fa-solid fa-diagram-project",
                 Order = -5,
-                GroupName = "Elsa Studio"
+                GroupName = "elsa-studio"
             },
             new()
             {
-                Href = "workflow-instances",
+                Href = "workflows/instances",
                 Text = "Instances",
                 Icon = "fa-solid fa-list-check",
                 Order = -4,
-                GroupName = "Elsa Studio"
+                GroupName = "elsa-studio"
             },
             new()
             {
@@ -59,7 +59,7 @@ public class MagicPaiMenuProvider : IMenuProvider
                 Text = "API Explorer",
                 Icon = "fa-solid fa-terminal",
                 Order = -3,
-                GroupName = "Elsa Studio"
+                GroupName = "elsa-studio"
             }
         };
 

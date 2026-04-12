@@ -60,7 +60,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "SimpleAgentWorkflow.cs:66"
+      "source": "SimpleAgentWorkflow.cs:70"
     },
     "metadata": {},
     "activities": [
@@ -107,7 +107,14 @@
         "type": "MagicPAI.SpawnContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 50
+            }
+          }
+        }
       },
       {
         "aiAssistant": {
@@ -213,7 +220,14 @@
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 220
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -256,7 +270,14 @@
         "type": "MagicPAI.RunVerificationActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 390
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -277,7 +298,14 @@
         "type": "MagicPAI.DestroyContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 560
+            }
+          }
+        }
       }
     ],
     "variables": [

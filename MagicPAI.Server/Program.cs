@@ -281,6 +281,13 @@ app.UseFastEndpoints(cfg =>
         cfg.Serializer.Options.Converters.Add(new MagicPAI.Server.Bridge.TypeJsonConverter());
     // Accept both string and integer enum values (Studio sends strings, server expects ints)
     cfg.Serializer.Options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+    // Apply Elsa serialization converters (ActivityJsonConverterFactory, FlowchartJsonConverter, etc.)
+    // so that FastEndpoints responses serialize Flowchart activities and connections correctly.
+    // Without this, the Studio visual designer shows an empty canvas.
+    var configurators = app.Services.GetServices<Elsa.Common.ISerializationOptionsConfigurator>();
+    foreach (var configurator in configurators)
+        configurator.Configure(cfg.Serializer.Options);
 });
 
 // JSON error handler

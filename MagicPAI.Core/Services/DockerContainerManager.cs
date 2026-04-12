@@ -443,15 +443,7 @@ public class DockerContainerManager : IContainerManager, IDisposable
 
     private static ProcessStartInfo CreateDockerExecProcessStartInfo(string containerId, string command)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "docker",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
+        var psi = CreateDockerCliStartInfo();
         psi.ArgumentList.Add("exec");
         psi.ArgumentList.Add(containerId);
         psi.ArgumentList.Add("bash");
@@ -462,14 +454,7 @@ public class DockerContainerManager : IContainerManager, IDisposable
 
     private static ProcessStartInfo CreateDockerExecProcessStartInfo(string containerId, ContainerExecRequest request)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "docker",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var psi = CreateDockerCliStartInfo();
 
         psi.ArgumentList.Add("exec");
 
@@ -650,8 +635,9 @@ public class DockerContainerManager : IContainerManager, IDisposable
         return psi;
     }
 
-    private static ProcessStartInfo CreateDockerCliStartInfo() =>
-        new()
+    private static ProcessStartInfo CreateDockerCliStartInfo()
+    {
+        var psi = new ProcessStartInfo
         {
             FileName = "docker",
             RedirectStandardOutput = true,
@@ -659,6 +645,18 @@ public class DockerContainerManager : IContainerManager, IDisposable
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
+        // Prevent MSYS/Git Bash from converting Linux paths (e.g. /workspace)
+        // to Windows paths (e.g. C:/Program Files/Git/workspace) when running
+        // Docker CLI commands on Windows.
+        if (OperatingSystem.IsWindows())
+        {
+            psi.Environment["MSYS_NO_PATHCONV"] = "1";
+            psi.Environment["MSYS2_ARG_CONV_EXCL"] = "*";
+        }
+
+        return psi;
+    }
 
     private static async Task<(string stdout, string stderr)> RunDockerAsync(
         ProcessStartInfo psi,

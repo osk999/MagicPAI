@@ -114,7 +114,14 @@
         "type": "MagicPAI.SpawnContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 80
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -150,7 +157,14 @@
         "type": "MagicPAI.WebsiteTaskClassifierActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 240
+            }
+          }
+        }
       },
       {
         "prompt": {
@@ -198,7 +212,14 @@
         "type": "MagicPAI.TriageActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 550,
+              "y": 400
+            }
+          }
+        }
       },
       {
         "workflowDefinitionId": {
@@ -228,7 +249,14 @@
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 250,
+              "y": 400
+            }
+          }
+        }
       },
       {
         "workflowDefinitionId": {
@@ -258,7 +286,14 @@
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 250,
+              "y": 560
+            }
+          }
+        }
       },
       {
         "workflowDefinitionId": {
@@ -288,7 +323,14 @@
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 550,
+              "y": 560
+            }
+          }
+        }
       },
       {
         "containerId": {
@@ -309,7 +351,14 @@
         "type": "MagicPAI.DestroyContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 720
+            }
+          }
+        }
       }
     ],
     "variables": [

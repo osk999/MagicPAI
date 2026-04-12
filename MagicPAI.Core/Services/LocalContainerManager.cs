@@ -326,9 +326,30 @@ public class LocalContainerManager : IContainerManager
 
     private static ProcessStartInfo CreateProcessStartInfo(ContainerExecRequest request)
     {
+        // On Windows, npm global scripts are .cmd files (e.g., codex.cmd).
+        // Process.Start with UseShellExecute=false can't find .cmd files,
+        // so we try the .cmd variant if the original FileName isn't found.
+        var fileName = request.FileName;
+        if (OperatingSystem.IsWindows() &&
+            !Path.HasExtension(fileName) &&
+            !File.Exists(fileName))
+        {
+            var cmdPath = $"{fileName}.cmd";
+            // Check common locations
+            var pathDirs = Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? [];
+            foreach (var dir in pathDirs)
+            {
+                if (File.Exists(Path.Combine(dir, cmdPath)))
+                {
+                    fileName = cmdPath;
+                    break;
+                }
+            }
+        }
+
         var psi = new ProcessStartInfo
         {
-            FileName = request.FileName,
+            FileName = fileName,
             WorkingDirectory = request.WorkingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,

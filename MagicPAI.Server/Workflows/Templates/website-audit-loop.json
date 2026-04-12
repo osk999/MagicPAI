@@ -7,9 +7,27 @@
   "createdAt": "0001-01-01T00:00:00+00:00",
   "version": 1,
   "variables": [
-    { "id": "containerIdVariable", "name": "ContainerId", "typeName": "String", "isArray": false, "value": "" },
-    { "id": "promptVariable", "name": "Prompt", "typeName": "String", "isArray": false, "value": "" },
-    { "id": "aiAssistantVariable", "name": "AiAssistant", "typeName": "String", "isArray": false, "value": "claude" }
+    {
+      "id": "containerIdVariable",
+      "name": "ContainerId",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "promptVariable",
+      "name": "Prompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "aiAssistantVariable",
+      "name": "AiAssistant",
+      "typeName": "String",
+      "isArray": false,
+      "value": "claude"
+    }
   ],
   "inputs": [],
   "outputs": [],
@@ -19,19 +37,40 @@
   "isSystem": false,
   "isLatest": true,
   "isPublished": true,
-  "options": { "autoUpdateConsumingWorkflows": false },
+  "options": {
+    "autoUpdateConsumingWorkflows": false
+  },
   "root": {
     "id": "website-audit-loop-flow",
     "nodeId": "Workflow1:website-audit-loop-flow",
     "type": "Elsa.Flowchart",
     "version": 1,
-    "customProperties": { "source": "WebsiteAuditLoopWorkflow.cs" },
+    "customProperties": {
+      "source": "WebsiteAuditLoopWorkflow.cs"
+    },
     "metadata": {},
     "activities": [
       {
-        "workspacePath": { "typeName": "String", "expression": { "type": "Literal", "value": "" } },
-        "enableGui": { "typeName": "Boolean", "expression": { "type": "Literal", "value": true } },
-        "containerId": { "typeName": "String", "memoryReference": { "id": "containerIdVariable" } },
+        "workspacePath": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "enableGui": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
+        "containerId": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "containerIdVariable"
+          }
+        },
         "guiUrl": null,
         "id": "audit-spawn",
         "nodeId": "Workflow1:website-audit-loop-flow:audit-spawn",
@@ -39,11 +78,30 @@
         "type": "MagicPAI.SpawnContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 80
+            }
+          }
+        }
       },
       {
-        "workflowDefinitionId": { "typeName": "String", "expression": { "type": "Literal", "value": "WebsiteAuditCoreWorkflow" } },
-        "waitForCompletion": { "typeName": "Boolean", "expression": { "type": "Literal", "value": true } },
+        "workflowDefinitionId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "WebsiteAuditCoreWorkflow"
+          }
+        },
+        "waitForCompletion": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
         "input": {
           "typeName": "Object",
           "expression": {
@@ -57,12 +115,27 @@
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 240
+            }
+          }
+        }
       },
       {
         "containerId": {
           "typeName": "String",
-          "expression": { "type": "Variable", "value": { "id": "containerIdVariable", "name": "ContainerId", "typeName": "String", "value": "" } }
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
         },
         "id": "audit-destroy",
         "nodeId": "Workflow1:website-audit-loop-flow:audit-destroy",
@@ -70,18 +143,67 @@
         "type": "MagicPAI.DestroyContainerActivity",
         "version": 1,
         "customProperties": {},
-        "metadata": {}
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 400
+            }
+          }
+        }
       }
     ],
     "variables": [
-      { "id": "containerIdVariable", "name": "ContainerId", "typeName": "String", "value": "" },
-      { "id": "promptVariable", "name": "Prompt", "typeName": "String", "value": "" },
-      { "id": "aiAssistantVariable", "name": "AiAssistant", "typeName": "String", "value": "claude" }
+      {
+        "id": "containerIdVariable",
+        "name": "ContainerId",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "promptVariable",
+        "name": "Prompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "aiAssistantVariable",
+        "name": "AiAssistant",
+        "typeName": "String",
+        "value": "claude"
+      }
     ],
     "connections": [
-      { "source": { "activity": "audit-spawn", "port": "Done" }, "target": { "activity": "audit-core" }, "vertices": [] },
-      { "source": { "activity": "audit-spawn", "port": "Failed" }, "target": { "activity": "audit-destroy" }, "vertices": [] },
-      { "source": { "activity": "audit-core", "port": "Done" }, "target": { "activity": "audit-destroy" }, "vertices": [] }
+      {
+        "source": {
+          "activity": "audit-spawn",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "audit-core"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "audit-spawn",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "audit-destroy"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "audit-core",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "audit-destroy"
+        },
+        "vertices": []
+      }
     ]
   }
 }

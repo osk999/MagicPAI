@@ -64,7 +64,7 @@ public class CodexRunner : ICliAgentRunner
 
     public CliAgentExecutionPlan BuildExecutionPlan(AgentRequest request)
     {
-        var model = ResolveModel(request.Model ?? DefaultModel);
+        var model = string.IsNullOrWhiteSpace(request.Model) ? null : ResolveModel(request.Model);
         var workDir = request.WorkDir ?? "/workspace";
         var outputFile = $"/tmp/codex-last-message-{Guid.NewGuid():N}.txt";
         var schemaFile = $"/tmp/codex-schema-{Guid.NewGuid():N}.json";
@@ -90,8 +90,13 @@ public class CodexRunner : ICliAgentRunner
             arguments.Add("never");
         }
         arguments.Add("--json");
-        arguments.Add("-m");
-        arguments.Add(model);
+        // Only pass -m when a specific model is requested (not "auto" or default)
+        if (!string.IsNullOrWhiteSpace(model) &&
+            !string.Equals(model, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            arguments.Add("-m");
+            arguments.Add(model);
+        }
 
         if (!isResume && !string.IsNullOrWhiteSpace(request.OutputSchema))
         {
@@ -122,6 +127,9 @@ public class CodexRunner : ICliAgentRunner
                 WorkingDirectory: workDir));
         }
 
+        // Always use "codex" as the command name. Inside Docker containers (Linux),
+        // codex is a regular binary. For local Windows execution, LocalContainerManager
+        // wraps the command through cmd.exe which resolves .cmd scripts automatically.
         return new CliAgentExecutionPlan(
             MainRequest: new ContainerExecRequest(
                 FileName: "codex",

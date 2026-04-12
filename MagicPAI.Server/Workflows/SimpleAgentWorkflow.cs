@@ -38,7 +38,8 @@ public class SimpleAgentWorkflow : WorkflowBase
         {
             WorkspacePath = new Input<string>("/workspace"),
             ContainerId = new Output<string>(containerId),
-            Id = "spawn-container"
+            Id = "spawn-container",
+            Metadata = { ["designer"] = new { position = new { x = 400, y = 50 } } }
         };
 
         var runAgent = new AiAssistantActivity
@@ -48,19 +49,22 @@ public class SimpleAgentWorkflow : WorkflowBase
             ContainerId = new Input<string>(containerId),
             Model = resolveModel(),
             ModelPower = new Input<int>(modelPower),
-            Id = "run-agent"
+            Id = "run-agent",
+            Metadata = { ["designer"] = new { position = new { x = 400, y = 220 } } }
         };
 
         var verify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
-            Id = "run-verification"
+            Id = "run-verification",
+            Metadata = { ["designer"] = new { position = new { x = 400, y = 390 } } }
         };
 
         var destroy = new DestroyContainerActivity
         {
             ContainerId = new Input<string>(containerId),
-            Id = "destroy-container"
+            Id = "destroy-container",
+            Metadata = { ["designer"] = new { position = new { x = 400, y = 560 } } }
         };
 
         var flowchart = new Flowchart
