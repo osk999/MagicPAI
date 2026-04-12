@@ -406,9 +406,9 @@ public class WorkflowExecutionIntegrationTests : IntegrationTestBase
                 {
                     1 => AgentEnvelope("""{"complexity":9,"category":"docs","recommended_model_power":3,"needs_decomposition":true}"""),
                     2 => AgentEnvelope("""{"complexity":2,"category":"docs","recommended_model_power":3,"needs_decomposition":false}"""),
-                    3 => AgentEnvelope("""{"complexity":2,"category":"docs","recommended_model_power":2,"needs_decomposition":false}"""),
-                    4 => AgentEnvelope("""{"complexity":2,"category":"testing","recommended_model_power":2,"needs_decomposition":false}"""),
-                    _ => AgentEnvelope("""{"complexity":2,"category":"testing","recommended_model_power":2,"needs_decomposition":false}""")
+                    3 => AgentEnvelope("""{"complexity":2,"category":"docs","recommended_model_power":3,"needs_decomposition":false}"""),
+                    4 => AgentEnvelope("""{"complexity":2,"category":"testing","recommended_model_power":3,"needs_decomposition":false}"""),
+                    _ => AgentEnvelope("""{"complexity":2,"category":"testing","recommended_model_power":3,"needs_decomposition":false}""")
                 };
             }
 

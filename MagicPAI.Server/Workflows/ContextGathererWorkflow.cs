@@ -32,7 +32,7 @@ public class ContextGathererWorkflow : WorkflowBase
             AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             Response = new Output<string>(researchContext),
             Id = "research-context"
         };
@@ -45,7 +45,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Prompt = new Input<string>(ctx =>
                 $"Create a repo-map style implementation context for this task:\n\n{ctx.GetVariable<string>("Prompt") ?? ""}"),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             Response = new Output<string>(repoMapContext),
             Id = "repo-map-context"
         };
@@ -58,7 +58,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Prompt = new Input<string>(ctx =>
                 $"Load any relevant prior constraints, conventions, or remembered context for this task:\n\n{ctx.GetVariable<string>("Prompt") ?? ""}"),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             Response = new Output<string>(memoryContext),
             Id = "memory-context"
         };

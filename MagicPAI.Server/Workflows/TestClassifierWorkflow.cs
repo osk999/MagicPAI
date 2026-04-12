@@ -41,7 +41,7 @@ public class TestClassifierWorkflow : WorkflowBase
             ClassificationQuestion = new Input<string>(
                 "Does this task require multi-file changes, architectural decisions, or multi-step implementation?"),
             ContainerId = new Input<string>(containerIdVar),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(1),
             Id = "test-classifier"
         };
         Pos(classifier, 400, 220);

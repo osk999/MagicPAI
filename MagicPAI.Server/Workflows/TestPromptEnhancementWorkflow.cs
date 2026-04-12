@@ -38,7 +38,7 @@ public class TestPromptEnhancementWorkflow : WorkflowBase
             OriginalPrompt = new Input<string>("make it work"),
             EnhancementInstructions = new Input<string>(""),
             ContainerId = new Input<string>(containerIdVar),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(1),
             Id = "test-enhancer"
         };
         Pos(enhance, 400, 220);

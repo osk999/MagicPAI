@@ -301,7 +301,7 @@
           "typeName": "Int32",
           "expression": {
             "type": "Literal",
-            "value": 3
+            "value": 2
           }
         },
         "structuredOutputSchema": {
@@ -413,7 +413,7 @@
           "typeName": "Int32",
           "expression": {
             "type": "Literal",
-            "value": 3
+            "value": 2
           }
         },
         "structuredOutputSchema": {

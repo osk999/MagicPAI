@@ -27,7 +27,7 @@ public class TestSetPromptWorkflow : WorkflowBase
             AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             Id = "test-prompt-agent"
         };
         Pos(testAgent, 400, 150);

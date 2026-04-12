@@ -171,13 +171,13 @@ public class TriageActivity : Activity
           "complexity": <1-10>,
           "category": "<code_gen|bug_fix|refactor|architecture|testing|docs>",
           "needs_decomposition": <true|false>,
-          "recommended_model_power": <1|2|3>
+          "recommended_model_power": <1|2>
         }
 
         Model power guide:
-        1 = strongest / deepest reasoning
-        2 = balanced default
-        3 = fastest / cheapest
+        1 = strongest / deepest reasoning (opus-class)
+        2 = balanced default (sonnet-class)
+        Always use 1 for complex tasks and 2 for simple tasks. Never recommend 3.
 
         Task: {{userPrompt}}
         """;

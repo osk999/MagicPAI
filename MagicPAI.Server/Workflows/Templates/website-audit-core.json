@@ -179,7 +179,7 @@
           "typeName": "Int32",
           "expression": {
             "type": "Literal",
-            "value": 3
+            "value": 2
           }
         },
         "structuredOutputSchema": {
@@ -263,7 +263,7 @@
           "typeName": "String",
           "expression": {
             "type": "Literal",
-            "value": "Determine whether website discovery is complete.\nReturn low complexity (1-4) when the discovery report is sufficient to move to the visual audit phase.\nReturn high complexity (8-10) when additional discovery is still required.\nSet category to \u0022docs\u0022."
+            "value": "Determine whether website discovery is complete.\r\nReturn low complexity (1-4) when the discovery report is sufficient to move to the visual audit phase.\r\nReturn high complexity (8-10) when additional discovery is still required.\r\nSet category to \u0022docs\u0022."
           }
         },
         "complexity": null,
@@ -422,7 +422,7 @@
           "typeName": "String",
           "expression": {
             "type": "Literal",
-            "value": "Determine whether the visual audit is complete.\nReturn low complexity (1-4) when the report is sufficient to proceed to interaction testing.\nReturn high complexity (8-10) when another visual pass is needed.\nSet category to \u0022docs\u0022."
+            "value": "Determine whether the visual audit is complete.\r\nReturn low complexity (1-4) when the report is sufficient to proceed to interaction testing.\r\nReturn high complexity (8-10) when another visual pass is needed.\r\nSet category to \u0022docs\u0022."
           }
         },
         "complexity": null,
@@ -581,7 +581,7 @@
           "typeName": "String",
           "expression": {
             "type": "Literal",
-            "value": "Determine whether the interaction audit is complete.\nReturn low complexity (1-4) when interaction review is sufficient for the final synthesis pass.\nReturn high complexity (8-10) when more interaction testing is required.\nSet category to \u0022testing\u0022."
+            "value": "Determine whether the interaction audit is complete.\r\nReturn low complexity (1-4) when interaction review is sufficient for the final synthesis pass.\r\nReturn high complexity (8-10) when more interaction testing is required.\r\nSet category to \u0022testing\u0022."
           }
         },
         "complexity": null,

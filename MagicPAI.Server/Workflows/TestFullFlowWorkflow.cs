@@ -42,7 +42,7 @@ public class TestFullFlowWorkflow : WorkflowBase
             ClassificationQuestion = new Input<string>(
                 "Does this task require multi-file changes, architectural decisions, or multi-step implementation?"),
             ContainerId = new Input<string>(containerIdVar),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(1),
             Id = "classify-complexity"
         };
         Pos(classify, 400, 220);
@@ -53,7 +53,7 @@ public class TestFullFlowWorkflow : WorkflowBase
             OriginalPrompt = new Input<string>(
                 "Add input validation to the user registration form — check email format and password strength"),
             ContainerId = new Input<string>(containerIdVar),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(1),
             Id = "enhance-prompt"
         };
         Pos(enhance, 200, 390);
@@ -66,7 +66,7 @@ public class TestFullFlowWorkflow : WorkflowBase
                 "List 3 specific validation rules for a user registration form with email and password fields. Just list them, no code."),
             ContainerId = new Input<string>(containerIdVar),
             Model = new Input<string>(""),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             MaxTurns = new Input<int>(5),
             TimeoutMinutes = new Input<int>(5),
             Id = "run-agent"

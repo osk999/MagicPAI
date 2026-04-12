@@ -29,7 +29,7 @@ public static class WorkflowCatalog
         Create<TestSetPromptWorkflow>(),
         Create<ClawEvalAgentWorkflow>(),
         Create<LoopVerifierWorkflow>(),
-        Create<WebsiteAuditCoreWorkflow>(),
+        Create<WebsiteAuditCoreWorkflow>(useJsonTemplate: false),
         Create<WebsiteAuditLoopWorkflow>(useJsonTemplate: false),
         Create<FullOrchestrateWorkflow>(useJsonTemplate: false),
         Create<TestClassifierWorkflow>(),

@@ -57,7 +57,7 @@ public class WebsiteTaskClassifierActivity : Activity
             var request = new AgentRequest
             {
                 Prompt = BuildWebsitePrompt(prompt),
-                Model = AiAssistantResolver.ResolveModelForPower(runner, config, 3),
+                Model = AiAssistantResolver.ResolveModelForPower(runner, config, 1),
                 OutputSchema = SchemaGenerator.FromType<WebsiteTaskClassificationResult>(),
                 WorkDir = workDir,
                 SessionId = AssistantSessionState.GetOrCreateSessionId(context, assistantName)

@@ -27,7 +27,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Agent = new Input<string>("claude"),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            Model = new Input<string>("sonnet"),
             Id = "research-context"
         };
 
@@ -37,7 +37,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Agent = new Input<string>("claude"),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            Model = new Input<string>("sonnet"),
             Id = "repo-map-context"
         };
 
@@ -47,7 +47,7 @@ public class ContextGathererWorkflow : WorkflowBase
             Agent = new Input<string>("claude"),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            Model = new Input<string>("sonnet"),
             Id = "memory-context"
         };
 

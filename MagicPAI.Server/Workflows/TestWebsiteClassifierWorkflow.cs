@@ -40,7 +40,7 @@ public class TestWebsiteClassifierWorkflow : WorkflowBase
             ClassificationQuestion = new Input<string>(
                 "Does this task involve browser-based website auditing, UI/UX review, frontend interaction, layout analysis, or accessibility review?"),
             ContainerId = new Input<string>(containerIdVar),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(1),
             Id = "test-website-classifier"
         };
         Pos(classifier, 400, 220);

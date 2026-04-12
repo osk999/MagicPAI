@@ -11,12 +11,12 @@ namespace MagicPAI.Tests.Activities;
 public class TriageActivityTests
 {
     [Fact]
-    public void Triage_Uses_Haiku_Model_For_Cheap_Classification()
+    public void Triage_Uses_Sonnet_Model_For_Classification()
     {
         var runner = new ClaudeRunner();
-        var cmd = runner.BuildCommand(new AgentRequest { Prompt = "Classify this task", Model = "haiku" });
+        var cmd = runner.BuildCommand(new AgentRequest { Prompt = "Classify this task", Model = "sonnet" });
 
-        Assert.Contains("haiku", cmd);
+        Assert.Contains("sonnet", cmd);
         Assert.Contains("--dangerously-skip-permissions", cmd);
     }
 
@@ -35,7 +35,7 @@ public class TriageActivityTests
     public async Task Triage_Simple_Task_Returns_Low_Complexity()
     {
         var mockContainer = new Mock<IContainerManager>();
-        var triageResponse = """{"complexity": 3, "category": "bug_fix", "needs_decomposition": false, "recommended_model_power": 3}""";
+        var triageResponse = """{"complexity": 3, "category": "bug_fix", "needs_decomposition": false, "recommended_model_power": 2}""";
         mockContainer.Setup(m => m.ExecAsync(
                 "c1", It.IsAny<string>(), "/workspace", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExecResult(0, triageResponse, ""));

@@ -31,8 +31,8 @@ public class ClassifierActivity : Activity
     public Input<string> ContainerId { get; set; } = new("");
 
     [Input(DisplayName = "Model Power", Category = "Model",
-        Description = "1 = strongest, 2 = balanced, 3 = fastest (default: 3 cheapest)")]
-    public Input<int> ModelPower { get; set; } = new(3);
+        Description = "1 = strongest (opus-class), 2 = balanced (sonnet-class)")]
+    public Input<int> ModelPower { get; set; } = new(1);
 
     [Output(DisplayName = "Result")]
     public Output<bool> Result { get; set; } = default!;
@@ -61,7 +61,7 @@ public class ClassifierActivity : Activity
                 {
                     ContainerId = ActivityHelpers.ResolveContainerId(ContainerId, context),
                     Prompt = classifyPrompt,
-                    ModelPower = ActivityHelpers.GetOrDefault(ModelPower, context, 3),
+                    ModelPower = ActivityHelpers.GetOrDefault(ModelPower, context, 1),
                     OutputSchema = schema,
                     UseStreaming = false,
                     MaxRetries = 2,

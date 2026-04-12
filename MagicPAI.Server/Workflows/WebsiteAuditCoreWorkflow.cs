@@ -52,7 +52,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
                 End with DISCOVERY_DONE only when the page map is sufficient for visual review.
                 """),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             Response = new Output<string>(discoveryOutput),
             Id = "phase1-discovery-runner"
         };

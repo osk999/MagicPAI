@@ -69,7 +69,7 @@ public static class AiAssistantResolver
 
     public static int GetRecommendedModelPower(int complexity) => complexity switch
     {
-        <= 3 => 3,
+        <= 3 => 2,  // sonnet-class minimum — no haiku-tier models
         <= 7 => 2,
         _ => 1
     };

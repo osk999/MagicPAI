@@ -31,8 +31,8 @@ public class PromptEnhancementActivity : Activity
     public Input<string> ContainerId { get; set; } = new("");
 
     [Input(DisplayName = "Model Power", Category = "Model",
-        Description = "1 = strongest, 2 = balanced (default), 3 = fastest")]
-    public Input<int> ModelPower { get; set; } = new(2);
+        Description = "1 = strongest (opus-class), 2 = balanced (sonnet-class)")]
+    public Input<int> ModelPower { get; set; } = new(1);
 
     [Output(DisplayName = "Enhanced Prompt")]
     public Output<string> EnhancedPrompt { get; set; } = default!;
@@ -62,7 +62,7 @@ public class PromptEnhancementActivity : Activity
                 {
                     ContainerId = ActivityHelpers.ResolveContainerId(ContainerId, context),
                     Prompt = enhancePrompt,
-                    ModelPower = ActivityHelpers.GetOrDefault(ModelPower, context, 2),
+                    ModelPower = ActivityHelpers.GetOrDefault(ModelPower, context, 1),
                     OutputSchema = schema,
                     UseStreaming = false,
                     MaxRetries = 2,

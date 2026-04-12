@@ -32,7 +32,7 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
             Agent = new Input<string>("claude"),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>("haiku"),
+            Model = new Input<string>("sonnet"),
             Id = "phase1-discovery-runner"
         };
 

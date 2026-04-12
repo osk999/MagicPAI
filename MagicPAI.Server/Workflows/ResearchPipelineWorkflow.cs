@@ -51,7 +51,7 @@ public class ResearchPipelineWorkflow : WorkflowBase
                     ? ctx.GetVariable<string>("Prompt") ?? ""
                     : ctx.GetVariable<string>("EnhancedPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             Response = new Output<string>(researchContext),
             Id = "research-gather"
         };

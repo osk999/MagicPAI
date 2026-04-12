@@ -1,10 +1,10 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "FullOrchestrateWorkflow",
   "name": "Full Orchestrate",
   "description": "Complete AI orchestration: website routing, triage, child workflow execution, and cleanup",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
     {
@@ -67,7 +67,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "FullOrchestrateWorkflow.json"
+      "source": "FullOrchestrateWorkflow.cs:125"
     },
     "metadata": {},
     "activities": [
@@ -94,11 +94,7 @@
           }
         },
         "enableGui": {
-          "typeName": "Boolean",
-          "expression": {
-            "type": "Literal",
-            "value": true
-          }
+          "typeName": "Boolean"
         },
         "envVars": null,
         "containerId": {
@@ -118,7 +114,7 @@
           "designer": {
             "position": {
               "x": 400,
-              "y": 80
+              "y": 50
             }
           }
         }
@@ -161,7 +157,7 @@
           "designer": {
             "position": {
               "x": 400,
-              "y": 240
+              "y": 220
             }
           }
         }
@@ -215,44 +211,7 @@
         "metadata": {
           "designer": {
             "position": {
-              "x": 550,
-              "y": 400
-            }
-          }
-        }
-      },
-      {
-        "workflowDefinitionId": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "WebsiteAuditCoreWorkflow"
-          }
-        },
-        "waitForCompletion": {
-          "typeName": "Boolean",
-          "expression": {
-            "type": "Literal",
-            "value": true
-          }
-        },
-        "input": {
-          "typeName": "Object",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var assistant = getVariable('AiAssistant') || ''; var requestedModel = getVariable('Model') || ''; var resolvedModel = (!requestedModel || requestedModel.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || getVariable('Model') || '') : requestedModel; return { Prompt: getVariable('Prompt') || '', AiAssistant: assistant, Agent: assistant, Model: resolvedModel, ModelPower: getVariable('ModelPower') || 0, ContainerId: getVariable('ContainerId') || '', EnableGui: true };"
-          }
-        },
-        "id": "website-audit",
-        "nodeId": "Workflow1:full-orchestrate-flow:website-audit",
-        "name": null,
-        "type": "Elsa.ExecuteWorkflow",
-        "version": 1,
-        "customProperties": {},
-        "metadata": {
-          "designer": {
-            "position": {
-              "x": 250,
+              "x": 400,
               "y": 400
             }
           }
@@ -266,6 +225,10 @@
             "value": "OrchestrateSimplePathWorkflow"
           }
         },
+        "correlationId": null,
+        "input": {
+          "typeName": "ObjectDictionary"
+        },
         "waitForCompletion": {
           "typeName": "Boolean",
           "expression": {
@@ -273,19 +236,15 @@
             "value": true
           }
         },
-        "input": {
-          "typeName": "Object",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var assistant = getVariable('AiAssistant') || ''; var requestedModel = getVariable('Model') || ''; var resolvedModel = (!requestedModel || requestedModel.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || getVariable('Model') || '') : requestedModel; return { Prompt: getVariable('Prompt') || '', AiAssistant: assistant, Agent: assistant, Model: resolvedModel, ModelPower: getVariable('ModelPower') || 0, ContainerId: getVariable('ContainerId') || '', EnableGui: true };"
-          }
-        },
+        "result": null,
         "id": "simple-path",
         "nodeId": "Workflow1:full-orchestrate-flow:simple-path",
         "name": null,
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "source": "FullOrchestrateWorkflow.cs:91"
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -303,6 +262,10 @@
             "value": "OrchestrateComplexPathWorkflow"
           }
         },
+        "correlationId": null,
+        "input": {
+          "typeName": "ObjectDictionary"
+        },
         "waitForCompletion": {
           "typeName": "Boolean",
           "expression": {
@@ -310,19 +273,15 @@
             "value": true
           }
         },
-        "input": {
-          "typeName": "Object",
-          "expression": {
-            "type": "JavaScript",
-            "value": "var assistant = getVariable('AiAssistant') || ''; var requestedModel = getVariable('Model') || ''; var resolvedModel = (!requestedModel || requestedModel.toLowerCase() === 'auto') ? (getVariable('RecommendedModel') || getVariable('Model') || '') : requestedModel; return { Prompt: getVariable('Prompt') || '', AiAssistant: assistant, Agent: assistant, Model: resolvedModel, ModelPower: getVariable('ModelPower') || 0, ContainerId: getVariable('ContainerId') || '', EnableGui: true };"
-          }
-        },
+        "result": null,
         "id": "complex-path",
         "nodeId": "Workflow1:full-orchestrate-flow:complex-path",
         "name": null,
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "source": "FullOrchestrateWorkflow.cs:100"
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -333,17 +292,45 @@
         }
       },
       {
-        "containerId": {
+        "workflowDefinitionId": {
           "typeName": "String",
           "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "containerIdVariable",
-              "name": "ContainerId",
-              "typeName": "String",
-              "value": ""
+            "type": "Literal",
+            "value": "WebsiteAuditCoreWorkflow"
+          }
+        },
+        "correlationId": null,
+        "input": {
+          "typeName": "ObjectDictionary"
+        },
+        "waitForCompletion": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
+        "result": null,
+        "id": "website-audit",
+        "nodeId": "Workflow1:full-orchestrate-flow:website-audit",
+        "name": null,
+        "type": "Elsa.ExecuteWorkflow",
+        "version": 1,
+        "customProperties": {
+          "source": "FullOrchestrateWorkflow.cs:109"
+        },
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 720
             }
           }
+        }
+      },
+      {
+        "containerId": {
+          "typeName": "String"
         },
         "id": "destroy-container",
         "nodeId": "Workflow1:full-orchestrate-flow:destroy-container",
@@ -355,7 +342,7 @@
           "designer": {
             "position": {
               "x": 400,
-              "y": 720
+              "y": 880
             }
           }
         }
@@ -426,7 +413,7 @@
           "port": "Website"
         },
         "target": {
-          "activity": "website-audit"
+          "activity": "triage"
         },
         "vertices": []
       },
@@ -462,27 +449,27 @@
       },
       {
         "source": {
-          "activity": "website-audit",
-          "port": "Done"
-        },
-        "target": {
-          "activity": "destroy-container"
-        },
-        "vertices": []
-      },
-      {
-        "source": {
           "activity": "simple-path",
           "port": "Done"
         },
         "target": {
-          "activity": "destroy-container"
+          "activity": "website-audit"
         },
         "vertices": []
       },
       {
         "source": {
           "activity": "complex-path",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "website-audit"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "website-audit",
           "port": "Done"
         },
         "target": {

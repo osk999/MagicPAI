@@ -39,7 +39,7 @@ public class MagicPaiConfig
 
     // --- Triage ---
     public int ComplexityThreshold { get; set; } = 7; // >= threshold = complex
-    public string TriageModel { get; set; } = "haiku";
+    public string TriageModel { get; set; } = "sonnet";
     public int MaxSubTasks { get; set; } = 10;
 
     // --- GUI ---

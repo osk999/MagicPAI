@@ -41,8 +41,8 @@ public class RunCliAgentActivity : Activity
 
     [Input(DisplayName = "Model",
         UIHint = InputUIHints.DropDown,
-        Options = new[] { "auto", "haiku", "sonnet", "opus",
-                          "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex",
+        Options = new[] { "auto", "sonnet", "opus",
+                          "gpt-5.4", "gpt-5.3-codex",
                           "gemini-3.1-pro-preview", "gemini-3-flash" },
         Category = "Model")]
     public Input<string> Model { get; set; } = new("");

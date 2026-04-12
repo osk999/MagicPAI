@@ -108,7 +108,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
                     ? ctx.GetInput<string>("Prompt") ?? ""
                     : ctx.GetVariable<string>("EnhancedPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             Response = new Output<string>(elaboratedPrompt),
             Id = "std-elaborate"
         };
@@ -123,7 +123,7 @@ public class StandardOrchestrateWorkflow : WorkflowBase
                     ? ctx.GetInput<string>("Prompt") ?? ""
                     : ctx.GetVariable<string>("ElaboratedPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(3),
+            ModelPower = new Input<int>(2),
             Response = new Output<string>(gatheredContext),
             Id = "std-context"
         };

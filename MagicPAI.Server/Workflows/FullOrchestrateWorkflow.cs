@@ -86,16 +86,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
             RecommendedModelPower = new Output<int>(modelPower),
             Id = "triage"
         };
-        Pos(triage, 600, 390);
-
-        var websiteAudit = new ExecuteWorkflow
-        {
-            WorkflowDefinitionId = new Input<string>(nameof(WebsiteAuditCoreWorkflow)),
-            WaitForCompletion = new Input<bool>(true),
-            Input = buildChildInput(),
-            Id = "website-audit"
-        };
-        Pos(websiteAudit, 200, 390);
+        Pos(triage, 400, 400);
 
         var simplePath = new ExecuteWorkflow
         {
@@ -104,7 +95,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
             Input = buildChildInput(),
             Id = "simple-path"
         };
-        Pos(simplePath, 500, 560);
+        Pos(simplePath, 250, 560);
 
         var complexPath = new ExecuteWorkflow
         {
@@ -113,34 +104,46 @@ public class FullOrchestrateWorkflow : WorkflowBase
             Input = buildChildInput(),
             Id = "complex-path"
         };
-        Pos(complexPath, 700, 560);
+        Pos(complexPath, 550, 560);
+
+        var websiteAudit = new ExecuteWorkflow
+        {
+            WorkflowDefinitionId = new Input<string>(nameof(WebsiteAuditCoreWorkflow)),
+            WaitForCompletion = new Input<bool>(true),
+            Input = buildChildInput(),
+            Id = "website-audit"
+        };
+        Pos(websiteAudit, 400, 720);
 
         var destroy = new DestroyContainerActivity
         {
             ContainerId = resolveContainerId(),
             Id = "destroy-container"
         };
-        Pos(destroy, 400, 730);
+        Pos(destroy, 400, 880);
 
         var flowchart = new Flowchart
         {
             Id = "full-orchestrate-flow",
             Start = spawn,
-            Activities = { spawn, websiteClassifier, triage, websiteAudit, simplePath, complexPath, destroy },
+            Activities = { spawn, websiteClassifier, triage, simplePath, complexPath, websiteAudit, destroy },
             Connections =
             {
                 new Connection(new Endpoint(spawn, "Done"), new Endpoint(websiteClassifier)),
                 new Connection(new Endpoint(spawn, "Failed"), new Endpoint(destroy)),
 
-                new Connection(new Endpoint(websiteClassifier, "Website"), new Endpoint(websiteAudit)),
+                // Both Website and NonWebsite converge on Triage
+                new Connection(new Endpoint(websiteClassifier, "Website"), new Endpoint(triage)),
                 new Connection(new Endpoint(websiteClassifier, "NonWebsite"), new Endpoint(triage)),
 
                 new Connection(new Endpoint(triage, "Simple"), new Endpoint(simplePath)),
                 new Connection(new Endpoint(triage, "Complex"), new Endpoint(complexPath)),
 
+                // After code execution, always run website audit
+                new Connection(new Endpoint(simplePath, "Done"), new Endpoint(websiteAudit)),
+                new Connection(new Endpoint(complexPath, "Done"), new Endpoint(websiteAudit)),
+
                 new Connection(new Endpoint(websiteAudit, "Done"), new Endpoint(destroy)),
-                new Connection(new Endpoint(simplePath, "Done"), new Endpoint(destroy)),
-                new Connection(new Endpoint(complexPath, "Done"), new Endpoint(destroy)),
             }
         };
 
