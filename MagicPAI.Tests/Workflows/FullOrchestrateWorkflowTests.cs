@@ -4,12 +4,12 @@ using WorkflowBase = MagicPAI.Server.Workflows.WorkflowBase;
 namespace MagicPAI.Tests.Workflows;
 
 /// <summary>
-/// Tests for all 17 workflow types — verifying they exist, are properly
+/// Tests for all workflow types — verifying they exist, are properly
 /// subclassed, and can be instantiated without errors.
 /// </summary>
 public class FullOrchestrateWorkflowTests
 {
-    // All 17 workflow types
+    // All 22 workflow types
     public static IEnumerable<object[]> AllWorkflowTypes =>
     [
         [typeof(FullOrchestrateWorkflow)],
@@ -23,6 +23,7 @@ public class FullOrchestrateWorkflowTests
         [typeof(IsComplexAppWorkflow)],
         [typeof(IsWebsiteProjectWorkflow)],
         [typeof(OrchestrateComplexPathWorkflow)],
+        [typeof(ComplexTaskWorkerWorkflow)],
         [typeof(OrchestrateSimplePathWorkflow)],
         [typeof(PostExecutionPipelineWorkflow)],
         [typeof(ResearchPipelineWorkflow)],
@@ -30,6 +31,10 @@ public class FullOrchestrateWorkflowTests
         [typeof(TestSetPromptWorkflow)],
         [typeof(ClawEvalAgentWorkflow)],
         [typeof(WebsiteAuditCoreWorkflow)],
+        [typeof(TestClassifierWorkflow)],
+        [typeof(TestWebsiteClassifierWorkflow)],
+        [typeof(TestPromptEnhancementWorkflow)],
+        [typeof(TestFullFlowWorkflow)],
     ];
 
     [Theory]
@@ -72,7 +77,7 @@ public class FullOrchestrateWorkflowTests
     }
 
     [Fact]
-    public void AllWorkflows_Count_Is_18()
+    public void AllWorkflows_Count_Is_22()
     {
         // Ensure we haven't missed any workflow types
         var workflowTypes = typeof(FullOrchestrateWorkflow).Assembly
@@ -80,7 +85,7 @@ public class FullOrchestrateWorkflowTests
             .Where(t => t.IsClass && !t.IsAbstract && typeof(WorkflowBase).IsAssignableFrom(t))
             .ToList();
 
-        Assert.Equal(18, workflowTypes.Count);
+        Assert.Equal(23, workflowTypes.Count);
     }
 
     [Fact]

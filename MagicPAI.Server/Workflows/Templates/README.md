@@ -1,10 +1,9 @@
-All workflow definitions are JSON-backed templates loaded by `WorkflowPublisher`,
-except `FullOrchestrateWorkflow` and `WebsiteAuditLoopWorkflow` which remain
-code-first because their `ExecuteWorkflow` activities require delegate-based
-`Input<IDictionary<string, object>>` expressions for child workflow input building.
+Most workflow definitions in this folder are JSON-backed templates loaded by
+`WorkflowPublisher`.
 
-Delegate-based `Input<T>(ctx => ...)` expressions in all other workflows have been
-replaced with `JavaScript` expression types (evaluated by Jint) or `Variable` references.
+`FullOrchestrateWorkflow`, `WebsiteAuditCoreWorkflow`, and `WebsiteAuditLoopWorkflow`
+remain code-first because the current template export path does not preserve their
+delegate-built child input or prompt expressions correctly.
 
 The C# workflow classes in `../` are retained as canonical sources and can be
 used to regenerate these templates via `MagicPAI:WorkflowTemplates:RefreshFromCode=true`.
@@ -25,8 +24,8 @@ JSON-backed templates (16):
 - `standard-orchestrate.json`
 - `test-set-prompt.json`
 - `verify-and-repair.json`
-- `website-audit-core.json`
 
-Code-first only (2):
+Code-first only (3):
 - `FullOrchestrateWorkflow`
+- `WebsiteAuditCoreWorkflow`
 - `WebsiteAuditLoopWorkflow`

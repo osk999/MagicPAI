@@ -1,6 +1,7 @@
 using MagicPAI.Core.Models;
 using MagicPAI.Core.Services;
 using Moq;
+using System.Reflection;
 
 namespace MagicPAI.Tests.Activities;
 
@@ -98,5 +99,48 @@ public class TriageActivityTests
         Assert.True(6 < 7, "Complexity 6 should route to Simple");
         // Complexity 7 = Complex
         Assert.True(7 >= 7, "Complexity 7 should route to Complex");
+    }
+
+    [Fact]
+    public void Triage_Fallback_ForFrontendTask_BoostsComplexity_And_Decomposition()
+    {
+        var method = typeof(MagicPAI.Activities.AI.TriageActivity)
+            .GetMethod("CreateFallbackResult", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var result = Assert.IsType<TriageResult>(method!.Invoke(null, ["change the entire css of the donate page"])!);
+
+        Assert.Equal(7, result.Complexity);
+        Assert.True(result.NeedsDecomposition);
+        Assert.Equal(2, result.RecommendedModelPower);
+    }
+
+    [Fact]
+    public void Triage_Fallback_ForGeneralTask_UsesConservativeDefaults()
+    {
+        var method = typeof(MagicPAI.Activities.AI.TriageActivity)
+            .GetMethod("CreateFallbackResult", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var result = Assert.IsType<TriageResult>(method!.Invoke(null, ["fix one typo in README"])!);
+
+        Assert.Equal(5, result.Complexity);
+        Assert.False(result.NeedsDecomposition);
+        Assert.Equal(2, result.RecommendedModelPower);
+    }
+
+    [Fact]
+    public void Triage_PromptResolution_UsesFirstAvailableSource()
+    {
+        var method = typeof(MagicPAI.Activities.AI.TriageActivity)
+            .GetMethod("ResolvePrompt", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(null, [new string?[] { null, "", "prompt from variable" }]);
+
+        Assert.Equal("prompt from variable", result);
     }
 }

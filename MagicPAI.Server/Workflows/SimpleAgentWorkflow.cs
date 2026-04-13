@@ -24,15 +24,8 @@ public class SimpleAgentWorkflow : WorkflowBase
         var assistant = builder.WithVariable<string>("AiAssistant", "");
         var model = builder.WithVariable<string>("Model", "");
         var modelPower = builder.WithVariable<int>("ModelPower", 0);
-        Input<string> resolveAssistant() => new(ctx =>
-            ctx.GetInput<string>("AiAssistant")
-            ?? ctx.GetInput<string>("Agent")
-            ?? ctx.GetVariable<string>("AiAssistant")
-            ?? "");
-        Input<string> resolveModel() => new(ctx =>
-            ctx.GetInput<string>("Model")
-            ?? ctx.GetVariable<string>("Model")
-            ?? "");
+        Input<string> resolveAssistant() => new(ctx => ctx.ResolveFirst("", "AiAssistant", "Agent"));
+        Input<string> resolveModel() => new(ctx => ctx.Resolve("Model"));
 
         var spawn = new SpawnContainerActivity
         {

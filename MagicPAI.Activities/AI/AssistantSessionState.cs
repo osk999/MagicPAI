@@ -7,6 +7,7 @@ namespace MagicPAI.Activities.AI;
 internal static class AssistantSessionState
 {
     private const string AssistantSessionMapVariable = "AiAssistantConversationSessionsJson";
+    private const string SessionKeySeparator = "::";
 
     public static string? GetSessionId(ActivityExecutionContext context, string assistantName)
     {
@@ -17,7 +18,8 @@ internal static class AssistantSessionState
         try
         {
             var map = JsonSerializer.Deserialize<Dictionary<string, string>>(raw) ?? new Dictionary<string, string>();
-            return map.TryGetValue(assistantName, out var sessionId) && !string.IsNullOrWhiteSpace(sessionId)
+            var key = CreateSessionMapKey(assistantName, context.Activity.Id);
+            return map.TryGetValue(key, out var sessionId) && !string.IsNullOrWhiteSpace(sessionId)
                 ? sessionId
                 : null;
         }
@@ -52,8 +54,18 @@ internal static class AssistantSessionState
             map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        map[assistantName] = sessionId;
+        map[CreateSessionMapKey(assistantName, context.Activity.Id)] = sessionId;
         context.SetVariable(AssistantSessionMapVariable, JsonSerializer.Serialize(map));
+    }
+
+    internal static string CreateSessionMapKey(string assistantName, string? activityId)
+    {
+        var normalizedAssistant = assistantName?.Trim() ?? "";
+        var normalizedActivityId = activityId?.Trim();
+
+        return string.IsNullOrWhiteSpace(normalizedActivityId)
+            ? normalizedAssistant
+            : $"{normalizedAssistant}{SessionKeySeparator}{normalizedActivityId}";
     }
 
     private static T? TryGetVariable<T>(ActivityExecutionContext context, string name)

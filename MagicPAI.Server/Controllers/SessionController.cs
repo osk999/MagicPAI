@@ -30,6 +30,7 @@ public class SessionController : ControllerBase
     private readonly SessionHistoryReader _historyReader;
     private readonly IHubContext<SessionHub> _hubContext;
     private readonly SessionLaunchPlanner _launchPlanner;
+    private readonly WorkflowPublisher _workflowPublisher;
     private readonly ILogger<SessionController> _logger;
 
     public SessionController(
@@ -40,6 +41,7 @@ public class SessionController : ControllerBase
         SessionHistoryReader historyReader,
         IHubContext<SessionHub> hubContext,
         SessionLaunchPlanner launchPlanner,
+        WorkflowPublisher workflowPublisher,
         ILogger<SessionController> logger)
     {
         _dispatcher = dispatcher;
@@ -49,6 +51,7 @@ public class SessionController : ControllerBase
         _historyReader = historyReader;
         _hubContext = hubContext;
         _launchPlanner = launchPlanner;
+        _workflowPublisher = workflowPublisher;
         _logger = logger;
     }
 
@@ -61,6 +64,8 @@ public class SessionController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest(new { Message = "Prompt is required" });
+
+        await _workflowPublisher.InitializeAsync(HttpContext.RequestAborted);
 
         var launch = _launchPlanner.Plan(
             request.Prompt,

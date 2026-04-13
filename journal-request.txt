@@ -1,0 +1,22 @@
+[POST] http://127.0.0.1:5000/workflow-instances/7464b1e91dd74232bdc7a213c1e3d4eb/journal?skip=0&take=108 => [200] OK
+  Request headers:
+    sec-ch-ua-platform: "Windows"
+    authorization: ApiKey 00000000-0000-0000-0000-000000000000
+    referer: http://127.0.0.1:5000/workflows/instances/7464b1e91dd74232bdc7a213c1e3d4eb/view
+    sec-ch-ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"
+    sec-ch-ua-mobile: ?0
+    user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
+    accept: application/json
+    content-type: application/json; charset=utf-8
+  Request body: {"filter":{"activityIds":null,"activityNodeIds":["Workflow1:full-orchestrate-flow:spawn-container","Workflow1:full-orchestrate-flow:website-classifier","Workflow1:full-orchestrate-flow:enhance-prompt","Workflow1:full-orchestrate-flow:elaborate","Workflow1:full-orchestrate-flow:gather-context","Workflow1:full-orchestrate-flow:triage","Workflow1:full-orchestrate-flow:simple-path","Workflow1:full-orchestrate-flow:complex-path","Workflow1:full-orchestrate-flow:website-decision","Workflow1:full-orchestrate-flow:website-audit","Workflow1:full-orchestrate-flow:destroy-container"],"excludedActivityTypes":["Elsa.Workflow","Elsa.Flowchart"],"eventNames":null}}
+[POST] http://127.0.0.1:5000/workflow-instances/7464b1e91dd74232bdc7a213c1e3d4eb/journal?skip=0&take=108 => [200] OK
+  Request headers:
+    sec-ch-ua-platform: "Windows"
+    authorization: ApiKey 00000000-0000-0000-0000-000000000000
+    referer: http://127.0.0.1:5000/workflows/instances/7464b1e91dd74232bdc7a213c1e3d4eb/view
+    sec-ch-ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"
+    sec-ch-ua-mobile: ?0
+    user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
+    accept: application/json
+    content-type: application/json; charset=utf-8
+  Request body: {"filter":{"activityIds":null,"activityNodeIds":["Workflow1:full-orchestrate-flow:spawn-container","Workflow1:full-orchestrate-flow:website-classifier","Workflow1:full-orchestrate-flow:enhance-prompt","Workflow1:full-orchestrate-flow:elaborate","Workflow1:full-orchestrate-flow:gather-context","Workflow1:full-orchestrate-flow:triage","Workflow1:full-orchestrate-flow:simple-path","Workflow1:full-orchestrate-flow:complex-path","Workflow1:full-orchestrate-flow:website-decision","Workflow1:full-orchestrate-flow:website-audit","Workflow1:full-orchestrate-flow:destroy-container"],"excludedActivityTypes":["Elsa.Workflow","Elsa.Flowchart"],"eventNames":null}}

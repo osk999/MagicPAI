@@ -15,7 +15,9 @@ namespace MagicPAI.Activities.AI;
 /// instructions and a structured output schema, then returns the improved prompt.
 /// Falls back to the original prompt on failure.
 /// </summary>
-[Activity("MagicPAI", "AI Agents", "Enhance a prompt using AI")]
+[Activity("MagicPAI", "AI Agents", "Enhance a prompt using AI",
+    Kind = ActivityKind.Task,
+    RunAsynchronously = true)]
 [FlowNode("Done", "Failed")]
 public class PromptEnhancementActivity : Activity
 {

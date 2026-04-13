@@ -1,4 +1,6 @@
+using Elsa.Extensions;
 using Elsa.Workflows;
+using Elsa.Workflows.Activities;
 using Elsa.Workflows.Activities.Flowchart.Activities;
 using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
@@ -9,57 +11,72 @@ namespace MagicPAI.Workflows;
 
 /// <summary>
 /// Multi-agent decomposition path:
-/// Architect -> ModelRouter -> parallel workers -> verify -> repair loop -> merge.
-/// Used when triage determines a task is too complex for a single agent.
+/// Architect -> route by task count:
+///   Single task:  ModelRouter -> Worker -> VerifyRepair -> Merge
+///   Multi task:   BulkDispatchWorkflows(ComplexTaskWorkerWorkflow) -> Merge
+/// Mirror of MagicPAI.Server.Workflows.OrchestrateComplexPathWorkflow.
 /// </summary>
-public class OrchestrateComplexPathWorkflow : WorkflowBase
+public class OrchestrateComplexPathWorkflow : Elsa.Workflows.WorkflowBase
 {
     protected override void Build(IWorkflowBuilder builder)
     {
         builder.Name = "Orchestrate Complex Path";
         builder.Description =
-            "Multi-agent decomposition: architect, model routing, parallel workers, verify and repair";
+            "Multi-agent decomposition: architect, parallel worker dispatch, verify and repair";
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("Agent", "claude");
-        var model = builder.WithVariable<string>("Model", "sonnet");
+        var agent = builder.WithVariable<string>("AiAssistant", "claude");
+        var model = builder.WithVariable<string>("Model", "auto");
+        var modelPower = builder.WithVariable<int>("ModelPower", 0);
+        var selectedAgent = builder.WithVariable<string>("SelectedAgent", "claude");
+        var selectedModel = builder.WithVariable<string>("SelectedModel", "sonnet");
+        var taskListJson = builder.WithVariable<string[]>("TaskListJson", []);
+        var taskCount = builder.WithVariable<int>("TaskCount", 0);
+        var completedCount = builder.WithVariable<int>("CompletedWorkers", 0);
+        var faultedCount = builder.WithVariable<int>("FaultedWorkers", 0);
 
         // Step 1: Architect decomposes the task
         var architect = new ArchitectActivity
         {
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
+            TaskListJson = new Output<string[]>(taskListJson),
+            TaskCount = new Output<int>(taskCount),
             Id = "architect-decompose"
         };
 
-        // Step 2: Model router selects best model for the task
+        // Step 2: Route by task count
+        var taskCountDecision = new FlowDecision(ctx =>
+            (ctx.GetVariable<int>("TaskCount")) > 1);
+        taskCountDecision.Id = "task-count-decision";
+
+        // ---- Single-task path ----
         var modelRouter = new ModelRouterActivity
         {
             TaskCategory = new Input<string>("code_gen"),
             Complexity = new Input<int>(8),
             PreferredAgent = new Input<string>(agent),
+            SelectedAgent = new Output<string>(selectedAgent),
+            SelectedModel = new Output<string>(selectedModel),
             Id = "model-router"
         };
 
-        // Step 3: Execute worker agent (in production, ForEach over task list)
-        var worker = new RunCliAgentActivity
+        var singleWorker = new RunCliAgentActivity
         {
-            Agent = new Input<string>(agent),
+            Agent = new Input<string>(selectedAgent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
-            Id = "complex-worker"
+            Model = new Input<string>(selectedModel),
+            Id = "complex-agent"
         };
 
-        // Step 4: Verify results
         var verify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
             Id = "complex-verify"
         };
 
-        // Step 5: Repair on failure
         var repair = new RepairActivity
         {
             ContainerId = new Input<string>(containerId),
@@ -69,17 +86,58 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
             Id = "complex-repair"
         };
 
-        // Step 6: Repair agent
         var repairAgent = new RunCliAgentActivity
         {
-            Agent = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
+            Agent = new Input<string>(selectedAgent),
+            Prompt = new Input<string>(ctx =>
+                ctx.GetVariable<string>("RepairPrompt") ?? ""),
             ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
-            Id = "complex-repair-agent"
+            Model = new Input<string>(selectedModel),
+            Id = "repair-agent"
         };
 
-        // Step 7: Merge results
+        // ---- Multi-task path ----
+        var bulkDispatch = new Elsa.Workflows.Runtime.Activities.BulkDispatchWorkflows
+        {
+            WorkflowDefinitionId = new Input<string>(nameof(ComplexTaskWorkerWorkflow)),
+            Items = new Input<object>(ctx =>
+            {
+                var tasks = ctx.GetVariable<string[]>("TaskListJson");
+                return (object)(tasks?.ToList() ?? new List<string>());
+            }),
+            Input = new Input<IDictionary<string, object>?>(ctx =>
+            {
+                // Inline Resolve: variable (if non-empty) > dispatch input > fallback
+                string R(string name, string fb = "") {
+                    var v = ctx.GetVariable<string>(name);
+                    if (!string.IsNullOrWhiteSpace(v)) return v;
+                    var wf = ctx.GetWorkflowExecutionContext().Input;
+                    return wf.TryGetValue(name, out var i) ? i?.ToString() ?? fb : fb;
+                }
+                return new Dictionary<string, object>
+                {
+                    ["ContainerId"] = R("ContainerId"),
+                    ["AiAssistant"] = R("AiAssistant", R("Agent")),
+                    ["Model"] = R("Model", "auto"),
+                    ["ModelPower"] = ctx.GetVariable<int?>("ModelPower") ?? 0,
+                    ["OriginalPrompt"] = R("Prompt")
+                };
+            }),
+            WaitForCompletion = new Input<bool>(true),
+            ChildCompleted = new SetVariable
+            {
+                Variable = completedCount,
+                Value = new Input<object?>(ctx => (object)(completedCount.Get(ctx) + 1))
+            },
+            ChildFaulted = new SetVariable
+            {
+                Variable = faultedCount,
+                Value = new Input<object?>(ctx => (object)(faultedCount.Get(ctx) + 1))
+            },
+            Id = "dispatch-workers"
+        };
+
+        // ---- Merge (shared by both paths) ----
         var merge = new RunCliAgentActivity
         {
             Agent = new Input<string>(agent),
@@ -93,59 +151,63 @@ public class OrchestrateComplexPathWorkflow : WorkflowBase
         {
             Id = "orchestrate-complex-path-flow",
             Start = architect,
+            Activities =
+            {
+                architect, taskCountDecision,
+                modelRouter, singleWorker, verify, repair, repairAgent,
+                bulkDispatch, merge
+            },
             Connections =
             {
-                // Architect -> ModelRouter
+                // Architect -> TaskCount decision
                 new Connection(
                     new Endpoint(architect, "Done"),
+                    new Endpoint(taskCountDecision)),
+
+                // ---- Single-task path (False) ----
+                new Connection(
+                    new Endpoint(taskCountDecision, "False"),
                     new Endpoint(modelRouter)),
-
-                // Architect failed -> terminal
-                // (no connection = workflow ends)
-
-                // ModelRouter -> Worker
                 new Connection(
                     new Endpoint(modelRouter, "Done"),
-                    new Endpoint(worker)),
-
-                // Worker -> Verify
+                    new Endpoint(singleWorker)),
                 new Connection(
-                    new Endpoint(worker, "Done"),
+                    new Endpoint(singleWorker, "Done"),
                     new Endpoint(verify)),
-
-                // Worker failed -> merge with partial results
                 new Connection(
-                    new Endpoint(worker, "Failed"),
+                    new Endpoint(singleWorker, "Failed"),
                     new Endpoint(merge)),
-
-                // Verify passed -> merge
                 new Connection(
                     new Endpoint(verify, "Passed"),
                     new Endpoint(merge)),
-
-                // Verify inconclusive -> merge
                 new Connection(
                     new Endpoint(verify, "Inconclusive"),
                     new Endpoint(merge)),
-
-                // Verify failed -> repair
                 new Connection(
                     new Endpoint(verify, "Failed"),
                     new Endpoint(repair)),
-
-                // Repair -> RepairAgent
                 new Connection(
                     new Endpoint(repair, "Done"),
                     new Endpoint(repairAgent)),
-
-                // RepairAgent -> Verify (loop back)
+                new Connection(
+                    new Endpoint(repair, "Exceeded"),
+                    new Endpoint(merge)),
                 new Connection(
                     new Endpoint(repairAgent, "Done"),
                     new Endpoint(verify)),
-
-                // RepairAgent failed -> merge
                 new Connection(
                     new Endpoint(repairAgent, "Failed"),
+                    new Endpoint(merge)),
+
+                // ---- Multi-task path (True) ----
+                new Connection(
+                    new Endpoint(taskCountDecision, "True"),
+                    new Endpoint(bulkDispatch)),
+                new Connection(
+                    new Endpoint(bulkDispatch, "Completed"),
+                    new Endpoint(merge)),
+                new Connection(
+                    new Endpoint(bulkDispatch, "Done"),
                     new Endpoint(merge)),
             }
         };

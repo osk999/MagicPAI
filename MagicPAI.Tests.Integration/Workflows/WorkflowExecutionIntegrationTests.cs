@@ -188,10 +188,94 @@ public class WorkflowExecutionIntegrationTests : IntegrationTestBase
         Assert.True(
             Factory.ContainerManager.ExecInvocations.Any(x =>
                 x.IsStreaming &&
-                (TryGetRequestArg(x.Request, "--prompt") ?? "").Contains("Phase 4: Final audit synthesis", StringComparison.Ordinal)),
+                (TryGetRequestArg(x.Request, "--prompt") ?? "").Contains("Phase 4: Final re-verification and synthesis", StringComparison.Ordinal)),
             $"Missing final synthesis run. Activities: {string.Join(", ", activities.Select(x => $"{x.Name}:{x.Status}"))}. Logs: {string.Join(" | ", logs.Select(x => $"{x.EventName}:{x.Message}"))}. Streaming prompts: {string.Join(" || ", Factory.ContainerManager.ExecInvocations.Where(x => x.IsStreaming).Select(x => TryGetRequestArg(x.Request, "--prompt") ?? ""))}");
         Assert.True(logs.Count(x => x.EventName == "TriageResult") >= 4, $"Expected discovery, visual, and interaction checks to emit classifier results. Logs: {string.Join(" | ", logs.Select(x => $"{x.EventName}:{x.Message}"))}");
         Assert.True(Factory.ContainerManager.ExecInvocations.Count(x => x.IsStreaming) >= 5, $"Expected discovery loop plus later audit phases. Streaming prompts: {string.Join(" || ", Factory.ContainerManager.ExecInvocations.Where(x => x.IsStreaming).Select(x => TryGetRequestArg(x.Request, "--prompt") ?? ""))}");
+        Assert.Single(Factory.ContainerManager.DestroyedContainers);
+    }
+
+    [Fact]
+    public async Task WebsiteAuditLoop_Isolates_Assistant_Sessions_Per_Activity()
+    {
+        ConfigureWebsiteAuditExecutionWithScopedSessions();
+
+        var sessionId = await CreateSessionWithRetryAsync(
+            "Audit the sample marketing website at http://localhost:5010 and report issues",
+            "website-audit-loop");
+        var session = await WaitForTerminalStateAsync(sessionId);
+
+        Assert.Equal("completed", session.State);
+
+        var streamingInvocations = Factory.ContainerManager.ExecInvocations
+            .Where(x => x.IsStreaming && x.Request?.FileName == "stub-agent")
+            .ToList();
+
+        var discoveryInvocations = streamingInvocations
+            .Where(x => (TryGetRequestArg(x.Request, "--prompt") ?? "").Contains("Phase 1: Discovery", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(2, discoveryInvocations.Count);
+        Assert.Equal("", TryGetRequestArg(discoveryInvocations[0].Request, "--session") ?? "");
+        Assert.Equal("discovery-session", TryGetRequestArg(discoveryInvocations[1].Request, "--session"));
+
+        var visualInvocation = Assert.Single(streamingInvocations
+            .Where(x => (TryGetRequestArg(x.Request, "--prompt") ?? "").Contains("Phase 2: Visual audit", StringComparison.Ordinal)));
+        var interactionInvocation = Assert.Single(streamingInvocations
+            .Where(x => (TryGetRequestArg(x.Request, "--prompt") ?? "").Contains("Phase 3: Interaction and scroll audit", StringComparison.Ordinal)));
+        var finalInvocation = Assert.Single(streamingInvocations
+            .Where(x => (TryGetRequestArg(x.Request, "--prompt") ?? "").Contains("Phase 4: Final re-verification and synthesis", StringComparison.Ordinal)));
+
+        Assert.Equal("", TryGetRequestArg(visualInvocation.Request, "--session") ?? "");
+        Assert.Equal("", TryGetRequestArg(interactionInvocation.Request, "--session") ?? "");
+        Assert.Equal("", TryGetRequestArg(finalInvocation.Request, "--session") ?? "");
+    }
+
+    [Fact]
+    public async Task FullOrchestrate_CssWebsiteTask_Routes_Through_WebsiteAudit()
+    {
+        ConfigureWebsiteFullOrchestrateExecution();
+
+        const string prompt = """
+            mission:
+              workdir: C:\AllGit\CSharp\IsraelRiseDonationSystem
+            prompt:
+            yochange the entire css of ramathayal770
+            its need to look diffrent then simple donate
+            you need to find color, fonts, whatever needed based on the details and based on simple website
+            """;
+
+        var sessionId = await CreateSessionWithRetryAsync(prompt, "full-orchestrate");
+        var session = await WaitForTerminalStateAsync(sessionId);
+        var activities = await WaitForActivitiesAsync(sessionId,
+            "website-classifier",
+            "triage",
+            "simple-path",
+            "website-audit",
+            "phase1-discovery-runner",
+            "phase2-visual-runner",
+            "phase3-interaction-runner",
+            "destroy-container");
+        var logs = await WaitForExecutionLogsAsync(sessionId, "WebsiteTaskResult", "TriageResult");
+
+        Assert.Equal("completed", session.State);
+        Assert.Contains(activities, x => x.Name == "website-classifier" && x.Status == "completed");
+        Assert.Contains(activities, x => x.Name == "website-audit");
+        Assert.Contains(activities, x => x.Name == "phase1-discovery-runner");
+        Assert.Contains(activities, x => x.Name == "phase2-visual-runner");
+        Assert.Contains(activities, x => x.Name == "phase3-interaction-runner");
+        Assert.Contains(logs, x => x.EventName == "WebsiteTaskResult" && x.Message.Contains("\"verdict\":\"Website\"", StringComparison.Ordinal));
+        Assert.True(
+            Factory.ContainerManager.ExecInvocations.Any(x =>
+                !x.IsStreaming &&
+                x.Request?.FileName == "stub-agent" &&
+                (TryGetRequestArg(x.Request, "--prompt") ?? "").Contains("IMPORTANT: CSS/UI/UX fix tasks ALWAYS route to WEBSITE AUDIT (true).", StringComparison.Ordinal)),
+            "Expected the website classifier prompt to contain the CSS/UI/UX website-audit routing rule.");
+        Assert.True(
+            Factory.ContainerManager.ExecInvocations.Any(x =>
+                x.IsStreaming &&
+                (TryGetRequestArg(x.Request, "--prompt") ?? "").Contains("Phase 4: Final re-verification and synthesis", StringComparison.Ordinal)),
+            "Expected the post-implementation website audit to reach the final re-verification phase.");
         Assert.Single(Factory.ContainerManager.DestroyedContainers);
     }
 
@@ -446,11 +530,167 @@ public class WorkflowExecutionIntegrationTests : IntegrationTestBase
                     [new StubOutputChunk("[audit] interaction\n")]);
             }
 
-            if (prompt.Contains("Phase 4: Final audit synthesis", StringComparison.Ordinal))
+            if (prompt.Contains("Phase 4: Final re-verification and synthesis", StringComparison.Ordinal))
             {
                 return new StubStreamingPlan(
                     AgentEnvelope("Final website audit report with critical and medium issues."),
                     [new StubOutputChunk("[audit] final-report\n")]);
+            }
+
+            return new StubStreamingPlan(AgentEnvelope("Generic worker completed."), [new StubOutputChunk("[generic]\n")]);
+        };
+    }
+
+    private void ConfigureWebsiteAuditExecutionWithScopedSessions()
+    {
+        var classifierCalls = 0;
+        Factory.ContainerManager.ExecHandler = invocation =>
+        {
+            if (!invocation.IsStreaming && invocation.Request?.FileName == "stub-agent")
+            {
+                classifierCalls++;
+                return classifierCalls switch
+                {
+                    1 => AgentEnvelope("""{"complexity":9,"category":"docs","recommended_model_power":3,"needs_decomposition":true}""", sessionId: "discovery-check-session"),
+                    2 => AgentEnvelope("""{"complexity":2,"category":"docs","recommended_model_power":3,"needs_decomposition":false}""", sessionId: "discovery-check-session"),
+                    3 => AgentEnvelope("""{"complexity":2,"category":"docs","recommended_model_power":3,"needs_decomposition":false}""", sessionId: "visual-check-session"),
+                    4 => AgentEnvelope("""{"complexity":2,"category":"testing","recommended_model_power":3,"needs_decomposition":false}""", sessionId: "interaction-check-session"),
+                    _ => AgentEnvelope("""{"complexity":2,"category":"testing","recommended_model_power":3,"needs_decomposition":false}""", sessionId: "interaction-check-session")
+                };
+            }
+
+            return Factory.ContainerManager.DefaultExecResult;
+        };
+
+        var discoveryRuns = 0;
+        Factory.ContainerManager.StreamingHandler = invocation =>
+        {
+            var prompt = TryGetRequestArg(invocation.Request, "--prompt") ?? "";
+
+            if (prompt.Contains("Phase 1: Discovery", StringComparison.Ordinal))
+            {
+                discoveryRuns++;
+                return discoveryRuns == 1
+                    ? new StubStreamingPlan(
+                        AgentEnvelope("Discovery pass 1. Need more crawling before the discovery phase is complete.", sessionId: "discovery-session"),
+                        [new StubOutputChunk("[audit] discovery-1\n")])
+                    : new StubStreamingPlan(
+                        AgentEnvelope("Discovery pass 2. DISCOVERY_DONE. Key pages mapped.", sessionId: "discovery-session"),
+                        [new StubOutputChunk("[audit] discovery-2\n")]);
+            }
+
+            if (prompt.Contains("Phase 2: Visual audit", StringComparison.Ordinal))
+            {
+                return new StubStreamingPlan(
+                    AgentEnvelope("Visual review complete. VISUAL_DONE. Found spacing and hierarchy issues.", sessionId: "visual-session"),
+                    [new StubOutputChunk("[audit] visual\n")]);
+            }
+
+            if (prompt.Contains("Phase 3: Interaction and scroll audit", StringComparison.Ordinal))
+            {
+                return new StubStreamingPlan(
+                    AgentEnvelope("Interaction review complete. INTERACTION_DONE. Found form validation issues.", sessionId: "interaction-session"),
+                    [new StubOutputChunk("[audit] interaction\n")]);
+            }
+
+            if (prompt.Contains("Phase 4: Final re-verification and synthesis", StringComparison.Ordinal))
+            {
+                return new StubStreamingPlan(
+                    AgentEnvelope("Final website audit report with critical and medium issues.", sessionId: "final-session"),
+                    [new StubOutputChunk("[audit] final-report\n")]);
+            }
+
+            return new StubStreamingPlan(AgentEnvelope("Generic worker completed."), [new StubOutputChunk("[generic]\n")]);
+        };
+    }
+
+    private void ConfigureWebsiteFullOrchestrateExecution()
+    {
+        var triageCalls = 0;
+        var discoveryRuns = 0;
+
+        Factory.ContainerManager.ExecHandler = invocation =>
+        {
+            if (!invocation.IsStreaming && invocation.Request?.FileName == "stub-agent")
+            {
+                var prompt = TryGetRequestArg(invocation.Request, "--prompt") ?? "";
+                if (prompt.Contains("Decide whether this task should route into a browser-based website audit workflow.", StringComparison.Ordinal))
+                {
+                    return prompt.Contains("IMPORTANT: CSS/UI/UX fix tasks ALWAYS route to WEBSITE AUDIT (true).", StringComparison.Ordinal)
+                        ? WebsiteRoutingEnvelope(true, 10, "This is browser-visible CSS/UI work and must be audited in the browser.")
+                        : WebsiteRoutingEnvelope(false, 1, "Missing CSS/UI website-audit routing rule.");
+                }
+
+                triageCalls++;
+                return triageCalls switch
+                {
+                    1 => AgentEnvelope("""{"complexity":3,"category":"frontend","recommended_model_power":3,"needs_decomposition":false}"""),
+                    2 => AgentEnvelope("""{"complexity":9,"category":"docs","recommended_model_power":3,"needs_decomposition":true}"""),
+                    3 => AgentEnvelope("""{"complexity":2,"category":"docs","recommended_model_power":3,"needs_decomposition":false}"""),
+                    4 => AgentEnvelope("""{"complexity":2,"category":"testing","recommended_model_power":3,"needs_decomposition":false}"""),
+                    _ => AgentEnvelope("""{"complexity":2,"category":"testing","recommended_model_power":3,"needs_decomposition":false}""")
+                };
+            }
+
+            if (IsCompileProbe(invocation.Command))
+                return new ExecResult(0, "IsraelRise.Web.csproj", "");
+            if (IsTestProbe(invocation.Command))
+                return new ExecResult(0, "IsraelRise.Tests.csproj", "");
+            if (IsBuildCommand(invocation.Command))
+                return new ExecResult(0, "Build succeeded", "");
+            if (IsTestCommand(invocation.Command))
+                return new ExecResult(0, "Passed", "");
+            if (IsFileListCommand(invocation.Command))
+                return new ExecResult(0, "./src/IsraelRise.Web/Program.cs\n./src/IsraelRise.Web/wwwroot/css/tenants/ramathayal.css", "");
+            if (IsSourceScanCommand(invocation.Command))
+                return new ExecResult(0, "", "");
+
+            return Factory.ContainerManager.DefaultExecResult;
+        };
+
+        Factory.ContainerManager.StreamingHandler = invocation =>
+        {
+            var prompt = TryGetRequestArg(invocation.Request, "--prompt") ?? "";
+
+            if (prompt.Contains("yochange the entire css of ramathayal770", StringComparison.Ordinal) &&
+                !prompt.Contains("Phase 1:", StringComparison.Ordinal))
+            {
+                return new StubStreamingPlan(
+                    AgentEnvelope("Implemented the tenant CSS redesign and verified the changed pages."),
+                    [new StubOutputChunk("[website] redesign\n"), new StubOutputChunk("[website] verify\n", 25)]);
+            }
+
+            if (prompt.Contains("Phase 1: Discovery", StringComparison.Ordinal))
+            {
+                discoveryRuns++;
+                return discoveryRuns == 1
+                    ? new StubStreamingPlan(
+                        AgentEnvelope("Discovery pass 1. Need one more navigation sweep before the discovery phase is complete."),
+                        [new StubOutputChunk("[audit] discovery-1\n")])
+                    : new StubStreamingPlan(
+                        AgentEnvelope("Discovery pass 2. DISCOVERY_DONE. Key tenant pages and donation flow are mapped."),
+                        [new StubOutputChunk("[audit] discovery-2\n")]);
+            }
+
+            if (prompt.Contains("Phase 2: Visual audit", StringComparison.Ordinal))
+            {
+                return new StubStreamingPlan(
+                    AgentEnvelope("Visual audit complete. Fixed spacing and contrast issues, rebuilt the site, and re-tested in Playwright. VISUAL_DONE."),
+                    [new StubOutputChunk("[audit] visual-fix\n")]);
+            }
+
+            if (prompt.Contains("Phase 3: Interaction and scroll audit", StringComparison.Ordinal))
+            {
+                return new StubStreamingPlan(
+                    AgentEnvelope("Interaction review complete. Fixed button state regression, re-ran the build, and confirmed the donation flow. INTERACTION_DONE."),
+                    [new StubOutputChunk("[audit] interaction-fix\n")]);
+            }
+
+            if (prompt.Contains("Phase 4: Final re-verification and synthesis", StringComparison.Ordinal))
+            {
+                return new StubStreamingPlan(
+                    AgentEnvelope("Final re-verification completed. High-risk pages were re-checked and no blocking regressions remain."),
+                    [new StubOutputChunk("[audit] final-sweep\n")]);
             }
 
             return new StubStreamingPlan(AgentEnvelope("Generic worker completed."), [new StubOutputChunk("[generic]\n")]);
@@ -598,7 +838,7 @@ public class WorkflowExecutionIntegrationTests : IntegrationTestBase
         }
     }
 
-    private static ExecResult AgentEnvelope(string output, bool success = true) =>
+    private static ExecResult AgentEnvelope(string output, bool success = true, string? sessionId = null) =>
         new(0, JsonSerializer.Serialize(new
         {
             Success = success,
@@ -606,7 +846,8 @@ public class WorkflowExecutionIntegrationTests : IntegrationTestBase
             CostUsd = 0.01m,
             FilesModified = Array.Empty<string>(),
             InputTokens = 100,
-            OutputTokens = 50
+            OutputTokens = 50,
+            SessionId = sessionId
         }), "");
 
     private static ExecResult WebsiteRoutingEnvelope(bool isWebsiteTask, int confidence, string rationale) =>

@@ -99,7 +99,9 @@
         "name": null,
         "type": "MagicPAI.TriageActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -220,7 +222,9 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -351,7 +355,9 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -472,7 +478,9 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {

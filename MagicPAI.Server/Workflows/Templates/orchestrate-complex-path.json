@@ -12,77 +12,88 @@
       "name": "Prompt",
       "typeName": "String",
       "isArray": false,
-      "value": ""
+      "value": "",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "containerIdVariable",
       "name": "ContainerId",
       "typeName": "String",
       "isArray": false,
-      "value": ""
+      "value": "",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "aiAssistantVariable",
       "name": "AiAssistant",
       "typeName": "String",
       "isArray": false,
-      "value": "claude"
+      "value": "claude",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "modelVariable",
       "name": "Model",
       "typeName": "String",
       "isArray": false,
-      "value": "auto"
+      "value": "auto",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "modelPowerVariable",
       "name": "ModelPower",
       "typeName": "Int32",
       "isArray": false,
-      "value": "0"
+      "value": "0",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "selectedAgentVariable",
       "name": "SelectedAgent",
       "typeName": "String",
       "isArray": false,
-      "value": "claude"
+      "value": "claude",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "selectedModelVariable",
       "name": "SelectedModel",
       "typeName": "String",
       "isArray": false,
-      "value": "sonnet"
+      "value": "sonnet",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "failedGatesVariable",
       "name": "FailedGates",
       "typeName": "String",
       "isArray": true,
-      "value": "[]"
+      "value": "[]",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "gateResultsJsonVariable",
       "name": "GateResultsJson",
       "typeName": "String",
       "isArray": false,
-      "value": "[]"
+      "value": "[]",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "repairPromptVariable",
       "name": "RepairPrompt",
       "typeName": "String",
       "isArray": false,
-      "value": ""
+      "value": "",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "repairAttemptsVariable",
       "name": "RepairAttempts",
       "typeName": "Int32",
       "isArray": false,
-      "value": "0"
+      "value": "0",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     }
   ],
   "inputs": [],
@@ -102,7 +113,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "OrchestrateComplexPathWorkflow.cs:111"
+      "source": "OrchestrateComplexPathWorkflow.cs:116"
     },
     "metadata": {},
     "activities": [
@@ -115,7 +126,8 @@
               "id": "promptVariable",
               "name": "Prompt",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -127,7 +139,8 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -139,7 +152,9 @@
         "name": null,
         "type": "MagicPAI.ArchitectActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -172,7 +187,8 @@
               "id": "aiAssistantVariable",
               "name": "AiAssistant",
               "typeName": "String",
-              "value": "claude"
+              "value": "claude",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -212,7 +228,8 @@
               "id": "selectedAgentVariable",
               "name": "SelectedAgent",
               "typeName": "String",
-              "value": "claude"
+              "value": "claude",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -231,7 +248,8 @@
               "id": "promptVariable",
               "name": "Prompt",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -243,7 +261,8 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -262,7 +281,8 @@
               "id": "selectedModelVariable",
               "name": "SelectedModel",
               "typeName": "String",
-              "value": "sonnet"
+              "value": "sonnet",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -319,7 +339,9 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -338,7 +360,8 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -398,7 +421,8 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -410,7 +434,8 @@
               "id": "failedGatesVariable",
               "name": "FailedGates",
               "typeName": "System.String[], System.Private.CoreLib",
-              "value": "[]"
+              "value": "[]",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -422,7 +447,8 @@
               "id": "promptVariable",
               "name": "Prompt",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -434,7 +460,8 @@
               "id": "gateResultsJsonVariable",
               "name": "GateResultsJson",
               "typeName": "String",
-              "value": "[]"
+              "value": "[]",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -468,7 +495,8 @@
               "id": "selectedAgentVariable",
               "name": "SelectedAgent",
               "typeName": "String",
-              "value": "claude"
+              "value": "claude",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -487,7 +515,8 @@
               "id": "repairPromptVariable",
               "name": "RepairPrompt",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -499,7 +528,8 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -518,7 +548,8 @@
               "id": "selectedModelVariable",
               "name": "SelectedModel",
               "typeName": "String",
-              "value": "sonnet"
+              "value": "sonnet",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -575,7 +606,9 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -594,7 +627,8 @@
               "id": "aiAssistantVariable",
               "name": "AiAssistant",
               "typeName": "String",
-              "value": "claude"
+              "value": "claude",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -613,7 +647,8 @@
               "id": "promptVariable",
               "name": "Prompt",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -625,7 +660,8 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -696,7 +732,9 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -712,67 +750,78 @@
         "id": "promptVariable",
         "name": "Prompt",
         "typeName": "String",
-        "value": ""
+        "value": "",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "containerIdVariable",
         "name": "ContainerId",
         "typeName": "String",
-        "value": ""
+        "value": "",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "aiAssistantVariable",
         "name": "AiAssistant",
         "typeName": "String",
-        "value": "claude"
+        "value": "claude",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "modelVariable",
         "name": "Model",
         "typeName": "String",
-        "value": "auto"
+        "value": "auto",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "modelPowerVariable",
         "name": "ModelPower",
         "typeName": "Int32",
-        "value": "0"
+        "value": "0",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "selectedAgentVariable",
         "name": "SelectedAgent",
         "typeName": "String",
-        "value": "claude"
+        "value": "claude",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "selectedModelVariable",
         "name": "SelectedModel",
         "typeName": "String",
-        "value": "sonnet"
+        "value": "sonnet",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "failedGatesVariable",
         "name": "FailedGates",
         "typeName": "System.String[], System.Private.CoreLib",
-        "value": "[]"
+        "value": "[]",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "gateResultsJsonVariable",
         "name": "GateResultsJson",
         "typeName": "String",
-        "value": "[]"
+        "value": "[]",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "repairPromptVariable",
         "name": "RepairPrompt",
         "typeName": "String",
-        "value": ""
+        "value": "",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "repairAttemptsVariable",
         "name": "RepairAttempts",
         "typeName": "Int32",
-        "value": "0"
+        "value": "0",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       }
     ],
     "connections": [

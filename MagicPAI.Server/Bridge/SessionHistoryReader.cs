@@ -1,36 +1,41 @@
+using System.Data.Common;
 using System.Text.Json;
 using MagicPAI.Core.Models;
+using Microsoft.Data.Sqlite;
 using Npgsql;
 
 namespace MagicPAI.Server.Bridge;
 
 public class SessionHistoryReader
 {
-    private readonly string? _pgConn;
+    private readonly string? _connectionString;
+    private readonly bool _useSqlite;
 
     public SessionHistoryReader(IConfiguration configuration)
     {
-        _pgConn = configuration.GetConnectionString("MagicPai");
+        _connectionString = configuration.GetConnectionString("MagicPai");
+        _useSqlite = !string.IsNullOrWhiteSpace(_connectionString) &&
+            _connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<SessionInfo?> GetSessionAsync(string sessionId, SessionInfo? tracked, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_pgConn))
+        if (string.IsNullOrWhiteSpace(_connectionString))
             return tracked;
 
         try
         {
-            await using var conn = new NpgsqlConnection(_pgConn);
+            await using var conn = CreateConnection();
             await conn.OpenAsync(ct);
 
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
+            cmd.CommandText = $"""
                 SELECT "DefinitionId", "Status", "SubStatus", "CreatedAt"
-                FROM "Elsa"."WorkflowInstances"
+                FROM {Table("WorkflowInstances")}
                 WHERE "Id" = @id
                 LIMIT 1;
                 """;
-            cmd.Parameters.AddWithValue("id", sessionId);
+            AddParameter(cmd, "id", sessionId);
 
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct))
@@ -55,7 +60,7 @@ public class SessionHistoryReader
         IReadOnlyList<ActivityState> tracked,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_pgConn))
+        if (string.IsNullOrWhiteSpace(_connectionString))
             return tracked;
 
         try
@@ -72,26 +77,26 @@ public class SessionHistoryReader
                 order.Add(activity.Name);
             }
 
-            await using var conn = new NpgsqlConnection(_pgConn);
+            await using var conn = CreateConnection();
             await conn.OpenAsync(ct);
 
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
+            cmd.CommandText = $"""
                 WITH RECURSIVE workflow_tree AS (
                     SELECT "Id"
-                    FROM "Elsa"."WorkflowInstances"
+                    FROM {Table("WorkflowInstances")}
                     WHERE "Id" = @id
                     UNION ALL
                     SELECT child."Id"
-                    FROM "Elsa"."WorkflowInstances" child
+                    FROM {Table("WorkflowInstances")} child
                     INNER JOIN workflow_tree parent ON child."ParentWorkflowInstanceId" = parent."Id"
                 )
                 SELECT logs."ActivityId", logs."ActivityName", logs."ActivityType", logs."EventName", logs."Timestamp", logs."Sequence"
-                FROM "Elsa"."WorkflowExecutionLogRecords" logs
+                FROM {Table("WorkflowExecutionLogRecords")} logs
                 INNER JOIN workflow_tree tree ON tree."Id" = logs."WorkflowInstanceId"
                 ORDER BY "Timestamp" ASC, "Sequence" ASC;
                 """;
-            cmd.Parameters.AddWithValue("id", sessionId);
+            AddParameter(cmd, "id", sessionId);
 
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
@@ -135,34 +140,34 @@ public class SessionHistoryReader
 
     public async Task<string[]> GetOutputAsync(string sessionId, string[] tracked, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_pgConn))
+        if (string.IsNullOrWhiteSpace(_connectionString))
             return tracked;
 
         try
         {
             var chunks = new List<string>();
 
-            await using var conn = new NpgsqlConnection(_pgConn);
+            await using var conn = CreateConnection();
             await conn.OpenAsync(ct);
 
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
+            cmd.CommandText = $"""
                 WITH RECURSIVE workflow_tree AS (
                     SELECT "Id"
-                    FROM "Elsa"."WorkflowInstances"
+                    FROM {Table("WorkflowInstances")}
                     WHERE "Id" = @id
                     UNION ALL
                     SELECT child."Id"
-                    FROM "Elsa"."WorkflowInstances" child
+                    FROM {Table("WorkflowInstances")} child
                     INNER JOIN workflow_tree parent ON child."ParentWorkflowInstanceId" = parent."Id"
                 )
                 SELECT logs."Message"
-                FROM "Elsa"."WorkflowExecutionLogRecords" logs
+                FROM {Table("WorkflowExecutionLogRecords")} logs
                 INNER JOIN workflow_tree tree ON tree."Id" = logs."WorkflowInstanceId"
                 WHERE logs."EventName" IN ('OutputChunk', 'StreamChunk')
                 ORDER BY "Timestamp" ASC, "Sequence" ASC;
                 """;
-            cmd.Parameters.AddWithValue("id", sessionId);
+            AddParameter(cmd, "id", sessionId);
 
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
@@ -227,5 +232,21 @@ public class SessionHistoryReader
 
         return string.Concat(definitionId.Select((c, i) =>
             i > 0 && char.IsUpper(c) ? "-" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
+    }
+
+    private DbConnection CreateConnection() => _useSqlite
+        ? new SqliteConnection(_connectionString)
+        : new NpgsqlConnection(_connectionString);
+
+    private string Table(string tableName) => _useSqlite
+        ? $"\"{tableName}\""
+        : $"\"Elsa\".\"{tableName}\"";
+
+    private static void AddParameter(DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
     }
 }

@@ -85,6 +85,11 @@ public class MagicPaiConfig
     public bool EnableAdaptiveRouting { get; set; }
     public Dictionary<string, string> ModelOverrides { get; set; } = new();
 
+    // --- Auth Recovery ---
+    public string AuthServiceUrl { get; set; } = "";
+    public string AuthDefaultEmail { get; set; } = "";
+    public string AuthApiKey { get; set; } = "";
+
     /// <summary>Validate config values and return list of problems (empty = valid).</summary>
     public IReadOnlyList<string> Validate()
     {

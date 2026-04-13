@@ -5,6 +5,13 @@ namespace MagicPAI.Core.Services;
 
 public class ClaudeRunner : ICliAgentRunner
 {
+    private const string NonInteractiveSystemPrompt =
+        "IMPORTANT: You are running in fully non-interactive mode. " +
+        "stdin is closed after the initial prompt. " +
+        "Do NOT use plan mode. Do NOT call ExitPlanMode. " +
+        "Execute all tasks directly and immediately without requesting user approval. " +
+        "Never pause and never ask for confirmation - just implement everything now.";
+
     public string AgentName => "claude";
     public string DefaultModel => "sonnet";
     public string[] AvailableModels =>
@@ -31,12 +38,18 @@ public class ClaudeRunner : ICliAgentRunner
                   $" --setting-sources project,local" +
                   $" --model {model}" +
                   $" --output-format stream-json" +
+                  $" --include-partial-messages" +
                   $" --verbose";
+
+        var nonInteractivePrompt = isWindows
+            ? EscapeWindows(NonInteractiveSystemPrompt)
+            : Escape(NonInteractiveSystemPrompt);
+        cmd += $" --append-system-prompt {q}{nonInteractivePrompt}{q}";
 
         if (!string.IsNullOrWhiteSpace(request.SessionId))
         {
             var sessionId = isWindows ? EscapeWindows(request.SessionId) : Escape(request.SessionId);
-            cmd += $" --session-id {q}{sessionId}{q}";
+            cmd += $" --resume {q}{sessionId}{q}";
         }
 
         cmd += $" -p {q}{prompt}{q}";
@@ -65,6 +78,9 @@ public class ClaudeRunner : ICliAgentRunner
             model,
             "--output-format",
             "stream-json",
+            "--include-partial-messages",
+            "--append-system-prompt",
+            NonInteractiveSystemPrompt,
             "--verbose"
         };
 

@@ -9,8 +9,7 @@ namespace MagicPAI.Server.Workflows;
 
 /// <summary>
 /// Research-first orchestration pipeline:
-/// Prompt enhancement -> research -> triage -> route to simple or complex sub-workflows.
-/// Composes prompt enhancement, research gathering, and complexity-based routing.
+/// run the research component, triage, then route to simple or complex execution.
 /// </summary>
 public class ResearchPipelineWorkflow : WorkflowBase
 {
@@ -18,134 +17,81 @@ public class ResearchPipelineWorkflow : WorkflowBase
     {
         builder.Name = "Research Pipeline";
         builder.Description =
-            "Research-first orchestration: enhance prompt, research, triage, then route to execution";
+            "Research-first orchestration: ground the prompt, triage it, then route to execution";
 
         var prompt = builder.WithVariable<string>("Prompt", "");
         var containerId = builder.WithVariable<string>("ContainerId", "");
         var agent = builder.WithVariable<string>("AiAssistant", "claude");
         var model = builder.WithVariable<string>("Model", "auto");
         var modelPower = builder.WithVariable<int>("ModelPower", 0);
-        var enhancedPrompt = builder.WithVariable<string>("EnhancedPrompt", "");
-        var researchContext = builder.WithVariable<string>("ResearchContext", "");
+        var researchedPrompt = builder.WithVariable<string>("ResearchedPrompt", "");
 
-        // Step 1: Enhance prompt
-        var enhance = new AiAssistantActivity
+        Input<string> resolveBestPrompt() => new(ctx =>
+            string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchedPrompt"))
+                ? ctx.GetVariable<string>("Prompt") ?? ""
+                : ctx.GetVariable<string>("ResearchedPrompt") ?? "");
+
+        var researchPrompt = new ResearchPromptActivity
         {
             AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
             ModelPower = new Input<int>(2),
-            TrackPromptTransform = new Input<bool>(true),
-            PromptTransformLabel = new Input<string>("Research Prompt Enhancement"),
-            Response = new Output<string>(enhancedPrompt),
-            Id = "research-enhance"
+            EnhancedPrompt = new Output<string>(researchedPrompt),
+            Id = "research-prompt"
         };
-        Pos(enhance, 400, 50);
+        Pos(researchPrompt, 400, 50);
 
-        // Step 2: Research context gathering
-        var research = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("EnhancedPrompt"))
-                    ? ctx.GetVariable<string>("Prompt") ?? ""
-                    : ctx.GetVariable<string>("EnhancedPrompt") ?? ""),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Response = new Output<string>(researchContext),
-            Id = "research-gather"
-        };
-        Pos(research, 400, 220);
-
-        // Step 3: Triage for routing
         var triage = new TriageActivity
         {
-            Prompt = new Input<string>(ctx =>
-                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchContext"))
-                    ? ctx.GetVariable<string>("Prompt") ?? ""
-                    : ctx.GetVariable<string>("ResearchContext") ?? ""),
+            Prompt = resolveBestPrompt(),
             ContainerId = new Input<string>(containerId),
             Id = "research-triage"
         };
-        Pos(triage, 400, 390);
+        Pos(triage, 400, 220);
 
-        // Step 4a: Simple execution path
         var simpleAgent = new AiAssistantActivity
         {
             AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchContext"))
-                    ? ctx.GetVariable<string>("Prompt") ?? ""
-                    : ctx.GetVariable<string>("ResearchContext") ?? ""),
+            Prompt = resolveBestPrompt(),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
             ModelPower = new Input<int>(modelPower),
             Id = "research-simple-exec"
         };
-        Pos(simpleAgent, 200, 560);
+        Pos(simpleAgent, 200, 390);
 
-        // Step 4b: Complex decomposition path
         var architect = new ArchitectActivity
         {
-            Prompt = new Input<string>(ctx =>
-                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchContext"))
-                    ? ctx.GetVariable<string>("Prompt") ?? ""
-                    : ctx.GetVariable<string>("ResearchContext") ?? ""),
+            Prompt = resolveBestPrompt(),
             ContainerId = new Input<string>(containerId),
             Id = "research-architect"
         };
-        Pos(architect, 600, 560);
+        Pos(architect, 600, 390);
 
         var complexAgent = new AiAssistantActivity
         {
             AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchContext"))
-                    ? ctx.GetVariable<string>("Prompt") ?? ""
-                    : ctx.GetVariable<string>("ResearchContext") ?? ""),
+            Prompt = resolveBestPrompt(),
             ContainerId = new Input<string>(containerId),
             ModelPower = new Input<int>(1),
             Id = "research-complex-exec"
         };
-        Pos(complexAgent, 600, 730);
+        Pos(complexAgent, 600, 560);
 
         var flowchart = new Flowchart
         {
             Id = "research-pipeline-flow",
-            Start = enhance,
-            Activities = { enhance, research, triage, simpleAgent, architect, complexAgent },
+            Start = researchPrompt,
+            Activities = { researchPrompt, triage, simpleAgent, architect, complexAgent },
             Connections =
             {
-                // Enhance -> Research
-                new Connection(
-                    new Endpoint(enhance, "Done"),
-                    new Endpoint(research)),
-                new Connection(
-                    new Endpoint(enhance, "Failed"),
-                    new Endpoint(research)),
+                new Connection(new Endpoint(researchPrompt, "Done"), new Endpoint(triage)),
+                new Connection(new Endpoint(researchPrompt, "Failed"), new Endpoint(triage)),
 
-                // Research -> Triage
-                new Connection(
-                    new Endpoint(research, "Done"),
-                    new Endpoint(triage)),
-                new Connection(
-                    new Endpoint(research, "Failed"),
-                    new Endpoint(triage)),
-
-                // Triage -> Simple path
-                new Connection(
-                    new Endpoint(triage, "Simple"),
-                    new Endpoint(simpleAgent)),
-
-                // Triage -> Complex path
-                new Connection(
-                    new Endpoint(triage, "Complex"),
-                    new Endpoint(architect)),
-
-                // Architect -> Complex agent
-                new Connection(
-                    new Endpoint(architect, "Done"),
-                    new Endpoint(complexAgent)),
+                new Connection(new Endpoint(triage, "Simple"), new Endpoint(simpleAgent)),
+                new Connection(new Endpoint(triage, "Complex"), new Endpoint(architect)),
+                new Connection(new Endpoint(architect, "Done"), new Endpoint(complexAgent)),
             }
         };
 

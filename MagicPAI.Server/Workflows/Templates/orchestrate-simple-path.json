@@ -3,7 +3,7 @@
   "id": "",
   "definitionId": "OrchestrateSimplePathWorkflow",
   "name": "Orchestrate Simple Path",
-  "description": "Single-agent execution with prompt assembly, context, and verification",
+  "description": "Single-agent execution with research-first prompt grounding and verification",
   "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
@@ -12,42 +12,48 @@
       "name": "Prompt",
       "typeName": "String",
       "isArray": false,
-      "value": ""
+      "value": "",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "containerIdVariable",
       "name": "ContainerId",
       "typeName": "String",
       "isArray": false,
-      "value": ""
+      "value": "",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "aiAssistantVariable",
       "name": "AiAssistant",
       "typeName": "String",
       "isArray": false,
-      "value": "claude"
+      "value": "claude",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "modelVariable",
       "name": "Model",
       "typeName": "String",
       "isArray": false,
-      "value": "auto"
+      "value": "auto",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "modelPowerVariable",
       "name": "ModelPower",
       "typeName": "Int32",
       "isArray": false,
-      "value": "0"
+      "value": "0",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     },
     {
       "id": "assembledPromptVariable",
       "name": "AssembledPrompt",
       "typeName": "String",
       "isArray": false,
-      "value": ""
+      "value": "",
+      "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
     }
   ],
   "inputs": [],
@@ -67,30 +73,11 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "OrchestrateSimplePathWorkflow.cs:63"
+      "source": "OrchestrateSimplePathWorkflow.cs:68"
     },
     "metadata": {},
     "activities": [
       {
-        "aiAssistant": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "aiAssistantVariable",
-              "name": "AiAssistant",
-              "typeName": "String",
-              "value": "claude"
-            }
-          }
-        },
-        "agent": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
         "prompt": {
           "typeName": "String",
           "expression": {
@@ -99,7 +86,21 @@
               "id": "promptVariable",
               "name": "Prompt",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
+            }
+          }
+        },
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "aiAssistantVariable",
+              "name": "AiAssistant",
+              "typeName": "String",
+              "value": "claude",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -111,22 +112,9 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
-          }
-        },
-        "workingDirectory": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "/workspace"
-          }
-        },
-        "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
           }
         },
         "modelPower": {
@@ -136,58 +124,23 @@
             "value": 2
           }
         },
-        "structuredOutputSchema": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "trackPromptTransform": {
-          "typeName": "Boolean",
-          "expression": {
-            "type": "Literal",
-            "value": false
-          }
-        },
-        "promptTransformLabel": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "Prompt Transform"
-          }
-        },
-        "maxTurns": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 20
-          }
-        },
-        "timeoutMinutes": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 30
-          }
-        },
-        "response": {
+        "enhancedPrompt": {
           "typeName": "String",
           "memoryReference": {
             "id": "assembledPromptVariable"
           }
         },
-        "structuredOutputJson": null,
-        "success": null,
-        "costUsd": null,
-        "filesModified": null,
-        "exitCode": null,
-        "id": "simple-assemble-prompt",
-        "nodeId": "Workflow1:orchestrate-simple-path-flow:simple-assemble-prompt",
+        "codebaseAnalysis": null,
+        "researchContext": null,
+        "rationale": null,
+        "id": "simple-research-prompt",
+        "nodeId": "Workflow1:orchestrate-simple-path-flow:simple-research-prompt",
         "name": null,
-        "type": "MagicPAI.AiAssistantActivity",
+        "type": "MagicPAI.ResearchPromptActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -206,7 +159,8 @@
               "id": "aiAssistantVariable",
               "name": "AiAssistant",
               "typeName": "String",
-              "value": "claude"
+              "value": "claude",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -218,16 +172,7 @@
           }
         },
         "prompt": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "assembledPromptVariable",
-              "name": "AssembledPrompt",
-              "typeName": "String",
-              "value": ""
-            }
-          }
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -237,7 +182,8 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -256,7 +202,8 @@
               "id": "modelVariable",
               "name": "Model",
               "typeName": "String",
-              "value": "auto"
+              "value": "auto",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -268,7 +215,8 @@
               "id": "modelPowerVariable",
               "name": "ModelPower",
               "typeName": "Int32",
-              "value": "0"
+              "value": "0",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -318,7 +266,9 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -337,7 +287,8 @@
               "id": "containerIdVariable",
               "name": "ContainerId",
               "typeName": "String",
-              "value": ""
+              "value": "",
+              "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
             }
           }
         },
@@ -384,43 +335,49 @@
         "id": "promptVariable",
         "name": "Prompt",
         "typeName": "String",
-        "value": ""
+        "value": "",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "containerIdVariable",
         "name": "ContainerId",
         "typeName": "String",
-        "value": ""
+        "value": "",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "aiAssistantVariable",
         "name": "AiAssistant",
         "typeName": "String",
-        "value": "claude"
+        "value": "claude",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "modelVariable",
         "name": "Model",
         "typeName": "String",
-        "value": "auto"
+        "value": "auto",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "modelPowerVariable",
         "name": "ModelPower",
         "typeName": "Int32",
-        "value": "0"
+        "value": "0",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       },
       {
         "id": "assembledPromptVariable",
         "name": "AssembledPrompt",
         "typeName": "String",
-        "value": ""
+        "value": "",
+        "storageDriverTypeName": "Elsa.Workflows.WorkflowInstanceStorageDriver, Elsa.Workflows.Core"
       }
     ],
     "connections": [
       {
         "source": {
-          "activity": "simple-assemble-prompt",
+          "activity": "simple-research-prompt",
           "port": "Done"
         },
         "target": {
@@ -430,7 +387,7 @@
       },
       {
         "source": {
-          "activity": "simple-assemble-prompt",
+          "activity": "simple-research-prompt",
           "port": "Failed"
         },
         "target": {

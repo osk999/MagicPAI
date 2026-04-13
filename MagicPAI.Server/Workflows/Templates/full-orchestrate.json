@@ -48,6 +48,27 @@
       "typeName": "String",
       "isArray": false,
       "value": ""
+    },
+    {
+      "id": "enhancedPromptVariable",
+      "name": "EnhancedPrompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "elaboratedPromptVariable",
+      "name": "ElaboratedPrompt",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
+    },
+    {
+      "id": "gatheredContextVariable",
+      "name": "GatheredContext",
+      "typeName": "String",
+      "isArray": false,
+      "value": ""
     }
   ],
   "inputs": [],
@@ -67,7 +88,7 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "FullOrchestrateWorkflow.cs:125"
+      "source": "FullOrchestrateWorkflow.cs:194"
     },
     "metadata": {},
     "activities": [
@@ -163,6 +184,20 @@
         }
       },
       {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
         "prompt": {
           "typeName": "String",
           "expression": {
@@ -174,6 +209,328 @@
               "value": ""
             }
           }
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": true
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Enhancement"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "enhancedPromptVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "enhance-prompt",
+        "nodeId": "Workflow1:full-orchestrate-flow:enhance-prompt",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 340
+            }
+          }
+        }
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String"
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "elaboratedPromptVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "elaborate",
+        "nodeId": "Workflow1:full-orchestrate-flow:elaborate",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 460
+            }
+          }
+        }
+      },
+      {
+        "aiAssistant": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "agent": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "prompt": {
+          "typeName": "String"
+        },
+        "containerId": {
+          "typeName": "String",
+          "expression": {
+            "type": "Variable",
+            "value": {
+              "id": "containerIdVariable",
+              "name": "ContainerId",
+              "typeName": "String",
+              "value": ""
+            }
+          }
+        },
+        "workingDirectory": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "/workspace"
+          }
+        },
+        "model": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "modelPower": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 2
+          }
+        },
+        "structuredOutputSchema": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": ""
+          }
+        },
+        "trackPromptTransform": {
+          "typeName": "Boolean",
+          "expression": {
+            "type": "Literal",
+            "value": false
+          }
+        },
+        "promptTransformLabel": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "Prompt Transform"
+          }
+        },
+        "maxTurns": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 20
+          }
+        },
+        "timeoutMinutes": {
+          "typeName": "Int32",
+          "expression": {
+            "type": "Literal",
+            "value": 30
+          }
+        },
+        "response": {
+          "typeName": "String",
+          "memoryReference": {
+            "id": "gatheredContextVariable"
+          }
+        },
+        "structuredOutputJson": null,
+        "success": null,
+        "costUsd": null,
+        "filesModified": null,
+        "exitCode": null,
+        "id": "gather-context",
+        "nodeId": "Workflow1:full-orchestrate-flow:gather-context",
+        "name": null,
+        "type": "MagicPAI.AiAssistantActivity",
+        "version": 1,
+        "customProperties": {},
+        "metadata": {
+          "designer": {
+            "position": {
+              "x": 400,
+              "y": 580
+            }
+          }
+        }
+      },
+      {
+        "prompt": {
+          "typeName": "String"
         },
         "containerId": {
           "typeName": "String",
@@ -212,7 +569,7 @@
           "designer": {
             "position": {
               "x": 400,
-              "y": 400
+              "y": 700
             }
           }
         }
@@ -243,13 +600,13 @@
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
         "customProperties": {
-          "source": "FullOrchestrateWorkflow.cs:91"
+          "source": "FullOrchestrateWorkflow.cs:160"
         },
         "metadata": {
           "designer": {
             "position": {
               "x": 250,
-              "y": 560
+              "y": 860
             }
           }
         }
@@ -280,13 +637,13 @@
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
         "customProperties": {
-          "source": "FullOrchestrateWorkflow.cs:100"
+          "source": "FullOrchestrateWorkflow.cs:169"
         },
         "metadata": {
           "designer": {
             "position": {
               "x": 550,
-              "y": 560
+              "y": 860
             }
           }
         }
@@ -317,13 +674,13 @@
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
         "customProperties": {
-          "source": "FullOrchestrateWorkflow.cs:109"
+          "source": "FullOrchestrateWorkflow.cs:178"
         },
         "metadata": {
           "designer": {
             "position": {
               "x": 400,
-              "y": 720
+              "y": 1020
             }
           }
         }
@@ -342,7 +699,7 @@
           "designer": {
             "position": {
               "x": 400,
-              "y": 880
+              "y": 1180
             }
           }
         }
@@ -384,6 +741,24 @@
         "name": "RecommendedModel",
         "typeName": "String",
         "value": ""
+      },
+      {
+        "id": "enhancedPromptVariable",
+        "name": "EnhancedPrompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "elaboratedPromptVariable",
+        "name": "ElaboratedPrompt",
+        "typeName": "String",
+        "value": ""
+      },
+      {
+        "id": "gatheredContextVariable",
+        "name": "GatheredContext",
+        "typeName": "String",
+        "value": ""
       }
     ],
     "connections": [
@@ -413,7 +788,7 @@
           "port": "Website"
         },
         "target": {
-          "activity": "triage"
+          "activity": "website-audit"
         },
         "vertices": []
       },
@@ -421,6 +796,66 @@
         "source": {
           "activity": "website-classifier",
           "port": "NonWebsite"
+        },
+        "target": {
+          "activity": "enhance-prompt"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "enhance-prompt",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "elaborate"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "enhance-prompt",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "elaborate"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "elaborate",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "gather-context"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "elaborate",
+          "port": "Failed"
+        },
+        "target": {
+          "activity": "gather-context"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "gather-context",
+          "port": "Done"
+        },
+        "target": {
+          "activity": "triage"
+        },
+        "vertices": []
+      },
+      {
+        "source": {
+          "activity": "gather-context",
+          "port": "Failed"
         },
         "target": {
           "activity": "triage"
@@ -453,7 +888,7 @@
           "port": "Done"
         },
         "target": {
-          "activity": "website-audit"
+          "activity": "destroy-container"
         },
         "vertices": []
       },
@@ -463,7 +898,7 @@
           "port": "Done"
         },
         "target": {
-          "activity": "website-audit"
+          "activity": "destroy-container"
         },
         "vertices": []
       },

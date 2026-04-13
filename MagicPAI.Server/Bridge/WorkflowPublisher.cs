@@ -1,9 +1,12 @@
 using System.Security.Cryptography;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities;
+using Elsa.Workflows.Attributes;
 using Elsa.Workflows.Management;
 using Elsa.Workflows.Management.Filters;
 using Elsa.Workflows.Management.Models;
@@ -14,13 +17,15 @@ using Medallion.Threading;
 
 namespace MagicPAI.Server.Bridge;
 
-public class WorkflowPublisher : BackgroundService
+public class WorkflowPublisher : IHostedService
 {
     private const string PublishLockName = "magicpai:workflow-publisher";
     private const string PublisherFormatVersion = "5";
     private const string WorkflowSchemaUrl = "https://elsaworkflows.io/schemas/3.x/workflow-definition.json";
     private readonly IServiceProvider _services;
     private readonly ILogger<WorkflowPublisher> _logger;
+    private readonly SemaphoreSlim _initializeLock = new(1, 1);
+    private Task? _initializationTask;
 
     /// <summary>Resolve a friendly name to the DefinitionId (class name).</summary>
     public static string ResolveDefinitionId(string workflowName) => WorkflowCatalog.ResolveDefinitionId(workflowName);
@@ -34,10 +39,32 @@ public class WorkflowPublisher : BackgroundService
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken ct)
-    {
-        await Task.Delay(TimeSpan.FromSeconds(10), ct);
+    public Task StartAsync(CancellationToken ct) => EnsureInitializedAsync(ct);
 
+    public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+    public Task InitializeAsync(CancellationToken ct) => EnsureInitializedAsync(ct);
+
+    private async Task EnsureInitializedAsync(CancellationToken ct)
+    {
+        if (_initializationTask is null)
+        {
+            await _initializeLock.WaitAsync(ct);
+            try
+            {
+                _initializationTask ??= InitializeCoreAsync(ct);
+            }
+            finally
+            {
+                _initializeLock.Release();
+            }
+        }
+
+        await _initializationTask.WaitAsync(ct);
+    }
+
+    private async Task InitializeCoreAsync(CancellationToken ct)
+    {
         using var scope = _services.CreateScope();
         var sp = scope.ServiceProvider;
 
@@ -64,7 +91,8 @@ public class WorkflowPublisher : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Workflow publish failed");
+            _logger.LogError(ex, "Workflow publish failed");
+            throw;
         }
     }
 
@@ -192,10 +220,13 @@ public class WorkflowPublisher : BackgroundService
         CancellationToken ct)
     {
         var built = await BuildWorkflowAsync(sp, entry.WorkflowType, ct);
-        AttachWorkflowVariables(built.Root, built.Variables);
-        var definition = await publisher.NewAsync(built.Root, ct);
+        var definition = await publisher.NewAsync(built, ct);
         definition.DefinitionId = entry.DefinitionId;
-        definition.Name = entry.DefinitionId;
+        definition.Name = built.WorkflowMetadata.Name ?? entry.DefinitionId;
+        definition.Description = built.WorkflowMetadata.Description;
+        definition.Inputs = built.Inputs.ToList();
+        definition.Outputs = built.Outputs.ToList();
+        definition.Outcomes = built.Outcomes.ToList();
         definition.IsPublished = true;
         definition.CustomProperties["Source"] = "CodeFirst";
         definition.CustomProperties["SourceChecksum"] = checksum;
@@ -225,7 +256,25 @@ public class WorkflowPublisher : BackgroundService
     {
         var workflow = (IWorkflow)ActivatorUtilities.CreateInstance(sp, workflowType);
         var builder = sp.GetRequiredService<IWorkflowBuilderFactory>().CreateBuilder();
-        return await builder.BuildWorkflowAsync(workflow, ct);
+        var builtWorkflow = await builder.BuildWorkflowAsync(workflow, ct);
+        await ApplyAsyncActivityFlagsAsync(sp, builtWorkflow, ct);
+        return builtWorkflow;
+    }
+
+    private static async Task ApplyAsyncActivityFlagsAsync(IServiceProvider sp, Workflow workflow, CancellationToken ct)
+    {
+        var graphBuilder = sp.GetRequiredService<IWorkflowGraphBuilder>();
+        var graph = await graphBuilder.BuildAsync(workflow, ct);
+
+        foreach (var node in graph.Nodes)
+        {
+            if (node.Activity is not Activity activity)
+                continue;
+
+            var attribute = activity.GetType().GetCustomAttribute<ActivityAttribute>();
+            if (attribute?.RunAsynchronously == true && activity.RunAsynchronously != true)
+                activity.RunAsynchronously = true;
+        }
     }
 
     private static string NormalizeTemplateJson(string serialized)

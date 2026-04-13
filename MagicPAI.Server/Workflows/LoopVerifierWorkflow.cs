@@ -42,7 +42,7 @@ public class LoopVerifierWorkflow : WorkflowBase
         {
             CurrentCount = new Input<int>(attemptCount),
             NextCount = new Output<int>(attemptCount),
-            MaxIterations = new Input<int>(ctx => Math.Max(1, ctx.GetInput<int?>("MaxTurns") ?? 3)),
+            MaxIterations = new Input<int>(ctx => Math.Max(1, ctx.GetDispatchInput<int?>("MaxTurns") ?? 3)),
             Label = new Input<string>("Loop Verifier"),
             Id = "loop-iteration-gate"
         };
@@ -90,10 +90,7 @@ public class LoopVerifierWorkflow : WorkflowBase
 
         var destroy = new DestroyContainerActivity
         {
-            ContainerId = new Input<string>(ctx =>
-                ctx.GetVariable<string>("ContainerId")
-                ?? ctx.GetInput<string>("ContainerId")
-                ?? ""),
+            ContainerId = new Input<string>(ctx => ctx.Resolve("ContainerId")),
             Id = "loop-destroy"
         };
         Pos(destroy, 400, 730);

@@ -41,6 +41,8 @@ public class ClaudeRunnerTests
         Assert.Contains("--dangerously-skip-permissions", cmd);
         Assert.Contains("Fix the bug", cmd);
         Assert.Contains("--output-format stream-json", cmd);
+        Assert.Contains("--include-partial-messages", cmd);
+        Assert.Contains("--append-system-prompt", cmd);
         Assert.Contains("--verbose", cmd);
     }
 
@@ -120,8 +122,24 @@ public class ClaudeRunnerTests
         });
 
         Assert.Equal("claude", plan.MainRequest.FileName);
+        Assert.Contains("--include-partial-messages", plan.MainRequest.Arguments);
+        Assert.Contains("--append-system-prompt", plan.MainRequest.Arguments);
         Assert.Contains("--resume", plan.MainRequest.Arguments);
         Assert.Contains("sess-123", plan.MainRequest.Arguments);
+    }
+
+    [Fact]
+    public void BuildCommand_Resumes_Session_When_Provided()
+    {
+        var cmd = _runner.BuildCommand(new AgentRequest
+        {
+            Prompt = "continue",
+            SessionId = "sess-123"
+        });
+
+        Assert.Contains("--resume", cmd);
+        Assert.Contains("sess-123", cmd);
+        Assert.DoesNotContain("--session-id", cmd);
     }
 
     [Fact]

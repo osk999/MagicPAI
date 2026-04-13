@@ -61,6 +61,29 @@ all activity definitions, code examples, Docker setup, and file manifest.
 - If you find a discrepancy between your change and the reference, STOP and fix it
   before proceeding.
 
+## Elsa Variable Shadowing Bug (CRITICAL)
+- `ExpressionExecutionContext.GetInput(name)` checks for a **variable with the same name first**
+  (see `elsa-core/.../ExpressionExecutionContextExtensions.cs:418-425`).
+- If a workflow has `builder.WithVariable<string>("Prompt", "")`, then `ctx.GetInput<string>("Prompt")`
+  returns `""` (the variable default), NOT the dispatch input value.
+- **Safe APIs**: `ActivityExecutionContext.GetWorkflowInput<T>()` reads from `WorkflowExecutionContext.Input` directly (no shadowing).
+- **Unsafe APIs**: `ExpressionExecutionContext.GetInput<T>()` shadows with same-named variables.
+- **Fix**: use `ctx.GetWorkflowExecutionContext().Input.TryGetValue("key", out var v)` to bypass shadowing.
+- This affects ALL workflows where variable names match dispatch input keys (Prompt, Model, AiAssistant, etc.).
+
+## Elsa JSON vs C# Workflow Rules
+- C# lambda delegates in `Input<T>` cannot be serialized to JSON → set `useJsonTemplate: false` in WorkflowCatalog.
+- JSON supports: Literal, Variable references, JavaScript expressions only.
+- `BulkDispatchWorkflows`, `SetVariable` with delegates, `FlowDecision` with lambdas all require C# (no JSON).
+
+## Docker Credential Mounting
+- `DockerContainerManager.BuildCredentialBinds()` mounts `~/.claude.json` and `~/.claude/.credentials.json`
+  into containers at `/tmp/magicpai-host-*` (read-only).
+- `entrypoint.sh` copies them to `$HOME/.claude/` on startup.
+- Claude CLI uses OAuth tokens (not ANTHROPIC_API_KEY). The `.claude` dir has the auth.
+- Token expiry detection patterns: `authentication_error`, `token expired`, `unauthorized`, `hit your limit`.
+- MagicPrompt reference: `AuthRecoveryService`, `CredentialRefreshService`, `AuthErrorDetector` in `MagicPrompt.Core/Services/Auth/`.
+
 ## Elsa Activity Rules (CRITICAL)
 - Base class: `Activity` or `CodeActivity` from `Elsa.Workflows`
 - Inputs: `public Input<T> Prop { get; set; }` with `[Input]` attribute

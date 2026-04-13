@@ -56,11 +56,7 @@ internal static class VerifyAndRepairLoop
             AiAssistant = assistant,
             Agent = assistant,
             Prompt = new Input<string>(ctx =>
-                ctx.GetVariable<string>("RepairPrompt")
-                ?? ctx.GetInput<string>("RepairPrompt")
-                ?? ctx.GetVariable<string>("Prompt")
-                ?? ctx.GetInput<string>("Prompt")
-                ?? ""),
+                ctx.Resolve("RepairPrompt", ctx.Resolve("Prompt"))),
             ContainerId = containerId,
             Model = model,
             ModelPower = modelPower,

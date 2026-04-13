@@ -12,7 +12,9 @@ using Microsoft.Extensions.Logging;
 
 namespace MagicPAI.Activities.AI;
 
-[Activity("MagicPAI", "AI Agents", "Decompose a complex prompt into sub-tasks")]
+[Activity("MagicPAI", "AI Agents", "Decompose a complex prompt into sub-tasks",
+    Kind = ActivityKind.Task,
+    RunAsynchronously = true)]
 [FlowNode("Done", "Failed")]
 public class ArchitectActivity : Activity
 {
@@ -52,7 +54,10 @@ public class ArchitectActivity : Activity
                 ?? config.DefaultAgent,
                 config.DefaultAgent);
             var runner = agentFactory.Create(assistantName);
-            var prompt = context.GetOptionalWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
+            var prompt = context.GetOptionalWorkflowInput<string>("Prompt")
+                ?? Prompt.GetOrDefault(context, () => null)
+                ?? TryGetVariable<string>(context, "Prompt")
+                ?? "";
             var workDir = config.UseWorkerContainers
                 ? config.ContainerWorkDir ?? "/workspace"
                 : context.GetOptionalWorkflowInput<string>("WorkspacePath")
@@ -75,6 +80,32 @@ public class ArchitectActivity : Activity
                 cid = TryGetVariable<string>(context, "ContainerId") ?? "";
             if (string.IsNullOrEmpty(cid))
                 cid = context.GetOptionalWorkflowInput<string>("ContainerId") ?? "";
+            // Fallback: read from SharedBlackboard (for child workflows where input doesn't propagate)
+            if (string.IsNullOrWhiteSpace(cid))
+            {
+                var bb = context.GetRequiredService<SharedBlackboard>();
+                var parentId = context.WorkflowExecutionContext.ParentWorkflowInstanceId;
+                if (!string.IsNullOrWhiteSpace(parentId))
+                {
+                    var stored = bb.GetTaskOutput($"{parentId}:child-input");
+                    if (!string.IsNullOrWhiteSpace(stored))
+                    {
+                        try
+                        {
+                            var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(stored);
+                            if (data is not null)
+                            {
+                                if (data.TryGetValue("ContainerId", out var cidEl) && cidEl.ValueKind == JsonValueKind.String)
+                                    cid = cidEl.GetString() ?? "";
+                                // Also set prompt variable if empty
+                                if (string.IsNullOrWhiteSpace(prompt) && data.TryGetValue("Prompt", out var pEl) && pEl.ValueKind == JsonValueKind.String)
+                                    prompt = pEl.GetString() ?? "";
+                            }
+                        }
+                        catch { /* ignore malformed JSON */ }
+                    }
+                }
+            }
             if (string.IsNullOrWhiteSpace(cid))
                 throw new InvalidOperationException("Container ID is required. Architect runs inside the spawned worker container.");
 
@@ -83,6 +114,21 @@ public class ArchitectActivity : Activity
 
             var result = await containerMgr.ExecAsync(
                 cid, plan.MainRequest, context.CancellationToken);
+
+            // Auth recovery: retry once if auth error detected
+            if (result.ExitCode != 0 && Core.Services.Auth.AuthErrorDetector.ContainsAuthError(
+                    (result.Output ?? "") + (result.Error ?? "")))
+            {
+                var authService = context.GetRequiredService<Core.Services.Auth.AuthRecoveryService>();
+                context.AddExecutionLogEntry("AuthErrorDetected", "Attempting credential recovery for architect...");
+                var (recovered, _, credsJson) = await authService.RecoverAuthAsync(context.CancellationToken);
+                if (recovered && !string.IsNullOrEmpty(credsJson))
+                {
+                    await Core.Services.Auth.CredentialInjector.InjectAsync(cid, credsJson, context.CancellationToken);
+                    context.AddExecutionLogEntry("AuthRecovered", "Retrying architect...");
+                    result = await containerMgr.ExecAsync(cid, plan.MainRequest, context.CancellationToken);
+                }
+            }
 
             context.AddExecutionLogEntry("ArchitectCommandResult",
                 JsonSerializer.Serialize(new
@@ -119,7 +165,9 @@ public class ArchitectActivity : Activity
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Architect activity failed");
-            var fallbackPrompt = context.GetOptionalWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
+            var fallbackPrompt = context.GetOptionalWorkflowInput<string>("Prompt")
+                ?? Prompt.GetOrDefault(context, () => null)
+                ?? "";
             var fallbackTasks = string.IsNullOrWhiteSpace(fallbackPrompt)
                 ? Array.Empty<string>()
                 : new[] { fallbackPrompt };

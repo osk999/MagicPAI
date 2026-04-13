@@ -6,6 +6,7 @@ using Elsa.Studio.Login.Extensions;
 using Elsa.Studio.Options;
 using Elsa.Studio.Shell;
 using Elsa.Studio.Shell.Extensions;
+using Elsa.Studio.Workflows.Contracts;
 using Elsa.Studio.Workflows.Designer.Extensions;
 using Elsa.Studio.Workflows.Extensions;
 using Elsa.Studio.Contracts;
@@ -26,10 +27,13 @@ builder.RootComponents.RegisterCustomElsaStudioElements();
 var backendUri = BackendUrlResolver.ResolveBackendUri(
     builder.Configuration,
     builder.HostEnvironment);
+var elsaApiUri = new Uri(backendUri, "elsa/api");
+var studioConnection = new ElsaStudioConnectionSettings();
 
 // --- MagicPAI services ---
 builder.Services.AddScoped<SessionHubClient>();
 builder.Services.AddScoped<WorkflowInstanceLiveUpdater>();
+builder.Services.AddSingleton(studioConnection);
 builder.Services.AddScoped<SessionApiClient>(_ =>
 {
     var httpClient = new HttpClient { BaseAddress = backendUri };
@@ -47,7 +51,7 @@ builder.Services.AddLoginModule().UseElsaIdentity();
 builder.Services.AddTransient<ElsaStudioApiKeyHandler>();
 builder.Services.AddRemoteBackend(new()
 {
-    ConfigureBackendOptions = options => options.Url = backendUri,
+    ConfigureBackendOptions = options => options.Url = elsaApiUri,
     ConfigureHttpClientBuilder = options =>
         options.AuthenticationHandler = typeof(ElsaStudioApiKeyHandler)
 });
@@ -55,6 +59,7 @@ builder.Services.AddRemoteBackend(new()
 builder.Services.AddDashboardModule();
 builder.Services.AddWorkflowsModule();
 builder.Services.AddWorkflowsDesigner();
+builder.Services.AddScoped<IWorkflowInstanceObserverFactory, MagicPaiWorkflowInstanceObserverFactory>();
 
 // Custom MagicPAI menu provider + feature (for page discovery by Shell.App)
 builder.Services.AddScoped<IMenuProvider, MagicPaiMenuProvider>();
@@ -69,8 +74,19 @@ try
     var js = app.Services.GetRequiredService<IJSRuntime>();
     var clientConfig = await js.InvokeAsync<JsonElement>("getClientConfig");
     var apiUrl = clientConfig.GetProperty("apiUrl").GetString();
-    if (!string.IsNullOrEmpty(apiUrl))
-        app.Services.GetRequiredService<IOptions<BackendOptions>>().Value.Url = new Uri(apiUrl);
+    var elsaApiUrl = clientConfig.TryGetProperty("elsaApiUrl", out var elsaApiProp)
+        ? elsaApiProp.GetString()
+        : null;
+    if (!string.IsNullOrEmpty(elsaApiUrl))
+        app.Services.GetRequiredService<IOptions<BackendOptions>>().Value.Url = new Uri(elsaApiUrl);
+    else if (!string.IsNullOrEmpty(apiUrl))
+        app.Services.GetRequiredService<IOptions<BackendOptions>>().Value.Url = new Uri(new Uri(apiUrl), "elsa/api");
+    if (clientConfig.TryGetProperty("elsaApiKey", out var apiKeyProp))
+    {
+        var apiKey = apiKeyProp.GetString();
+        if (!string.IsNullOrWhiteSpace(apiKey))
+            app.Services.GetRequiredService<ElsaStudioConnectionSettings>().ApiKey = apiKey;
+    }
 }
 catch
 {

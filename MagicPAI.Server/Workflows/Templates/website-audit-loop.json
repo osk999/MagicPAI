@@ -1,10 +1,10 @@
-{
+﻿{
   "$schema": "https://elsaworkflows.io/schemas/3.x/workflow-definition.json",
   "id": "",
   "definitionId": "WebsiteAuditLoopWorkflow",
   "name": "Website Audit Loop",
   "description": "Standalone website audit with container lifecycle and GUI-enabled browser execution",
-  "createdAt": "0001-01-01T00:00:00+00:00",
+  "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
     {
@@ -13,20 +13,6 @@
       "typeName": "String",
       "isArray": false,
       "value": ""
-    },
-    {
-      "id": "promptVariable",
-      "name": "Prompt",
-      "typeName": "String",
-      "isArray": false,
-      "value": ""
-    },
-    {
-      "id": "aiAssistantVariable",
-      "name": "AiAssistant",
-      "typeName": "String",
-      "isArray": false,
-      "value": "claude"
     }
   ],
   "inputs": [],
@@ -46,11 +32,18 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "WebsiteAuditLoopWorkflow.cs"
+      "source": "WebsiteAuditLoopWorkflow.cs:57"
     },
     "metadata": {},
     "activities": [
       {
+        "image": {
+          "typeName": "String",
+          "expression": {
+            "type": "Literal",
+            "value": "magicpai-env:latest"
+          }
+        },
         "workspacePath": {
           "typeName": "String",
           "expression": {
@@ -58,13 +51,17 @@
             "value": ""
           }
         },
-        "enableGui": {
-          "typeName": "Boolean",
+        "memoryLimitMb": {
+          "typeName": "Int32",
           "expression": {
             "type": "Literal",
-            "value": true
+            "value": 4096
           }
         },
+        "enableGui": {
+          "typeName": "Boolean"
+        },
+        "envVars": null,
         "containerId": {
           "typeName": "String",
           "memoryReference": {
@@ -82,7 +79,7 @@
           "designer": {
             "position": {
               "x": 400,
-              "y": 80
+              "y": 50
             }
           }
         }
@@ -95,6 +92,10 @@
             "value": "WebsiteAuditCoreWorkflow"
           }
         },
+        "correlationId": null,
+        "input": {
+          "typeName": "ObjectDictionary"
+        },
         "waitForCompletion": {
           "typeName": "Boolean",
           "expression": {
@@ -102,40 +103,27 @@
             "value": true
           }
         },
-        "input": {
-          "typeName": "Object",
-          "expression": {
-            "type": "JavaScript",
-            "value": "return { Prompt: getVariable('Prompt') || '', AiAssistant: getVariable('AiAssistant') || 'claude', ContainerId: getVariable('ContainerId') || '' };"
-          }
-        },
+        "result": null,
         "id": "audit-core",
         "nodeId": "Workflow1:website-audit-loop-flow:audit-core",
         "name": null,
         "type": "Elsa.ExecuteWorkflow",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "source": "WebsiteAuditLoopWorkflow.cs:33"
+        },
         "metadata": {
           "designer": {
             "position": {
               "x": 400,
-              "y": 240
+              "y": 220
             }
           }
         }
       },
       {
         "containerId": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "containerIdVariable",
-              "name": "ContainerId",
-              "typeName": "String",
-              "value": ""
-            }
-          }
+          "typeName": "String"
         },
         "id": "audit-destroy",
         "nodeId": "Workflow1:website-audit-loop-flow:audit-destroy",
@@ -147,7 +135,7 @@
           "designer": {
             "position": {
               "x": 400,
-              "y": 400
+              "y": 390
             }
           }
         }
@@ -159,18 +147,6 @@
         "name": "ContainerId",
         "typeName": "String",
         "value": ""
-      },
-      {
-        "id": "promptVariable",
-        "name": "Prompt",
-        "typeName": "String",
-        "value": ""
-      },
-      {
-        "id": "aiAssistantVariable",
-        "name": "AiAssistant",
-        "typeName": "String",
-        "value": "claude"
       }
     ],
     "connections": [

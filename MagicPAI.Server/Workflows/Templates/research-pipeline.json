@@ -3,7 +3,7 @@
   "id": "",
   "definitionId": "ResearchPipelineWorkflow",
   "name": "Research Pipeline",
-  "description": "Research-first orchestration: enhance prompt, research, triage, then route to execution",
+  "description": "Research-first orchestration: ground the prompt, triage it, then route to execution",
   "createdAt": "0001-01-01T00:00:00\u002B00:00",
   "version": 1,
   "variables": [
@@ -43,15 +43,8 @@
       "value": "0"
     },
     {
-      "id": "enhancedPromptVariable",
-      "name": "EnhancedPrompt",
-      "typeName": "String",
-      "isArray": false,
-      "value": ""
-    },
-    {
-      "id": "researchContextVariable",
-      "name": "ResearchContext",
+      "id": "researchedPromptVariable",
+      "name": "ResearchedPrompt",
       "typeName": "String",
       "isArray": false,
       "value": ""
@@ -74,30 +67,11 @@
     "type": "Elsa.Flowchart",
     "version": 1,
     "customProperties": {
-      "source": "ResearchPipelineWorkflow.cs:112"
+      "source": "ResearchPipelineWorkflow.cs:82"
     },
     "metadata": {},
     "activities": [
       {
-        "aiAssistant": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "aiAssistantVariable",
-              "name": "AiAssistant",
-              "typeName": "String",
-              "value": "claude"
-            }
-          }
-        },
-        "agent": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
         "prompt": {
           "typeName": "String",
           "expression": {
@@ -110,101 +84,6 @@
             }
           }
         },
-        "containerId": {
-          "typeName": "String",
-          "expression": {
-            "type": "Variable",
-            "value": {
-              "id": "containerIdVariable",
-              "name": "ContainerId",
-              "typeName": "String",
-              "value": ""
-            }
-          }
-        },
-        "workingDirectory": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "/workspace"
-          }
-        },
-        "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "modelPower": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 2
-          }
-        },
-        "structuredOutputSchema": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "trackPromptTransform": {
-          "typeName": "Boolean",
-          "expression": {
-            "type": "Literal",
-            "value": true
-          }
-        },
-        "promptTransformLabel": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "Research Prompt Enhancement"
-          }
-        },
-        "maxTurns": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 20
-          }
-        },
-        "timeoutMinutes": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 30
-          }
-        },
-        "response": {
-          "typeName": "String",
-          "memoryReference": {
-            "id": "enhancedPromptVariable"
-          }
-        },
-        "structuredOutputJson": null,
-        "success": null,
-        "costUsd": null,
-        "filesModified": null,
-        "exitCode": null,
-        "id": "research-enhance",
-        "nodeId": "Workflow1:research-pipeline-flow:research-enhance",
-        "name": null,
-        "type": "MagicPAI.AiAssistantActivity",
-        "version": 1,
-        "customProperties": {},
-        "metadata": {
-          "designer": {
-            "position": {
-              "x": 400,
-              "y": 50
-            }
-          }
-        }
-      },
-      {
         "aiAssistant": {
           "typeName": "String",
           "expression": {
@@ -217,16 +96,6 @@
             }
           }
         },
-        "agent": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "prompt": {
-          "typeName": "String"
-        },
         "containerId": {
           "typeName": "String",
           "expression": {
@@ -239,20 +108,6 @@
             }
           }
         },
-        "workingDirectory": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "/workspace"
-          }
-        },
-        "model": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
         "modelPower": {
           "typeName": "Int32",
           "expression": {
@@ -260,63 +115,28 @@
             "value": 2
           }
         },
-        "structuredOutputSchema": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": ""
-          }
-        },
-        "trackPromptTransform": {
-          "typeName": "Boolean",
-          "expression": {
-            "type": "Literal",
-            "value": false
-          }
-        },
-        "promptTransformLabel": {
-          "typeName": "String",
-          "expression": {
-            "type": "Literal",
-            "value": "Prompt Transform"
-          }
-        },
-        "maxTurns": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 20
-          }
-        },
-        "timeoutMinutes": {
-          "typeName": "Int32",
-          "expression": {
-            "type": "Literal",
-            "value": 30
-          }
-        },
-        "response": {
+        "enhancedPrompt": {
           "typeName": "String",
           "memoryReference": {
-            "id": "researchContextVariable"
+            "id": "researchedPromptVariable"
           }
         },
-        "structuredOutputJson": null,
-        "success": null,
-        "costUsd": null,
-        "filesModified": null,
-        "exitCode": null,
-        "id": "research-gather",
-        "nodeId": "Workflow1:research-pipeline-flow:research-gather",
+        "codebaseAnalysis": null,
+        "researchContext": null,
+        "rationale": null,
+        "id": "research-prompt",
+        "nodeId": "Workflow1:research-pipeline-flow:research-prompt",
         "name": null,
-        "type": "MagicPAI.AiAssistantActivity",
+        "type": "MagicPAI.ResearchPromptActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
               "x": 400,
-              "y": 220
+              "y": 50
             }
           }
         }
@@ -347,12 +167,14 @@
         "name": null,
         "type": "MagicPAI.TriageActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
               "x": 400,
-              "y": 390
+              "y": 220
             }
           }
         }
@@ -469,12 +291,14 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
               "x": 200,
-              "y": 560
+              "y": 390
             }
           }
         }
@@ -503,12 +327,14 @@
         "name": null,
         "type": "MagicPAI.ArchitectActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
               "x": 600,
-              "y": 560
+              "y": 390
             }
           }
         }
@@ -615,12 +441,14 @@
         "name": null,
         "type": "MagicPAI.AiAssistantActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
               "x": 600,
-              "y": 730
+              "y": 560
             }
           }
         }
@@ -658,14 +486,8 @@
         "value": "0"
       },
       {
-        "id": "enhancedPromptVariable",
-        "name": "EnhancedPrompt",
-        "typeName": "String",
-        "value": ""
-      },
-      {
-        "id": "researchContextVariable",
-        "name": "ResearchContext",
+        "id": "researchedPromptVariable",
+        "name": "ResearchedPrompt",
         "typeName": "String",
         "value": ""
       }
@@ -673,27 +495,7 @@
     "connections": [
       {
         "source": {
-          "activity": "research-enhance",
-          "port": "Done"
-        },
-        "target": {
-          "activity": "research-gather"
-        },
-        "vertices": []
-      },
-      {
-        "source": {
-          "activity": "research-enhance",
-          "port": "Failed"
-        },
-        "target": {
-          "activity": "research-gather"
-        },
-        "vertices": []
-      },
-      {
-        "source": {
-          "activity": "research-gather",
+          "activity": "research-prompt",
           "port": "Done"
         },
         "target": {
@@ -703,7 +505,7 @@
       },
       {
         "source": {
-          "activity": "research-gather",
+          "activity": "research-prompt",
           "port": "Failed"
         },
         "target": {

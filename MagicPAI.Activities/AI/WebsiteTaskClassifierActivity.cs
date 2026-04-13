@@ -12,7 +12,9 @@ using MagicPAI.Core.Services;
 
 namespace MagicPAI.Activities.AI;
 
-[Activity("MagicPAI", "AI Agents", "Determine whether a task should route into website audit")]
+[Activity("MagicPAI", "AI Agents", "Determine whether a task should route into website audit",
+    Kind = ActivityKind.Task,
+    RunAsynchronously = true)]
 [FlowNode("Website", "NonWebsite")]
 public class WebsiteTaskClassifierActivity : Activity
 {
@@ -49,6 +51,13 @@ public class WebsiteTaskClassifierActivity : Activity
                 config.DefaultAgent);
             var runner = agentFactory.Create(assistantName);
             var prompt = context.GetOptionalWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
+            if (TryHeuristicClassification(prompt) is { } heuristicClassification)
+            {
+                EmitResult(context, heuristicClassification, "WebsiteTaskHeuristicOverride");
+                await context.CompleteActivityWithOutcomesAsync(heuristicClassification.IsWebsiteTask ? "Website" : "NonWebsite");
+                return;
+            }
+
             var workDir = config.UseWorkerContainers
                 ? config.ContainerWorkDir ?? "/workspace"
                 : context.GetOptionalWorkflowInput<string>("WorkspacePath")
@@ -96,18 +105,16 @@ public class WebsiteTaskClassifierActivity : Activity
                 AssistantSessionState.SetSessionId(context, assistantName, parsedResponse.SessionId!);
 
             var parsed = ParseResponse(parsedResponse.Output ?? result.Output ?? "");
-            IsWebsiteTask.Set(context, parsed.IsWebsiteTask);
-            Confidence.Set(context, parsed.Confidence);
-            Rationale.Set(context, parsed.Rationale);
+            if (!parsed.IsWebsiteTask && TryHeuristicClassification(prompt) is { } overrideClassification)
+            {
+                var rationale = string.IsNullOrWhiteSpace(parsed.Rationale)
+                    ? overrideClassification.Rationale
+                    : $"{overrideClassification.Rationale} Model rationale: {parsed.Rationale}";
+                parsed = overrideClassification with { Rationale = rationale };
+                context.AddExecutionLogEntry("WebsiteTaskHeuristicOverride", rationale);
+            }
 
-            context.AddExecutionLogEntry("WebsiteTaskResult",
-                JsonSerializer.Serialize(new
-                {
-                    verdict = parsed.IsWebsiteTask ? "Website" : "NonWebsite",
-                    isWebsiteTask = parsed.IsWebsiteTask,
-                    confidence = parsed.Confidence,
-                    rationale = parsed.Rationale
-                }));
+            EmitResult(context, parsed);
 
             await context.CompleteActivityWithOutcomesAsync(parsed.IsWebsiteTask ? "Website" : "NonWebsite");
         }
@@ -133,8 +140,26 @@ public class WebsiteTaskClassifierActivity : Activity
     private static string BuildWebsitePrompt(string userPrompt) =>
         $$"""
         Decide whether this task should route into a browser-based website audit workflow.
-        A website task includes UI/UX audit, browser automation, frontend interaction review, layout/accessibility review, or website quality assessment.
-        A non-website task includes backend, API, infrastructure, CLI, library, desktop, or general code changes even if they are complex.
+        
+        Route to WEBSITE AUDIT (true) when ALL of the following apply:
+        1. The project is a website or web application that runs in a browser, or the requested work is clearly browser-visible frontend work.
+        2. The task involves ANY of: auditing, testing, verifying, QA, reviewing, or fixing/improving CSS, UI, UX, styling, layout, responsiveness, accessibility, forms, navigation, or other browser-visible behavior.
+        3. A browser should be used to confirm the result, even if the URL is only implied by the project type or working directory.
+        
+        Route to STANDARD PIPELINE (false) when ANY of the following apply:
+        - The task is backend, API, infrastructure, CLI, library, data, or desktop work with no browser verification needed.
+        - The requested change is non-visual refactoring or implementation that does not need a browser to confirm.
+        - The project does not expose a browser-accessible UI and no browser-visible behavior is in scope.
+        
+        Signals that strongly suggest WEBSITE AUDIT:
+        - Words like audit, test, verify, QA, review the site, review the app, visual regression, accessibility, responsive, mobile, layout, design, styling, CSS, UI, or UX.
+        - The task asks to change how a page looks or behaves in the browser.
+        - Input fields, buttons, forms, navigation, scrolling, or interactions must be checked or fixed.
+        - The project or prompt implies a browser app such as ASP.NET, Blazor, React, Next.js, Vue, Angular, Django, Rails, or another website stack.
+        - The user wants browser-visible issues found AND fixed.
+        
+        IMPORTANT: CSS/UI/UX fix tasks ALWAYS route to WEBSITE AUDIT (true). A request like "change the CSS", "redesign the page", or "fix the UI" is a website-audit task even if it also requires code changes.
+        
         Respond with JSON only:
         {
           "isWebsiteTask": <true|false>,
@@ -144,6 +169,69 @@ public class WebsiteTaskClassifierActivity : Activity
 
         Task: {{userPrompt}}
         """;
+
+    private static WebsiteTaskClassificationResult? TryHeuristicClassification(string userPrompt)
+    {
+        if (string.IsNullOrWhiteSpace(userPrompt))
+            return null;
+
+        var normalized = userPrompt.ToLowerInvariant();
+        var explicitCssTask = ContainsAny(normalized,
+            "change the entire css",
+            "fix the css",
+            "change the css",
+            "redesign",
+            "fix the ui",
+            "change the ui",
+            "improve the ui",
+            "improve the ux",
+            "frontend redesign");
+        var hasVisualSurface = ContainsAny(normalized,
+            "css",
+            "style",
+            "styling",
+            "ui",
+            "ux",
+            "layout",
+            "responsive",
+            "visual",
+            "frontend",
+            "browser",
+            "page",
+            "website",
+            "web app",
+            "web application",
+            "font",
+            "fonts",
+            "color",
+            "colors",
+            "accessibility",
+            "form",
+            "button",
+            "navigation",
+            "scroll",
+            "mobile");
+        var hasAuditAction = ContainsAny(normalized,
+            "audit",
+            "test",
+            "verify",
+            "qa",
+            "review",
+            "check",
+            "fix",
+            "improve",
+            "change",
+            "redesign",
+            "look different");
+
+        if (!explicitCssTask && !(hasVisualSurface && hasAuditAction))
+            return null;
+
+        return new WebsiteTaskClassificationResult(
+            true,
+            10,
+            "Heuristic website routing override matched browser-visible CSS/UI/UX/frontend task signals.");
+    }
 
     private static WebsiteTaskClassificationResult ParseResponse(string output)
     {
@@ -167,5 +255,27 @@ public class WebsiteTaskClassifierActivity : Activity
         if (string.IsNullOrWhiteSpace(value))
             return "";
         return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private static bool ContainsAny(string value, params string[] candidates) =>
+        candidates.Any(candidate => value.Contains(candidate, StringComparison.Ordinal));
+
+    private void EmitResult(ActivityExecutionContext context, WebsiteTaskClassificationResult parsed, string? extraEventName = null)
+    {
+        IsWebsiteTask.Set(context, parsed.IsWebsiteTask);
+        Confidence.Set(context, parsed.Confidence);
+        Rationale.Set(context, parsed.Rationale);
+
+        if (!string.IsNullOrWhiteSpace(extraEventName))
+            context.AddExecutionLogEntry(extraEventName!, parsed.Rationale);
+
+        context.AddExecutionLogEntry("WebsiteTaskResult",
+            JsonSerializer.Serialize(new
+            {
+                verdict = parsed.IsWebsiteTask ? "Website" : "NonWebsite",
+                isWebsiteTask = parsed.IsWebsiteTask,
+                confidence = parsed.Confidence,
+                rationale = parsed.Rationale
+            }));
     }
 }

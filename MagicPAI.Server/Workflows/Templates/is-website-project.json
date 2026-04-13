@@ -76,7 +76,9 @@
         "name": null,
         "type": "MagicPAI.WebsiteTaskClassifierActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {

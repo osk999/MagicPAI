@@ -1,3 +1,4 @@
+using Elsa.Expressions.Models;
 using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
@@ -18,15 +19,21 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
     {
         builder.Name = "Website Audit Core";
         builder.Description =
-            "Four-phase autonomous website audit core: discovery, visual, interaction, and final synthesis";
+            "Four-phase autonomous website audit core: discovery, audit-and-fix, interaction-and-fix, and final re-verification";
+        builder.WithInput<string>("Prompt");
+        builder.WithInput<string>("AiAssistant");
+        builder.WithInput<string>("Agent");
+        builder.WithInput<string>("Model");
+        builder.WithInput<int>("ModelPower");
+        builder.WithInput<string>("ContainerId");
 
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var agent = builder.WithVariable<string>("AiAssistant", "claude");
-        var containerId = builder.WithVariable<string>("ContainerId", "");
-        var discoveryOutput = builder.WithVariable<string>("DiscoveryOutput", "");
-        var visualOutput = builder.WithVariable<string>("VisualOutput", "");
-        var interactionOutput = builder.WithVariable<string>("InteractionOutput", "");
-        var discoveryAttempts = builder.WithVariable<int>("DiscoveryAttempts", 0);
+        var prompt = builder.WithVariable<string>("Prompt", "").WithWorkflowStorage();
+        var agent = builder.WithVariable<string>("AiAssistant", "claude").WithWorkflowStorage();
+        var containerId = builder.WithVariable<string>("ContainerId", "").WithWorkflowStorage();
+        var discoveryOutput = builder.WithVariable<string>("DiscoveryOutput", "").WithWorkflowStorage();
+        var visualOutput = builder.WithVariable<string>("VisualOutput", "").WithWorkflowStorage();
+        var interactionOutput = builder.WithVariable<string>("InteractionOutput", "").WithWorkflowStorage();
+        var discoveryAttempts = builder.WithVariable<int>("DiscoveryAttempts", 0).WithWorkflowStorage();
 
         var discoveryGate = new IterationGateActivity
         {
@@ -40,18 +47,20 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
 
         var discoveryRunner = new AiAssistantActivity
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                $$"""
-                Website audit request:
-                {{ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? ""}}
+            RunAsynchronously = true,
+            AiAssistant = new Input<string>(new Expression("JavaScript", "getInput(\"AiAssistant\") || getInput(\"Agent\") || getVariable(\"AiAssistant\") || \"claude\"")),
+            Prompt = new Input<string>(new Expression("JavaScript",
+                """
+                `Website audit request:
+                ${getInput("Prompt") || getVariable("Prompt") || ""}
 
                 Phase 1: Discovery.
                 Use Playwright with headed Chromium inside the provided GUI container.
-                Map the website, list key pages, identify core user journeys, and call out unknown areas.
-                End with DISCOVERY_DONE only when the page map is sufficient for visual review.
-                """),
-            ContainerId = new Input<string>(containerId),
+                Map the website, list key pages, identify core user journeys, inspect routes/components when needed, and call out unknown areas that must be covered later.
+                This phase is only for discovery and coverage planning, not final sign-off.
+                End with DISCOVERY_DONE only when the page map is sufficient for visual review.`
+                """)),
+            ContainerId = new Input<string>(new Expression("JavaScript", "getInput(\"ContainerId\") || getVariable(\"ContainerId\") || \"\"")),
             ModelPower = new Input<int>(2),
             Response = new Output<string>(discoveryOutput),
             Id = "phase1-discovery-runner"
@@ -60,15 +69,16 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
 
         var discoveryCheck = new TriageActivity
         {
-            Prompt = new Input<string>(ctx =>
-                $$"""
-                Original website audit request:
-                {{ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? ""}}
+            RunAsynchronously = true,
+            Prompt = new Input<string>(new Expression("JavaScript",
+                """
+                `Original website audit request:
+                ${getInput("Prompt") || getVariable("Prompt") || ""}
 
                 Latest discovery report:
-                {{ctx.GetVariable<string>("DiscoveryOutput") ?? ""}}
-                """),
-            ContainerId = new Input<string>(containerId),
+                ${getVariable("DiscoveryOutput") || ""}`
+                """)),
+            ContainerId = new Input<string>(new Expression("JavaScript", "getInput(\"ContainerId\") || getVariable(\"ContainerId\") || \"\"")),
             ClassificationInstructions = new Input<string?>(
                 """
                 Determine whether website discovery is complete.
@@ -82,23 +92,26 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
 
         var visualRunner = new AiAssistantActivity
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                $$"""
-                Website audit request:
-                {{ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? ""}}
+            RunAsynchronously = true,
+            AiAssistant = new Input<string>(new Expression("JavaScript", "getInput(\"AiAssistant\") || getInput(\"Agent\") || getVariable(\"AiAssistant\") || \"claude\"")),
+            Prompt = new Input<string>(new Expression("JavaScript",
+                """
+                `Website audit request:
+                ${getInput("Prompt") || getVariable("Prompt") || ""}
 
                 Phase 2: Visual audit.
                 Use Playwright with headed Chromium inside the provided GUI container.
-                Review layout consistency, hierarchy, spacing, responsiveness risks, and visual defects.
+                Review layout consistency, hierarchy, spacing, responsiveness risks, console/network issues, and visual defects.
                 Use the discovery findings below.
+                Fix every browser-visible issue you can safely address in the codebase, then run the relevant build/test command and re-check the affected pages in Playwright.
+                Do not stop at reporting if a fix is feasible.
 
                 Discovery findings:
-                {{ctx.GetVariable<string>("DiscoveryOutput") ?? ""}}
+                ${getVariable("DiscoveryOutput") || ""}
 
-                End with VISUAL_DONE only when visual review is complete.
-                """),
-            ContainerId = new Input<string>(containerId),
+                End with VISUAL_DONE only when visual review is complete and the audited pages are either fixed or any remaining blockers are explicitly explained.`
+                """)),
+            ContainerId = new Input<string>(new Expression("JavaScript", "getInput(\"ContainerId\") || getVariable(\"ContainerId\") || \"\"")),
             ModelPower = new Input<int>(2),
             Response = new Output<string>(visualOutput),
             Id = "phase2-visual-runner"
@@ -107,15 +120,16 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
 
         var visualCheck = new TriageActivity
         {
-            Prompt = new Input<string>(ctx =>
-                $$"""
-                Original website audit request:
-                {{ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? ""}}
+            RunAsynchronously = true,
+            Prompt = new Input<string>(new Expression("JavaScript",
+                """
+                `Original website audit request:
+                ${getInput("Prompt") || getVariable("Prompt") || ""}
 
                 Latest visual audit report:
-                {{ctx.GetVariable<string>("VisualOutput") ?? ""}}
-                """),
-            ContainerId = new Input<string>(containerId),
+                ${getVariable("VisualOutput") || ""}`
+                """)),
+            ContainerId = new Input<string>(new Expression("JavaScript", "getInput(\"ContainerId\") || getVariable(\"ContainerId\") || \"\"")),
             ClassificationInstructions = new Input<string?>(
                 """
                 Determine whether the visual audit is complete.
@@ -129,26 +143,28 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
 
         var interactionRunner = new AiAssistantActivity
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                $$"""
-                Website audit request:
-                {{ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? ""}}
+            RunAsynchronously = true,
+            AiAssistant = new Input<string>(new Expression("JavaScript", "getInput(\"AiAssistant\") || getInput(\"Agent\") || getVariable(\"AiAssistant\") || \"claude\"")),
+            Prompt = new Input<string>(new Expression("JavaScript",
+                """
+                `Website audit request:
+                ${getInput("Prompt") || getVariable("Prompt") || ""}
 
                 Phase 3: Interaction and scroll audit.
                 Use Playwright with headed Chromium inside the provided GUI container.
                 Review forms, buttons, navigation flow, focus order, and scrolling behavior.
+                Fix interaction issues when feasible, run the relevant build/test command, and re-test in Playwright before concluding the phase.
                 Use these prior findings.
 
                 Discovery findings:
-                {{ctx.GetVariable<string>("DiscoveryOutput") ?? ""}}
+                ${getVariable("DiscoveryOutput") || ""}
 
                 Visual findings:
-                {{ctx.GetVariable<string>("VisualOutput") ?? ""}}
+                ${getVariable("VisualOutput") || ""}
 
-                End with INTERACTION_DONE only when interaction coverage is complete.
-                """),
-            ContainerId = new Input<string>(containerId),
+                End with INTERACTION_DONE only when interaction coverage is complete and any fixes have been re-tested in the browser.`
+                """)),
+            ContainerId = new Input<string>(new Expression("JavaScript", "getInput(\"ContainerId\") || getVariable(\"ContainerId\") || \"\"")),
             ModelPower = new Input<int>(2),
             Response = new Output<string>(interactionOutput),
             Id = "phase3-interaction-runner"
@@ -157,15 +173,16 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
 
         var interactionCheck = new TriageActivity
         {
-            Prompt = new Input<string>(ctx =>
-                $$"""
-                Original website audit request:
-                {{ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? ""}}
+            RunAsynchronously = true,
+            Prompt = new Input<string>(new Expression("JavaScript",
+                """
+                `Original website audit request:
+                ${getInput("Prompt") || getVariable("Prompt") || ""}
 
                 Latest interaction audit report:
-                {{ctx.GetVariable<string>("InteractionOutput") ?? ""}}
-                """),
-            ContainerId = new Input<string>(containerId),
+                ${getVariable("InteractionOutput") || ""}`
+                """)),
+            ContainerId = new Input<string>(new Expression("JavaScript", "getInput(\"ContainerId\") || getVariable(\"ContainerId\") || \"\"")),
             ClassificationInstructions = new Input<string?>(
                 """
                 Determine whether the interaction audit is complete.
@@ -179,25 +196,28 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
 
         var opusSweep = new AiAssistantActivity
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                $$"""
-                Website audit request:
-                {{ctx.GetInput<string>("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? ""}}
+            RunAsynchronously = true,
+            AiAssistant = new Input<string>(new Expression("JavaScript", "getInput(\"AiAssistant\") || getInput(\"Agent\") || getVariable(\"AiAssistant\") || \"claude\"")),
+            Prompt = new Input<string>(new Expression("JavaScript",
+                """
+                `Website audit request:
+                ${getInput("Prompt") || getVariable("Prompt") || ""}
 
-                Phase 4: Final audit synthesis.
-                Produce a prioritized report with critical issues, user-impact summary, and remediation guidance.
+                Phase 4: Final re-verification and synthesis.
+                Perform an oops sweep on the highest-risk pages using Playwright.
+                Re-check the major visual and interaction fixes, verify there are no newly introduced browser-visible regressions, and fix any newly discovered issue when feasible before concluding.
+                Produce a prioritized report with critical issues, user-impact summary, what was fixed, what was re-tested, and any remaining blockers.
 
                 Discovery findings:
-                {{ctx.GetVariable<string>("DiscoveryOutput") ?? ""}}
+                ${getVariable("DiscoveryOutput") || ""}
 
                 Visual findings:
-                {{ctx.GetVariable<string>("VisualOutput") ?? ""}}
+                ${getVariable("VisualOutput") || ""}
 
                 Interaction findings:
-                {{ctx.GetVariable<string>("InteractionOutput") ?? ""}}
-                """),
-            ContainerId = new Input<string>(containerId),
+                ${getVariable("InteractionOutput") || ""}`
+                """)),
+            ContainerId = new Input<string>(new Expression("JavaScript", "getInput(\"ContainerId\") || getVariable(\"ContainerId\") || \"\"")),
             ModelPower = new Input<int>(1),
             Id = "phase4-opus-sweep"
         };

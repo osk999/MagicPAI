@@ -66,6 +66,30 @@ all activity definitions, code examples, Docker setup, and file manifest.
 - Do not copy upstream Elsa code into MagicPAI unless there is a clear reason.
 - Keep fixes aligned with upstream Elsa patterns unless MagicPAI intentionally diverges.
 
+## Elsa Variable Shadowing Bug (CRITICAL)
+- In Elsa 3, `ExpressionExecutionContext.GetInput(name)` checks for a **variable with the same name** first
+  (see `ExpressionExecutionContextExtensions.cs:418-425`). If a Flowchart/Composite has a variable named "Prompt",
+  calling `ctx.GetInput<string>("Prompt")` returns the variable's value (`""` by default), NOT the workflow dispatch input.
+- **Never name workflow variables the same as workflow dispatch input keys** if you need `GetInput()` to reach the input dict.
+- If you must use same names, read workflow input via `ctx.GetWorkflowExecutionContext().Input["key"]` directly.
+- `GetWorkflowInput<T>()` (on ActivityExecutionContext) does NOT shadow — it reads from `WorkflowExecutionContext.Input` directly.
+- `GetInput<T>()` (on ExpressionExecutionContext) DOES shadow — it checks variables first.
+- Affected workflows: any WorkflowBase with `builder.WithVariable<string>("Prompt", "")` that also receives `Input["Prompt"]`.
+
+## Elsa JSON vs C# Workflow Rules
+- Workflows using C# lambda delegates (`ctx => ...`) in `Input<T>` properties **cannot be serialized to JSON**.
+- Set `useJsonTemplate: false` in `WorkflowCatalog` for any workflow with lambdas.
+- JSON templates only support: `Literal` (fixed values), `Variable` (direct variable reference), `JavaScript` expressions.
+- `BulkDispatchWorkflows`, `SetVariable`, `FlowDecision` with delegates all require `useJsonTemplate: false`.
+
+## Docker Credential Mounting (Claude CLI Auth)
+- `DockerContainerManager.BuildCredentialBinds()` mounts `~/.claude.json` and `~/.claude/.credentials.json` into containers as read-only.
+- `entrypoint.sh` copies them from `/tmp/magicpai-host-*` to `$HOME/.claude/` on container startup.
+- Claude CLI uses OAuth tokens from `.claude/.credentials.json` (not API keys).
+- If tokens expire mid-execution, the agent call may fail with auth errors.
+- MagicPrompt has `AuthRecoveryService` + `CredentialRefreshService` + `AuthErrorDetector` for auto-refresh — MagicPAI needs equivalent.
+- Auth error patterns to detect: `authentication_error`, `token expired`, `unauthorized`, `re-authenticate`, `hit your limit`.
+
 ## Elsa Activity Rules (CRITICAL)
 - Base class: `Activity` or `CodeActivity` from `Elsa.Workflows`
 - Inputs: `public Input<T> Prop { get; set; }` with `[Input]` attribute

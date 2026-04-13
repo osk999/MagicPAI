@@ -47,6 +47,15 @@
     <script src="/_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="/_content/CodeBeam.MudBlazor.Extensions/MudExtensions.min.js"></script>
     <script src="/_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <script>
+        window.getClientConfig = function () {
+            return {
+                apiUrl: window.location.origin,
+                elsaApiUrl: window.location.origin + "/elsa/api",
+                elsaApiKey: "00000000-0000-0000-0000-000000000000"
+            };
+        };
+    </script>
 
     <!-- Blazor: delay start until Monaco is fully loaded -->
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>

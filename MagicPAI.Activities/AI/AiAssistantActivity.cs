@@ -5,7 +5,9 @@ using Elsa.Workflows.Attributes;
 namespace MagicPAI.Activities.AI;
 
 [Activity("MagicPAI", "AI Agents",
-    "Execute a prompt via a generic AI assistant (Claude, Codex, Gemini) in a Docker container")]
+    "Execute a prompt via a generic AI assistant (Claude, Codex, Gemini) in a Docker container",
+    Kind = ActivityKind.Task,
+    RunAsynchronously = true)]
 [FlowNode("Done", "Failed")]
 public class AiAssistantActivity : RunCliAgentActivity
 {

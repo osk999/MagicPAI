@@ -9,9 +9,9 @@ using MagicPAI.Activities.Verification;
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Single-agent execution path with prompt assembly and context.
+/// Single-agent execution path with research-first prompt grounding.
 /// Used when triage determines a task can be handled by a single agent.
-/// Flow: PromptAssembly -> RunCliAgent -> RunVerification
+/// Flow: ResearchPrompt -> RunCliAgent -> RunVerification
 /// </summary>
 public class OrchestrateSimplePathWorkflow : WorkflowBase
 {
@@ -19,32 +19,38 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
     {
         builder.Name = "Orchestrate Simple Path";
         builder.Description =
-            "Single-agent execution with prompt assembly, context, and verification";
+            "Single-agent execution with research-first prompt grounding and verification";
 
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("AiAssistant", "claude");
-        var model = builder.WithVariable<string>("Model", "auto");
-        var modelPower = builder.WithVariable<int>("ModelPower", 0);
-        var assembledPrompt = builder.WithVariable<string>("AssembledPrompt", "");
+        var prompt = builder.WithVariable<string>("Prompt", "").WithWorkflowStorage();
+        var containerId = builder.WithVariable<string>("ContainerId", "").WithWorkflowStorage();
+        var agent = builder.WithVariable<string>("AiAssistant", "claude").WithWorkflowStorage();
+        var model = builder.WithVariable<string>("Model", "auto").WithWorkflowStorage();
+        var modelPower = builder.WithVariable<int>("ModelPower", 0).WithWorkflowStorage();
+        var assembledPrompt = builder.WithVariable<string>("AssembledPrompt", "").WithWorkflowStorage();
 
-        // Step 1: Assemble prompt with context
-        var assemblePrompt = new AiAssistantActivity
+        var researchPrompt = new ResearchPromptActivity
         {
+            RunAsynchronously = true,
             AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(prompt),
             ContainerId = new Input<string>(containerId),
             ModelPower = new Input<int>(2),
-            Response = new Output<string>(assembledPrompt),
-            Id = "simple-assemble-prompt"
+            EnhancedPrompt = new Output<string>(assembledPrompt),
+            Id = "simple-research-prompt"
         };
-        Pos(assemblePrompt, 400, 50);
+        Pos(researchPrompt, 400, 50);
 
-        // Step 2: Execute the main agent
         var runAgent = new AiAssistantActivity
         {
+            RunAsynchronously = true,
             AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(assembledPrompt),
+            Prompt = new Input<string>(ctx =>
+            {
+                var assembled = ctx.GetVariable<string>("AssembledPrompt");
+                return !string.IsNullOrWhiteSpace(assembled)
+                    ? assembled
+                    : ctx.GetDispatchInput("Prompt") ?? "";
+            }),
             ContainerId = new Input<string>(containerId),
             Model = new Input<string>(model),
             ModelPower = new Input<int>(modelPower),
@@ -52,7 +58,6 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
         };
         Pos(runAgent, 400, 220);
 
-        // Step 3: Verify results
         var verify = new RunVerificationActivity
         {
             ContainerId = new Input<string>(containerId),
@@ -63,26 +68,13 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
         var flowchart = new Flowchart
         {
             Id = "orchestrate-simple-path-flow",
-            Start = assemblePrompt,
-            Activities = { assemblePrompt, runAgent, verify },
+            Start = researchPrompt,
+            Activities = { researchPrompt, runAgent, verify },
             Connections =
             {
-                // Assemble -> Execute
-                new Connection(
-                    new Endpoint(assemblePrompt, "Done"),
-                    new Endpoint(runAgent)),
-
-                // Assemble failed -> execute with original prompt
-                new Connection(
-                    new Endpoint(assemblePrompt, "Failed"),
-                    new Endpoint(runAgent)),
-
-                // Execute -> Verify
-                new Connection(
-                    new Endpoint(runAgent, "Done"),
-                    new Endpoint(verify)),
-
-                // Execute failed -> terminal
+                new Connection(new Endpoint(researchPrompt, "Done"), new Endpoint(runAgent)),
+                new Connection(new Endpoint(researchPrompt, "Failed"), new Endpoint(runAgent)),
+                new Connection(new Endpoint(runAgent, "Done"), new Endpoint(verify)),
             }
         };
 

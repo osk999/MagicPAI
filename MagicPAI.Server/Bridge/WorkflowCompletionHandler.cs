@@ -6,6 +6,8 @@ using MagicPAI.Core.Services;
 using MagicPAI.Server.Hubs;
 using MagicPAI.Server.Services;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Data.Sqlite;
+using System.Data.Common;
 using System.Text.Json;
 using Npgsql;
 
@@ -22,7 +24,8 @@ public class WorkflowCompletionHandler : INotificationHandler<WorkflowExecuted>
     private readonly IContainerManager _containerManager;
     private readonly IGuiPortAllocator? _guiPortAllocator;
     private readonly SessionContainerLogStreamer _logStreamer;
-    private readonly string? _pgConn;
+    private readonly string? _connectionString;
+    private readonly bool _useSqlite;
     private readonly ILogger<WorkflowCompletionHandler> _logger;
 
     public WorkflowCompletionHandler(
@@ -39,7 +42,9 @@ public class WorkflowCompletionHandler : INotificationHandler<WorkflowExecuted>
         _containerManager = containerManager;
         _guiPortAllocator = guiPortAllocator;
         _logStreamer = logStreamer;
-        _pgConn = configuration.GetConnectionString("MagicPai");
+        _connectionString = configuration.GetConnectionString("MagicPai");
+        _useSqlite = !string.IsNullOrWhiteSpace(_connectionString) &&
+            _connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
         _logger = logger;
     }
 
@@ -125,24 +130,24 @@ public class WorkflowCompletionHandler : INotificationHandler<WorkflowExecuted>
 
     private async Task<ContainerEventRecord?> GetLatestContainerEventAsync(string instanceId, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_pgConn))
+        if (string.IsNullOrWhiteSpace(_connectionString))
             return null;
 
         try
         {
-            await using var conn = new NpgsqlConnection(_pgConn);
+            await using var conn = CreateConnection();
             await conn.OpenAsync(ct);
 
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
+            cmd.CommandText = $"""
                 SELECT "EventName", "Message"
-                FROM "Elsa"."WorkflowExecutionLogRecords"
+                FROM {Table("WorkflowExecutionLogRecords")}
                 WHERE "WorkflowInstanceId" = @id
                   AND "EventName" IN ('ContainerSpawned', 'ContainerDestroyed', 'ContainerDestroySkipped')
                 ORDER BY "Timestamp" DESC, "Sequence" DESC
                 LIMIT 1;
                 """;
-            cmd.Parameters.AddWithValue("id", instanceId);
+            AddParameter(cmd, "id", instanceId);
 
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct))
@@ -182,6 +187,22 @@ public class WorkflowCompletionHandler : INotificationHandler<WorkflowExecuted>
             return null;
 
         return parts[1];
+    }
+
+    private DbConnection CreateConnection() => _useSqlite
+        ? new SqliteConnection(_connectionString)
+        : new NpgsqlConnection(_connectionString);
+
+    private string Table(string tableName) => _useSqlite
+        ? $"\"{tableName}\""
+        : $"\"Elsa\".\"{tableName}\"";
+
+    private static void AddParameter(DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
     }
 
     private sealed record ContainerEventRecord(string EventName, string Message);

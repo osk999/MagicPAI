@@ -182,7 +182,9 @@
         "name": null,
         "type": "MagicPAI.PromptEnhancementActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {
@@ -293,7 +295,9 @@
         "name": null,
         "type": "MagicPAI.RunCliAgentActivity",
         "version": 1,
-        "customProperties": {},
+        "customProperties": {
+          "runAsynchronously": true
+        },
         "metadata": {
           "designer": {
             "position": {

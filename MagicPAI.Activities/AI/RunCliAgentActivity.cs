@@ -13,7 +13,9 @@ using MagicPAI.Core.Services;
 namespace MagicPAI.Activities.AI;
 
 [Activity("MagicPAI", "AI Agents",
-    "Execute a prompt via a generic AI assistant (Claude, Codex, Gemini) in a Docker container")]
+    "Execute a prompt via a generic AI assistant (Claude, Codex, Gemini) in a Docker container",
+    Kind = ActivityKind.Task,
+    RunAsynchronously = true)]
 [FlowNode("Done", "Failed")]
 public class RunCliAgentActivity : Activity
 {
@@ -207,6 +209,33 @@ public class RunCliAgentActivity : Activity
             if (!string.IsNullOrWhiteSpace(parsed.SessionId))
                 AssistantSessionState.SetSessionId(context, resolved.Assistant, parsed.SessionId!);
             var succeeded = result.ExitCode == 0 && parsed.Success;
+
+            // Auth recovery: if agent failed with auth error, refresh credentials and retry once
+            if (!succeeded && Core.Services.Auth.AuthErrorDetector.ContainsAuthError(
+                    (result.Output ?? "") + (result.Error ?? "")))
+            {
+                var authService = context.GetRequiredService<Core.Services.Auth.AuthRecoveryService>();
+                context.AddExecutionLogEntry("AuthErrorDetected", "Attempting credential recovery...");
+                var (recovered, authError, credsJson) = await authService.RecoverAuthAsync(context.CancellationToken);
+                if (recovered && !string.IsNullOrEmpty(credsJson))
+                {
+                    await Core.Services.Auth.CredentialInjector.InjectAsync(containerId, credsJson, context.CancellationToken);
+                    context.AddExecutionLogEntry("AuthRecovered", "Credentials refreshed, retrying agent call...");
+                    result = await containerMgr.ExecStreamingAsync(
+                        containerId, plan.MainRequest,
+                        chunk => context.AddExecutionLogEntry("OutputChunk", System.Text.Json.JsonSerializer.Serialize(new { activityId = context.Activity.Id, text = chunk })),
+                        timeout: TimeSpan.FromMinutes(GetOrDefault(TimeoutMinutes, context, 30)),
+                        ct: context.CancellationToken);
+                    try { parsed = agent.ParseResponse(result.Output ?? ""); }
+                    catch { parsed = new(false, result.Output ?? "", 0, [], 0, 0, null); }
+                    succeeded = result.ExitCode == 0 && parsed.Success;
+                }
+                else
+                {
+                    context.AddExecutionLogEntry("AuthRecoveryFailed", authError ?? "Unknown auth recovery error");
+                }
+            }
+
             var response = !string.IsNullOrWhiteSpace(parsed.Output)
                 ? parsed.Output
                 : !string.IsNullOrWhiteSpace(result.Error)

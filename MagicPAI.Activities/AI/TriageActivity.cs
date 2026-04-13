@@ -12,7 +12,9 @@ using MagicPAI.Core.Services;
 
 namespace MagicPAI.Activities.AI;
 
-[Activity("MagicPAI", "AI Agents", "Classify prompt complexity using a cheap model")]
+[Activity("MagicPAI", "AI Agents", "Classify prompt complexity using a cheap model",
+    Kind = ActivityKind.Task,
+    RunAsynchronously = true)]
 [FlowNode("Simple", "Complex")]
 public class TriageActivity : Activity
 {
@@ -56,7 +58,10 @@ public class TriageActivity : Activity
                 ?? config.DefaultAgent,
                 config.DefaultAgent);
             var runner = agentFactory.Create(assistantName);
-            var prompt = context.GetOptionalWorkflowInput<string>("Prompt") ?? Prompt.Get(context) ?? "";
+            var prompt = ResolvePrompt(
+                context.GetOptionalWorkflowInput<string>("Prompt"),
+                Optional(Prompt, context),
+                TryGetVariable<string>(context, "Prompt")) ?? "";
             var workDir = config.UseWorkerContainers
                 ? config.ContainerWorkDir ?? "/workspace"
                 : context.GetOptionalWorkflowInput<string>("WorkspacePath")
@@ -86,28 +91,73 @@ public class TriageActivity : Activity
             foreach (var setupRequest in plan.SetupRequests ?? [])
                 await containerMgr.ExecAsync(cid, setupRequest, context.CancellationToken);
 
-            var result = await containerMgr.ExecAsync(
-                cid, plan.MainRequest, context.CancellationToken);
+            TriageResult parsed;
 
-            if (result.ExitCode != 0)
+            try
             {
-                context.AddExecutionLogEntry("TriageCommandFailed",
+                var result = await containerMgr.ExecAsync(
+                    cid, plan.MainRequest, context.CancellationToken);
+
+                // Auth recovery: retry once if auth error detected
+                if (result.ExitCode != 0 && Core.Services.Auth.AuthErrorDetector.ContainsAuthError(
+                        (result.Output ?? "") + (result.Error ?? "")))
+                {
+                    var authService = context.GetRequiredService<Core.Services.Auth.AuthRecoveryService>();
+                    context.AddExecutionLogEntry("AuthErrorDetected", "Attempting credential recovery for triage...");
+                    var (recovered, _, credsJson) = await authService.RecoverAuthAsync(context.CancellationToken);
+                    if (recovered && !string.IsNullOrEmpty(credsJson))
+                    {
+                        await Core.Services.Auth.CredentialInjector.InjectAsync(cid, credsJson, context.CancellationToken);
+                        context.AddExecutionLogEntry("AuthRecovered", "Retrying triage...");
+                        result = await containerMgr.ExecAsync(cid, plan.MainRequest, context.CancellationToken);
+                    }
+                }
+
+                if (result.ExitCode != 0)
+                {
+                    context.AddExecutionLogEntry("TriageCommandFailed",
+                        JsonSerializer.Serialize(new
+                        {
+                            exitCode = result.ExitCode,
+                            output = Truncate(result.Output),
+                            error = Truncate(result.Error)
+                        }));
+                    parsed = CreateFallbackResult(prompt);
+                    context.AddExecutionLogEntry("TriageFallback",
+                        JsonSerializer.Serialize(new
+                        {
+                            reason = string.IsNullOrWhiteSpace(result.Error)
+                                ? $"Triage agent exited with code {result.ExitCode}."
+                                : Truncate(result.Error),
+                            parsed.Complexity,
+                            parsed.Category,
+                            parsed.RecommendedModelPower,
+                            parsed.NeedsDecomposition
+                        }));
+                }
+                else
+                {
+                    var parsedResponse = runner.ParseResponse(result.Output ?? "");
+                    if (!string.IsNullOrWhiteSpace(parsedResponse.SessionId))
+                        AssistantSessionState.SetSessionId(context, assistantName, parsedResponse.SessionId!);
+                    parsed = ParseTriageResponse(parsedResponse.Output ?? result.Output ?? "");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                context.AddExecutionLogEntry("TriageFailed", ex.ToString());
+                parsed = CreateFallbackResult(prompt);
+                context.AddExecutionLogEntry("TriageFallback",
                     JsonSerializer.Serialize(new
                     {
-                        exitCode = result.ExitCode,
-                        output = Truncate(result.Output),
-                        error = Truncate(result.Error)
+                        reason = Truncate(ex.Message),
+                        parsed.Complexity,
+                        parsed.Category,
+                        parsed.RecommendedModelPower,
+                        parsed.NeedsDecomposition
                     }));
-                throw new InvalidOperationException(
-                    string.IsNullOrWhiteSpace(result.Error)
-                        ? $"Triage agent exited with code {result.ExitCode}."
-                        : result.Error);
             }
 
-            var parsedResponse = runner.ParseResponse(result.Output ?? "");
-            if (!string.IsNullOrWhiteSpace(parsedResponse.SessionId))
-                AssistantSessionState.SetSessionId(context, assistantName, parsedResponse.SessionId!);
-            var parsed = ParseTriageResponse(parsedResponse.Output ?? result.Output ?? "");
             var recommendedModel = AiAssistantResolver.ResolveModelForPower(
                 runner,
                 config,
@@ -150,6 +200,27 @@ public class TriageActivity : Activity
             return default;
         }
     }
+
+    private static string? Optional(Input<string>? input, ActivityExecutionContext context)
+    {
+        if (input is null)
+            return null;
+
+        string? value;
+        try
+        {
+            value = input.Get(context);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string? ResolvePrompt(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private static string Truncate(string? value, int maxLength = 4000)
     {
@@ -200,4 +271,32 @@ public class TriageActivity : Activity
             return new TriageResult(5, "code_gen", 2, false);
         }
     }
+
+    private static TriageResult CreateFallbackResult(string prompt)
+    {
+        var normalized = prompt.ToLowerInvariant();
+        var hasMultipleFiles = normalized.Contains("files", StringComparison.Ordinal)
+            || normalized.Contains("project", StringComparison.Ordinal);
+        var hasFrontendSignals = HasFrontendSignals(normalized);
+        var complexity = hasMultipleFiles ? 6 : 5;
+
+        if (hasFrontendSignals)
+            complexity = Math.Max(complexity, 7);
+
+        return new TriageResult(
+            Complexity: complexity,
+            Category: "code_gen",
+            RecommendedModelPower: 2,
+            NeedsDecomposition: hasFrontendSignals || hasMultipleFiles);
+    }
+
+    private static bool HasFrontendSignals(string prompt) => FrontendSignals.Any(prompt.Contains);
+
+    private static readonly string[] FrontendSignals =
+    [
+        "ui", "frontend", "page", "dashboard", "form", "website", "web app",
+        "webapp", "landing", "homepage", "spa", "react", "vue", "angular",
+        "app", "application", "portal", "component", "layout", "responsive",
+        "css", "style", "styling", "design", "ux", "font", "fonts", "color", "colors"
+    ];
 }

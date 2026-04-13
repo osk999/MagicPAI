@@ -46,6 +46,7 @@ if (configErrors.Count > 0)
         "Invalid MagicPAI configuration:" + Environment.NewLine + string.Join(Environment.NewLine, configErrors.Select(x => $"- {x}")));
 builder.Services.AddSingleton(config);
 
+
 var pgConn = builder.Configuration.GetConnectionString("MagicPai");
 var useKubernetesBackend = string.Equals(config.ExecutionBackend, "kubernetes", StringComparison.OrdinalIgnoreCase);
 var useSqlite = !string.IsNullOrWhiteSpace(pgConn) && pgConn.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
@@ -56,6 +57,7 @@ if (string.IsNullOrWhiteSpace(pgConn))
 
 // --- Core Services ---
 builder.Services.AddSingleton<SharedBlackboard>();
+builder.Services.AddSingleton(new MagicPAI.Core.Services.Auth.AuthRecoveryService(config));
 if (useKubernetesBackend)
     builder.Services.AddSingleton<IContainerManager, KubernetesContainerManager>();
 else if (config.UseDocker)
@@ -119,11 +121,11 @@ builder.Services.AddElsa(elsa =>
             };
         }
 
-        // Most workflows are now JSON-serialized templates loaded by WorkflowPublisher.
-        // These two still use delegate-based ExecuteWorkflow input builders
-        // that require CLR runtime registration.
+        // These workflows still rely on delegate-built child input/prompt expressions
+        // that are not preserved correctly by the current JSON template exporter.
         runtime.AddWorkflow<FullOrchestrateWorkflow>();
         runtime.AddWorkflow<WebsiteAuditLoopWorkflow>();
+        runtime.AddWorkflow<ComplexTaskWorkerWorkflow>();
 
     });
 
@@ -159,6 +161,7 @@ builder.Services.AddElsa(elsa =>
 
     // Workflows API (handles FastEndpoints + serialization internally)
     elsa.UseWorkflowsApi();
+    elsa.UseRealTimeWorkflows();
 
     // Multi-tenancy + Labels (required by Elsa 3.5+ even for single-tenant)
     elsa.UseTenants(tenants => tenants.UseTenantManagement());
@@ -180,7 +183,8 @@ builder.Services.AddSingleton<IActivityDescriptorModifier, MagicPaiActivityDescr
 builder.Services.AddFastEndpoints();
 
 // --- Workflow publisher (imports JSON workflow templates into Elsa stores) ---
-builder.Services.AddHostedService<WorkflowPublisher>();
+builder.Services.AddSingleton<WorkflowPublisher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkflowPublisher>());
 
 // --- Worker pod/container garbage collector ---
 builder.Services.AddHostedService<WorkerPodGarbageCollector>();
@@ -274,27 +278,16 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Elsa API via FastEndpoints
-app.UseFastEndpoints(cfg =>
-{
-    if (!cfg.Serializer.Options.Converters.OfType<MagicPAI.Server.Bridge.TypeJsonConverter>().Any())
-        cfg.Serializer.Options.Converters.Add(new MagicPAI.Server.Bridge.TypeJsonConverter());
-    // Accept both string and integer enum values (Studio sends strings, server expects ints)
-    cfg.Serializer.Options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
-
-    // Apply Elsa serialization converters (ActivityJsonConverterFactory, FlowchartJsonConverter, etc.)
-    // so that FastEndpoints responses serialize Flowchart activities and connections correctly.
-    // Without this, the Studio visual designer shows an empty canvas.
-    var configurators = app.Services.GetServices<Elsa.Common.ISerializationOptionsConfigurator>();
-    foreach (var configurator in configurators)
-        configurator.Configure(cfg.Serializer.Options);
-});
+// Elsa API via FastEndpoints. Use Elsa's middleware so /elsa/api/* is actually mapped
+// instead of falling through to the Blazor fallback shell.
+app.UseWorkflowsApi("elsa/api");
 
 // JSON error handler
 app.UseJsonSerializationErrorHandler();
 
 // Elsa HTTP workflow endpoint activities
 app.UseWorkflows();
+app.UseWorkflowsSignalRHubs();
 
 // Custom endpoints
 app.MapHealthChecks("/health", new HealthCheckOptions());
