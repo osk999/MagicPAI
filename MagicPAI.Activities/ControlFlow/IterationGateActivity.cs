@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Elsa.Extensions;
 using Elsa.Workflows;
+using Microsoft.Extensions.Logging;
 using Elsa.Workflows.Activities.Flowchart.Attributes;
 using Elsa.Workflows.Attributes;
 using Elsa.Workflows.Models;
@@ -30,16 +31,15 @@ public class IterationGateActivity : Activity
         var next = current + 1;
         var exceeded = next > max;
 
+        var label = GetOrDefault(Label, context, "Iteration");
         NextCount.Set(context, next);
+
+        var logger = context.GetRequiredService<Microsoft.Extensions.Logging.ILogger<IterationGateActivity>>();
+        logger.LogInformation("[{Label}] iteration {Next}/{Max} — {Outcome}",
+            label, next, max, exceeded ? "EXCEEDED" : "Continue");
+
         context.AddExecutionLogEntry("IterationGate",
-            JsonSerializer.Serialize(new
-            {
-                label = GetOrDefault(Label, context, "Iteration"),
-                current,
-                next,
-                max,
-                exceeded
-            }));
+            JsonSerializer.Serialize(new { label, current, next, max, exceeded }));
 
         await context.CompleteActivityWithOutcomesAsync(exceeded ? "Exceeded" : "Continue");
     }

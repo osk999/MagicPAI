@@ -378,6 +378,14 @@ public class DockerContainerManager : IContainerManager, IDisposable
         env.Add("HOME=/home/worker");
         env.Add("XDG_CONFIG_HOME=/home/worker/.config");
 
+        // Playwright: headed mode on DISPLAY=:99 for noVNC visibility
+        env.Add("DISPLAY=:99");
+        env.Add("PLAYWRIGHT_BROWSERS_PATH=/ms-playwright");
+        env.Add("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1");
+        env.Add("PLAYWRIGHT_CHROMIUM_HEADLESS=0");
+        env.Add("PLAYWRIGHT_MCP_HEADLESS=false");
+        env.Add("HEADED=1");
+
         return env;
     }
 
@@ -463,6 +471,13 @@ public class DockerContainerManager : IContainerManager, IDisposable
             psi.ArgumentList.Add("-w");
             psi.ArgumentList.Add(request.WorkingDirectory);
         }
+
+        // Always inject DISPLAY + Playwright env for headed browser support
+        psi.ArgumentList.Add("-e"); psi.ArgumentList.Add("DISPLAY=:99");
+        psi.ArgumentList.Add("-e"); psi.ArgumentList.Add("PLAYWRIGHT_BROWSERS_PATH=/ms-playwright");
+        psi.ArgumentList.Add("-e"); psi.ArgumentList.Add("PLAYWRIGHT_CHROMIUM_HEADLESS=0");
+        psi.ArgumentList.Add("-e"); psi.ArgumentList.Add("PLAYWRIGHT_MCP_HEADLESS=false");
+        psi.ArgumentList.Add("-e"); psi.ArgumentList.Add("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1");
 
         if (request.Environment is not null)
         {

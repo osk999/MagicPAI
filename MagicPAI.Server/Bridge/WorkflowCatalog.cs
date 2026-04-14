@@ -33,6 +33,7 @@ public static class WorkflowCatalog
         Create<WebsiteAuditCoreWorkflow>(useJsonTemplate: false),
         Create<WebsiteAuditLoopWorkflow>(useJsonTemplate: false),
         Create<FullOrchestrateWorkflow>(useJsonTemplate: false),
+        Create<DeepResearchOrchestrateWorkflow>(useJsonTemplate: false),
         Create<TestClassifierWorkflow>(),
         Create<TestWebsiteClassifierWorkflow>(),
         Create<TestPromptEnhancementWorkflow>(),

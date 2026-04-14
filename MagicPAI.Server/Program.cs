@@ -126,6 +126,7 @@ builder.Services.AddElsa(elsa =>
         runtime.AddWorkflow<FullOrchestrateWorkflow>();
         runtime.AddWorkflow<WebsiteAuditLoopWorkflow>();
         runtime.AddWorkflow<ComplexTaskWorkerWorkflow>();
+        runtime.AddWorkflow<DeepResearchOrchestrateWorkflow>();
 
     });
 

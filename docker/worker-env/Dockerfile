@@ -33,8 +33,13 @@ ENV PATH="${PATH}:/usr/share/dotnet"
 RUN curl -fsSL https://go.dev/dl/go1.24.2.linux-amd64.tar.gz | tar -C /usr/local -xzf -
 ENV PATH="${PATH}:/usr/local/go/bin"
 
-# Playwright + Chromium
+# Playwright + Chromium (pre-installed, no runtime download, headed mode for noVNC)
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/ms-playwright/chromium-1217/chrome-linux64/chrome
+ENV PLAYWRIGHT_CHROMIUM_HEADLESS=0
+ENV PLAYWRIGHT_MCP_HEADLESS=false
+ENV HEADED=1
 RUN mkdir -p /opt/playwright && cd /opt/playwright \
   && npm init -y && npm install playwright \
   && npx playwright install --with-deps chromium

@@ -7,6 +7,7 @@ using Elsa.Workflows.Models;
 using Elsa.Workflows.UIHints;
 using MagicPAI.Core.Models;
 using MagicPAI.Core.Services;
+using Microsoft.Extensions.Logging;
 
 namespace MagicPAI.Activities.AI;
 
@@ -74,6 +75,13 @@ public class ClassifierActivity : Activity
             Result.Set(context, parsed.Result);
             Confidence.Set(context, parsed.Confidence);
             Rationale.Set(context, parsed.Rationale);
+
+            var logger = context.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ClassifierActivity>>();
+            logger.LogInformation("[Classifier] Q=\"{Question}\" Answer={Result} Confidence={Confidence} Rationale=\"{Rationale}\"",
+                question.Length > 80 ? question[..80] + "..." : question,
+                parsed.Result ? "YES" : "NO",
+                parsed.Confidence,
+                parsed.Rationale?.Length > 100 ? parsed.Rationale[..100] + "..." : parsed.Rationale);
 
             context.AddExecutionLogEntry("ClassificationResult",
                 JsonSerializer.Serialize(new

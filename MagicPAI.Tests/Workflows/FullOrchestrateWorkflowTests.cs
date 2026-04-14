@@ -24,6 +24,7 @@ public class FullOrchestrateWorkflowTests
         [typeof(IsWebsiteProjectWorkflow)],
         [typeof(OrchestrateComplexPathWorkflow)],
         [typeof(ComplexTaskWorkerWorkflow)],
+        [typeof(DeepResearchOrchestrateWorkflow)],
         [typeof(OrchestrateSimplePathWorkflow)],
         [typeof(PostExecutionPipelineWorkflow)],
         [typeof(ResearchPipelineWorkflow)],
@@ -85,7 +86,7 @@ public class FullOrchestrateWorkflowTests
             .Where(t => t.IsClass && !t.IsAbstract && typeof(WorkflowBase).IsAssignableFrom(t))
             .ToList();
 
-        Assert.Equal(23, workflowTypes.Count);
+        Assert.Equal(24, workflowTypes.Count);
     }
 
     [Fact]
