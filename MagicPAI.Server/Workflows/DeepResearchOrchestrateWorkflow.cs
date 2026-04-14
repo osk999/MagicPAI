@@ -188,8 +188,7 @@ public class DeepResearchOrchestrateWorkflow : WorkflowBase
         };
         Pos(websiteClassifier, 400, 960);
 
-        // --- Step 7: Website audit loop ---
-        // 7a: Iteration gate (max 5 audit passes)
+        // --- Step 7: Website audit loop (strict visual QA) ---
         var auditGate = new IterationGateActivity
         {
             CurrentCount = new Input<int>(auditIterations),
@@ -200,7 +199,6 @@ public class DeepResearchOrchestrateWorkflow : WorkflowBase
         };
         Pos(auditGate, 400, 1060);
 
-        // 7b: Audit runner
         var auditRunner = new AiAssistantActivity
         {
             RunAsynchronously = true,
@@ -209,24 +207,78 @@ public class DeepResearchOrchestrateWorkflow : WorkflowBase
             {
                 var original = ctx.GetVariable<string>("Prompt") ?? "";
                 return $"""
-                    You are a visual QA auditor. Verify the design changes are correct.
+                    You are a STRICT visual QA auditor and designer. Your job is to open the
+                    website in a REAL browser, visually inspect every page, and fix every issue.
 
                     Original request: {original}
 
-                    IMPORTANT BROWSER RULES:
-                    - Chromium is PRE-INSTALLED. Do NOT run 'npx playwright install' or download any browser.
-                    - Use HEADED mode (headless: false) so the browser is visible on the desktop.
-                    - The pre-installed Chromium is at: $PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-                    - Environment variable PLAYWRIGHT_BROWSERS_PATH=/ms-playwright is already set.
-                    - If using Playwright MCP or launch(), set headless: false explicitly.
+                    ## BROWSER RULES (MANDATORY)
+                    - Chromium is PRE-INSTALLED at $PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+                    - Do NOT run 'npx playwright install' or download any browser
+                    - Use Playwright MCP tools (mcp__playwright__*) for all browser operations
+                    - Browser runs HEADED on DISPLAY=:99 (visible on noVNC desktop)
+                    - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright is set
+                    - Take screenshots to /workspace/screenshots/ as evidence
 
-                    AUDIT CHECKLIST:
-                    1. Figure out how to run the project locally (check project files for the stack)
-                    2. Open pages in headless Chromium and take screenshots
-                    3. Check: layout, colors, fonts, spacing, responsive behavior
-                    4. Verify the design is visually distinct from the original/base design
-                    5. Fix any issues found
-                    6. Take before/after screenshots as evidence
+                    ## STEP-BY-STEP AUDIT PROCESS
+
+                    ### 1. Start the project server
+                    - Figure out how to run the project (check for .csproj, package.json, etc.)
+                    - Start it on a local port (e.g., dotnet run --urls=http://localhost:5199)
+                    - Wait for it to be ready
+
+                    ### 2. Open EVERY key page in the browser
+                    - Use mcp__playwright__browser_navigate to visit each page
+                    - Take a screenshot of EACH page using mcp__playwright__browser_take_screenshot
+                    - Save screenshots to /workspace/screenshots/
+
+                    ### 3. Inspect EACH of these visual elements critically
+                    For each page, check and grade (PASS/FAIL) each item:
+
+                    **Colors & Palette:**
+                    - Are colors genuinely different from the base/default theme?
+                    - Not just a hue shift — a completely different palette family?
+                    - Does the color scheme feel cohesive and intentional?
+                    - Check: primary, secondary, accent, background, surface, text colors
+
+                    **Typography:**
+                    - Different font family from the base theme?
+                    - Different heading hierarchy (sizes, weights)?
+                    - Does text have good contrast against backgrounds?
+
+                    **Layout & Spacing:**
+                    - Different spacing rhythm (not same 8px/16px/24px pattern)?
+                    - Different card/container treatments (shadows, borders, radius)?
+                    - Does the page feel like a different design system?
+
+                    **Components:**
+                    - Buttons: different shape, color, hover effect?
+                    - Cards: different shadow, border, radius?
+                    - Navigation: different style?
+                    - Forms: different input styling?
+
+                    **Responsive:**
+                    - Check at 375px mobile width — does it work?
+                    - Check at 768px tablet — does it adapt?
+                    - No horizontal scrolling?
+
+                    **Overall Impression:**
+                    - If you showed both pages to a random person, would they think
+                      they're from the SAME website? If YES → FAIL, fix it.
+
+                    ### 4. Fix EVERY issue found
+                    - Do NOT just report issues — FIX them in the code
+                    - After fixing, rebuild and re-check in the browser
+                    - Take new screenshots showing the fix worked
+                    - "Do not stop at reporting if a fix is feasible"
+
+                    ### 5. Report format
+                    For each page:
+                    VISUAL_PASS: [page] — [what works]
+                    VISUAL_ISSUE: [critical|major|minor] [page] — [problem + fix applied]
+
+                    End with:
+                    VISUAL_SUMMARY: [pages] pages, [critical] critical, [major] major, [minor] minor
                     """;
             }),
             ContainerId = new Input<string>(containerId),
@@ -235,24 +287,96 @@ public class DeepResearchOrchestrateWorkflow : WorkflowBase
         };
         Pos(auditRunner, 400, 1160);
 
-        // 7c: Classifier — "are there still visual issues?"
-        var auditCheck = new ClassifierActivity
+        // Audit classifier: AiAssistantActivity with browser access (NOT text-only ClassifierActivity)
+        // This agent opens the ACTUAL page in Chrome, sees it with its own eyes, and judges.
+        var auditCheckOutput = builder.WithVariable<string>("AuditCheckOutput", "").WithWorkflowStorage();
+        var auditCheck = new AiAssistantActivity
         {
+            RunAsynchronously = true,
+            AiAssistant = new Input<string>(agent),
             Prompt = new Input<string>(ctx =>
             {
                 var original = ctx.GetVariable<string>("Prompt") ?? "";
-                return $"Original design request: {original}\n\nThe agent just completed an audit pass on the website.";
+                return $"""
+                    You are an INDEPENDENT visual QA judge. Your job is to open the website
+                    in a REAL browser, look at the actual rendered page, and honestly judge
+                    whether the design work is good enough.
+
+                    You are NOT the same agent who made the changes. You are a fresh pair of eyes.
+
+                    Original design request: {original}
+
+                    ## YOUR TASK
+
+                    ### Step 1: Start the server (if not already running)
+                    - Check if the project server is running (try curl localhost:5199 or 5200)
+                    - If not, start it (check project files for how)
+                    - Wait until it responds
+
+                    ### Step 2: Open the page in Chrome using Playwright MCP
+                    - Use mcp__playwright__browser_navigate to go to the homepage
+                    - Use mcp__playwright__browser_take_screenshot to capture what you see
+                    - Navigate to at least 2-3 key pages and screenshot each
+
+                    ### Step 3: Judge HONESTLY — grade each area PASS or FAIL
+
+                    Look at each screenshot and answer:
+
+                    **Colors**: Are they genuinely different from a typical blue/teal donation site?
+                    Not just darker/lighter — a DIFFERENT color family? PASS/FAIL
+
+                    **Typography**: Can you see different fonts? Different heading sizes/weights?
+                    Does it feel like different typography? PASS/FAIL
+
+                    **Layout**: Does the page structure look different? Different card shapes,
+                    different spacing, different visual rhythm? PASS/FAIL
+
+                    **Buttons & Components**: Different button styles? Different form inputs?
+                    Different navigation? PASS/FAIL
+
+                    **Overall**: If you showed this page and the default SimpleDonate page to
+                    your grandmother, would she say "these are different websites"? PASS/FAIL
+
+                    **Quality**: Does the page look GOOD? No broken layouts, no ugly spacing,
+                    no unreadable text, no overlapping elements? PASS/FAIL
+
+                    ### Step 4: Return your verdict as JSON
+
+                    Respond with ONLY structured JSON matching the provided schema.
+                    Fields: needsMoreWork (bool), passCount (int 0-6), failCount (int 0-6),
+                    failedAreas (array of strings), screenshotsTaken (int), rationale (string).
+
+                    RULES:
+                    - needsMoreWork = true if ANY area is FAIL
+                    - needsMoreWork = false ONLY if ALL 6 areas PASS
+                    - You MUST take at least 2 screenshots before judging
+                    - If you cannot open the page, needsMoreWork = true
+                    - Be STRICT — mediocre design that "sort of works" is a FAIL
+                    """;
             }),
-            ClassificationQuestion = new Input<string>(
-                "After the latest audit pass, are there still visual design issues, " +
-                "layout problems, broken responsive behavior, or style inconsistencies " +
-                "that need to be fixed? Consider: does the page render correctly? " +
-                "Is the design distinct from the original as requested?"),
             ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
+            ModelPower = new Input<int>(1),
+            StructuredOutputSchema = new Input<string>("""{"type":"object","properties":{"needsMoreWork":{"type":"boolean"},"passCount":{"type":"integer"},"failCount":{"type":"integer"},"failedAreas":{"type":"array","items":{"type":"string"}},"screenshotsTaken":{"type":"integer"},"rationale":{"type":"string"}},"required":["needsMoreWork","passCount","failCount","failedAreas","screenshotsTaken","rationale"]}"""),
+            Response = new Output<string>(auditCheckOutput),
             Id = "audit-check"
         };
         Pos(auditCheck, 400, 1260);
+
+        // Parse audit-check result and route: needsMoreWork → loop back, else → done
+        var auditDecision = new FlowDecision(ctx =>
+        {
+            var output = ctx.GetVariable<string>("AuditCheckOutput") ?? "";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(output);
+                if (doc.RootElement.TryGetProperty("needsMoreWork", out var nmw))
+                    return nmw.GetBoolean();
+            }
+            catch { /* parse failed = needs more work */ }
+            return true; // default: needs more work
+        });
+        auditDecision.Id = "audit-decision";
+        Pos(auditDecision, 400, 1340);
 
         // --- Step 8: Destroy container ---
         var destroy = new DestroyContainerActivity
@@ -274,7 +398,7 @@ public class DeepResearchOrchestrateWorkflow : WorkflowBase
                 execute,
                 verifyLoop.Verify, verifyLoop.Repair, verifyLoop.RepairAgent,
                 websiteClassifier,
-                auditGate, auditRunner, auditCheck,
+                auditGate, auditRunner, auditCheck, auditDecision,
                 destroy
             },
             Connections =
@@ -318,18 +442,18 @@ public class DeepResearchOrchestrateWorkflow : WorkflowBase
                 new Connection(new Endpoint(websiteClassifier, "NonWebsite"), new Endpoint(destroy)),
 
                 // === WEBSITE AUDIT LOOP ===
-                // Gate Continue → Audit Runner
+                // Gate Continue → Audit Runner → Audit Check (browser-based) → Decision
                 new Connection(new Endpoint(auditGate, "Continue"), new Endpoint(auditRunner)),
-                // Gate Exceeded → Destroy (done)
                 new Connection(new Endpoint(auditGate, "Exceeded"), new Endpoint(destroy)),
-                // Audit Runner → Classifier check
                 new Connection(new Endpoint(auditRunner, "Done"), new Endpoint(auditCheck)),
                 new Connection(new Endpoint(auditRunner, "Failed"), new Endpoint(destroy)),
-                // Classifier True (issues remain) → LOOP BACK to audit gate
-                new Connection(new Endpoint(auditCheck, "True"), new Endpoint(auditGate)),
-                // Classifier False (audit complete) → Destroy
-                new Connection(new Endpoint(auditCheck, "False"), new Endpoint(destroy)),
+                // Audit Check (AiAssistant with browser) → Decision
+                new Connection(new Endpoint(auditCheck, "Done"), new Endpoint(auditDecision)),
                 new Connection(new Endpoint(auditCheck, "Failed"), new Endpoint(destroy)),
+                // Decision: True (needsMoreWork) → LOOP BACK to audit gate
+                new Connection(new Endpoint(auditDecision, "True"), new Endpoint(auditGate)),
+                // Decision: False (all good) → Destroy
+                new Connection(new Endpoint(auditDecision, "False"), new Endpoint(destroy)),
             }
         };
 

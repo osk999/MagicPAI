@@ -44,6 +44,22 @@ fi
   echo "export HEADED=1"
 } >> "$HOME/.bashrc"
 
+# Playwright MCP config file — forces window to be visible on noVNC
+cat > "$HOME/.playwright-mcp.json" <<'PWCFG_EOF'
+{
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {
+      "args": ["--no-sandbox", "--start-maximized", "--window-size=1280,720", "--window-position=0,0", "--disable-dev-shm-usage"]
+    }
+  },
+  "capabilities": ["core"],
+  "outputDir": "/workspace/screenshots",
+  "snapshot": { "mode": "full" }
+}
+PWCFG_EOF
+chmod 644 "$HOME/.playwright-mcp.json"
+
 # === MCP Config Injection (MagicPrompt pattern) ===
 # Claude Code reads MCP servers from TWO places:
 #   1. ~/.claude.json (project-scoped: projects["/workspace"]["mcpServers"])
@@ -58,7 +74,7 @@ cat > "$HOME/.claude.json" <<'CLAUDEJSON_EOF'
       "mcpServers": {
         "playwright": {
           "command": "npx",
-          "args": ["@playwright/mcp@latest", "--no-sandbox", "--output-dir", "/workspace/screenshots"],
+          "args": ["@playwright/mcp@latest", "--config", "/home/worker/.playwright-mcp.json"],
           "env": {
             "DISPLAY": ":99",
             "PLAYWRIGHT_MCP_HEADLESS": "false",
@@ -81,7 +97,7 @@ cat > /workspace/.mcp.json <<'MCPJSON_EOF'
   "mcpServers": {
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@latest", "--no-sandbox", "--output-dir", "/workspace/screenshots"],
+      "args": ["@playwright/mcp@latest", "--no-sandbox", "--output-dir", "/workspace/screenshots", "--viewport-size", "1280x720"],
       "env": {
         "DISPLAY": ":99",
         "PLAYWRIGHT_MCP_HEADLESS": "false",
