@@ -121,6 +121,19 @@ builder.Services.AddElsa(elsa =>
             };
         }
 
+        // Bookmark-queue TTL: Elsa defaults to 1 minute. If a bookmark-queue item
+        // is enqueued from BackgroundActivityInvoker.ResumeWorkflowAsync but the
+        // first BookmarkQueueProcessor sweep can't match the bookmark (e.g. the
+        // workflow state hasn't committed yet, or DB write is still in flight),
+        // the item stays queued until the periodic trigger retries. With TTL=1m
+        // the purger wins against the 1-minute retry cadence and the workflow
+        // hangs forever (observed on WebsiteAuditCoreWorkflow under full-orchestrate).
+        // Bumping TTL to 1 hour gives ~60 retry windows before purge.
+        runtime.BookmarkQueuePurgeOptions = opts =>
+        {
+            opts.Ttl = TimeSpan.FromHours(1);
+        };
+
         // These workflows still rely on delegate-built child input/prompt expressions
         // that are not preserved correctly by the current JSON template exporter.
         runtime.AddWorkflow<FullOrchestrateWorkflow>();
