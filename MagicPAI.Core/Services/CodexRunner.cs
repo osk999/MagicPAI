@@ -9,11 +9,17 @@ public class CodexRunner : ICliAgentRunner
     private const string OutputStartMarker = "__MAGICPAI_CODEX_LAST_MESSAGE_START__";
     private const string OutputEndMarker = "__MAGICPAI_CODEX_LAST_MESSAGE_END__";
 
+    // Bump these when OpenAI ships a new Codex/GPT model version.
+    private const string Gpt5ModelId = "gpt-5.4";
+    private const string Gpt5MiniModelId = "gpt-5.4-mini";
+    private const string CodexModelId = "gpt-5.3-codex";
+    private const string CodexMiniModelId = "codex-mini-latest";
+
     public string AgentName => "codex";
-    public string DefaultModel => "gpt-5.4";
+    public string DefaultModel => Gpt5ModelId;
     public string[] AvailableModels =>
     [
-        "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "codex-mini-latest", "o3", "o4-mini", "gpt-4.1",
+        Gpt5ModelId, Gpt5MiniModelId, CodexModelId, CodexMiniModelId, "o3", "o4-mini", "gpt-4.1",
         "gpt5", "gpt5-mini", "codex", "codex-mini"
     ];
     public bool SupportsNativeSchema => true;
@@ -224,10 +230,10 @@ public class CodexRunner : ICliAgentRunner
 
     private static string ResolveModel(string alias) => alias switch
     {
-        "gpt5" => "gpt-5.4",
-        "gpt5-mini" => "gpt-5.4-mini",
-        "codex" => "gpt-5.3-codex",
-        "codex-mini" => "codex-mini-latest",
+        "gpt5" => Gpt5ModelId,
+        "gpt5-mini" => Gpt5MiniModelId,
+        "codex" => CodexModelId,
+        "codex-mini" => CodexMiniModelId,
         _ => alias
     };
 

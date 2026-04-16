@@ -4,11 +4,16 @@ namespace MagicPAI.Core.Services;
 
 public class GeminiRunner : ICliAgentRunner
 {
+    // Bump these when Google ships a new Gemini model version.
+    private const string ProModelId = "gemini-3.1-pro-preview";
+    private const string FlashModelId = "gemini-3-flash";
+    private const string FlashLiteModelId = "gemini-3.1-flash-lite-preview";
+
     public string AgentName => "gemini";
-    public string DefaultModel => "gemini-3.1-pro-preview";
+    public string DefaultModel => ProModelId;
     public string[] AvailableModels =>
     [
-        "gemini-3.1-pro-preview", "gemini-3-flash", "gemini-3.1-flash-lite-preview",
+        ProModelId, FlashModelId, FlashLiteModelId,
         "gemini-2.5-pro", "gemini-2.5-flash",
         "pro", "flash", "flash-lite"
     ];
@@ -62,9 +67,9 @@ public class GeminiRunner : ICliAgentRunner
 
     private static string ResolveModel(string alias) => alias switch
     {
-        "pro" => "gemini-3.1-pro-preview",
-        "flash" => "gemini-3-flash",
-        "flash-lite" => "gemini-3.1-flash-lite-preview",
+        "pro" => ProModelId,
+        "flash" => FlashModelId,
+        "flash-lite" => FlashLiteModelId,
         _ => alias
     };
 
