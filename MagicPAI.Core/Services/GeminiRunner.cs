@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MagicPAI.Core.Models;
 
 namespace MagicPAI.Core.Services;
@@ -85,7 +86,7 @@ public class GeminiRunner : ICliAgentRunner
 
         try
         {
-            using var _ = System.Text.Json.JsonDocument.Parse(trimmed);
+            using var _ = JsonDocument.Parse(trimmed);
             return trimmed;
         }
         catch
