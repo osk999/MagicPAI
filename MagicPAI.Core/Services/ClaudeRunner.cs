@@ -17,7 +17,7 @@ public class ClaudeRunner : ICliAgentRunner
     public string[] AvailableModels =>
     [
         "haiku", "sonnet", "opus",
-        "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"
+        "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"
     ];
     public bool SupportsNativeSchema => true; // --json-schema flag
 
@@ -150,7 +150,7 @@ public class ClaudeRunner : ICliAgentRunner
     {
         "haiku" => "claude-haiku-4-5",
         "sonnet" => "claude-sonnet-4-6",
-        "opus" => "claude-opus-4-6",
+        "opus" => "claude-opus-4-7",
         _ => alias
     };
 
