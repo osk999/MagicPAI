@@ -265,9 +265,9 @@ public class SessionController : ControllerBase
 
     private async Task<string> ResolveDefinitionVersionIdAsync(string definitionId, CancellationToken cancellationToken)
     {
-        // Always resolve the REAL published definitionVersionId from the store.
-        // Fabricating "{id}:v1" means Studio's /workflow-instances list can't hydrate
-        // the definition lookup and the whole Instances page renders as empty.
+        if (!WorkflowCatalog.RequiresPublishedDefinitionDispatch(definitionId))
+            return WorkflowCatalog.ResolveDefinitionVersionId(definitionId);
+
         var definition = await _workflowDefinitionService.FindWorkflowDefinitionAsync(
             WorkflowDefinitionHandle.ByDefinitionId(definitionId, VersionOptions.Published),
             cancellationToken);
