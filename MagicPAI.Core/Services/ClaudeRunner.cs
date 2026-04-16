@@ -12,12 +12,17 @@ public class ClaudeRunner : ICliAgentRunner
         "Execute all tasks directly and immediately without requesting user approval. " +
         "Never pause and never ask for confirmation - just implement everything now.";
 
+    // Bump these when Anthropic ships a new model version.
+    private const string HaikuModelId = "claude-haiku-4-5";
+    private const string SonnetModelId = "claude-sonnet-4-6";
+    private const string OpusModelId = "claude-opus-4-7";
+
     public string AgentName => "claude";
     public string DefaultModel => "sonnet";
     public string[] AvailableModels =>
     [
         "haiku", "sonnet", "opus",
-        "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"
+        HaikuModelId, SonnetModelId, OpusModelId
     ];
     public bool SupportsNativeSchema => true; // --json-schema flag
 
@@ -148,9 +153,9 @@ public class ClaudeRunner : ICliAgentRunner
 
     private static string ResolveModel(string alias) => alias switch
     {
-        "haiku" => "claude-haiku-4-5",
-        "sonnet" => "claude-sonnet-4-6",
-        "opus" => "claude-opus-4-7",
+        "haiku" => HaikuModelId,
+        "sonnet" => SonnetModelId,
+        "opus" => OpusModelId,
         _ => alias
     };
 
