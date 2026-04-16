@@ -237,9 +237,8 @@ public class SessionHub : Hub
 
     private async Task<string> ResolveDefinitionVersionIdAsync(string definitionId, CancellationToken cancellationToken)
     {
-        if (!WorkflowCatalog.RequiresPublishedDefinitionDispatch(definitionId))
-            return WorkflowCatalog.ResolveDefinitionVersionId(definitionId);
-
+        // Always resolve the REAL published definitionVersionId from the store —
+        // fabricating "{id}:v1" breaks Studio's Instances page (definition lookup 404s).
         var definition = await _workflowDefinitionService.FindWorkflowDefinitionAsync(
             WorkflowDefinitionHandle.ByDefinitionId(definitionId, VersionOptions.Published),
             cancellationToken);
