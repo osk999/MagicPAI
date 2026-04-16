@@ -92,7 +92,12 @@ CLAUDEJSON_EOF
 chmod 644 "$HOME/.claude.json"
 
 # 2. Workspace-level .mcp.json
-cat > /workspace/.mcp.json <<'MCPJSON_EOF'
+# The workspace is bind-mounted from the host and may contain a file from a prior run
+# owned by a UID the container's `worker` user doesn't own. Don't let any failure here
+# kill the entrypoint (`set -e` above). Worst case: keep whatever the user already has.
+(
+  set +e
+  cat > /workspace/.mcp.json <<'MCPJSON_EOF'
 {
   "mcpServers": {
     "playwright": {
@@ -108,7 +113,8 @@ cat > /workspace/.mcp.json <<'MCPJSON_EOF'
   }
 }
 MCPJSON_EOF
-chmod 644 /workspace/.mcp.json
+  chmod 644 /workspace/.mcp.json 2>/dev/null
+) || true
 
 # 3. User-level settings.json with permissions
 cat > "$HOME/.claude/settings.json" <<'SETTINGS_EOF'
