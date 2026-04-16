@@ -5,6 +5,7 @@ using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Verification;
+using MagicPAI.Server.Workflows.Components;
 
 namespace MagicPAI.Server.Workflows;
 
@@ -28,6 +29,10 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
         var modelPower = builder.WithVariable<int>("ModelPower", 0).WithWorkflowStorage();
         var assembledPrompt = builder.WithVariable<string>("AssembledPrompt", "").WithWorkflowStorage();
 
+        // Hydrate variables from parent's SharedBlackboard entry when dispatched as a child.
+        var initVars = ChildInputLoader.Build();
+        Pos(initVars, 400, 10);
+
         var researchPrompt = new ResearchPromptActivity
         {
             RunAsynchronously = true,
@@ -38,7 +43,7 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
             EnhancedPrompt = new Output<string>(assembledPrompt),
             Id = "simple-research-prompt"
         };
-        Pos(researchPrompt, 400, 50);
+        Pos(researchPrompt, 400, 80);
 
         var runAgent = new AiAssistantActivity
         {
@@ -95,10 +100,11 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
         var flowchart = new Flowchart
         {
             Id = "orchestrate-simple-path-flow",
-            Start = researchPrompt,
-            Activities = { researchPrompt, runAgent, verify, coverage, coverageRepairAgent },
+            Start = initVars,
+            Activities = { initVars, researchPrompt, runAgent, verify, coverage, coverageRepairAgent },
             Connections =
             {
+                new Connection(new Endpoint(initVars), new Endpoint(researchPrompt)),
                 new Connection(new Endpoint(researchPrompt, "Done"), new Endpoint(runAgent)),
                 new Connection(new Endpoint(researchPrompt, "Failed"), new Endpoint(runAgent)),
                 new Connection(new Endpoint(runAgent, "Done"), new Endpoint(verify)),

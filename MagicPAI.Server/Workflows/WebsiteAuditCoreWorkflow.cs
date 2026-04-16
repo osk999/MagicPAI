@@ -6,6 +6,7 @@ using Elsa.Workflows.Activities.Flowchart.Models;
 using Elsa.Workflows.Models;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.ControlFlow;
+using MagicPAI.Server.Workflows.Components;
 
 namespace MagicPAI.Server.Workflows;
 
@@ -35,6 +36,12 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
         var interactionOutput = builder.WithVariable<string>("InteractionOutput", "").WithWorkflowStorage();
         var discoveryAttempts = builder.WithVariable<int>("DiscoveryAttempts", 0).WithWorkflowStorage();
 
+        // Hydrate variables from parent's SharedBlackboard entry. Without this,
+        // ContainerId/Prompt stay empty and every AI activity throws
+        // "Container ID is required".
+        var initVars = ChildInputLoader.Build();
+        Pos(initVars, 400, 10);
+
         var discoveryGate = new IterationGateActivity
         {
             CurrentCount = new Input<int>(discoveryAttempts),
@@ -43,7 +50,7 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
             Label = new Input<string>("Discovery"),
             Id = "phase1-discovery-gate"
         };
-        Pos(discoveryGate, 400, 50);
+        Pos(discoveryGate, 400, 80);
 
         var discoveryRunner = new AiAssistantActivity
         {
@@ -226,10 +233,11 @@ public class WebsiteAuditCoreWorkflow : WorkflowBase
         var flowchart = new Flowchart
         {
             Id = "website-audit-core-flow",
-            Start = discoveryGate,
-            Activities = { discoveryGate, discoveryRunner, discoveryCheck, visualRunner, visualCheck, interactionRunner, interactionCheck, opusSweep },
+            Start = initVars,
+            Activities = { initVars, discoveryGate, discoveryRunner, discoveryCheck, visualRunner, visualCheck, interactionRunner, interactionCheck, opusSweep },
             Connections =
             {
+                new Connection(new Endpoint(initVars), new Endpoint(discoveryGate)),
                 new Connection(new Endpoint(discoveryGate, "Continue"), new Endpoint(discoveryRunner)),
                 new Connection(new Endpoint(discoveryRunner, "Done"), new Endpoint(discoveryCheck)),
                 new Connection(new Endpoint(discoveryRunner, "Failed"), new Endpoint(discoveryCheck)),

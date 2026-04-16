@@ -154,33 +154,46 @@ public class FullOrchestrateWorkflow : WorkflowBase
         };
         Pos(simplePath, 250, 720);
 
-        // Store child input in SharedBlackboard before dispatching,
-        // because Elsa's ExecuteWorkflow/DispatchWorkflow does NOT reliably
-        // propagate Input to child WorkflowExecutionContext.Input.
-        var storeChildInput = new Elsa.Workflows.Activities.Inline(ctx =>
+        // Store child input in SharedBlackboard. Elsa's DispatchWorkflow/ExecuteWorkflow
+        // does NOT reliably propagate Input to the child's WorkflowInput, so every
+        // child workflow (OrchestrateComplexPath, OrchestrateSimplePath via ExecuteWorkflow,
+        // WebsiteAuditCore) reads a JSON payload from SharedBlackboard keyed by this
+        // parent's instance id. We store TWICE: once right after spawn with raw
+        // ContainerId+Prompt (for early dispatches like audit/simple that may fire
+        // before research enhancements exist), and again before the complex dispatch
+        // with the research-enhanced prompt.
+        static Elsa.Workflows.Activities.Inline BuildStoreChildInput(string id)
         {
-            var bb = ctx.GetRequiredService<MagicPAI.Core.Services.SharedBlackboard>();
-            var parentId = ctx.WorkflowExecutionContext.Id;
-
-            // Build child input dict directly (same logic as buildChildInput but using variables)
-            var bestPrompt = ctx.GetVariable<string>("ResearchedPrompt");
-            if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("GatheredContext");
-            if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("ElaboratedPrompt");
-            if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("EnhancedPrompt");
-            if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("Prompt") ?? "";
-
-            var data = new Dictionary<string, object>
+            var inline = new Elsa.Workflows.Activities.Inline(ctx =>
             {
-                ["Prompt"] = bestPrompt,
-                ["ContainerId"] = ctx.GetVariable<string>("ContainerId") ?? "",
-                ["AiAssistant"] = ctx.GetVariable<string>("AiAssistant") ?? "",
-                ["Model"] = ctx.GetVariable<string>("Model") ?? "",
-                ["ModelPower"] = ctx.GetVariable<int>("ModelPower")
-            };
-            bb.SetTaskOutput($"{parentId}:child-input",
-                System.Text.Json.JsonSerializer.Serialize(data));
-        });
-        storeChildInput.Id = "store-child-input";
+                var bb = ctx.GetRequiredService<MagicPAI.Core.Services.SharedBlackboard>();
+                var parentId = ctx.WorkflowExecutionContext.Id;
+
+                var bestPrompt = ctx.GetVariable<string>("ResearchedPrompt");
+                if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("GatheredContext");
+                if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("ElaboratedPrompt");
+                if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("EnhancedPrompt");
+                if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("Prompt") ?? "";
+
+                var data = new Dictionary<string, object>
+                {
+                    ["Prompt"] = bestPrompt,
+                    ["ContainerId"] = ctx.GetVariable<string>("ContainerId") ?? "",
+                    ["AiAssistant"] = ctx.GetVariable<string>("AiAssistant") ?? "",
+                    ["Model"] = ctx.GetVariable<string>("Model") ?? "",
+                    ["ModelPower"] = ctx.GetVariable<int>("ModelPower")
+                };
+                bb.SetTaskOutput($"{parentId}:child-input",
+                    System.Text.Json.JsonSerializer.Serialize(data));
+            });
+            inline.Id = id;
+            return inline;
+        }
+
+        var storeChildInputEarly = BuildStoreChildInput("store-child-input-early");
+        Pos(storeChildInputEarly, 400, 120);
+
+        var storeChildInput = BuildStoreChildInput("store-child-input");
         Pos(storeChildInput, 550, 700);
 
         var complexPath = new Elsa.Workflows.Runtime.Activities.DispatchWorkflow
@@ -243,11 +256,16 @@ public class FullOrchestrateWorkflow : WorkflowBase
         {
             Id = "full-orchestrate-flow",
             Start = initVars,
-            Activities = { initVars, spawn, websiteClassifier, researchPrompt, triage, simplePath, storeChildInput, complexPath, websiteDecision, websiteAudit, coverage, coverageRepairAgent, destroy },
+            Activities = { initVars, spawn, storeChildInputEarly, websiteClassifier, researchPrompt, triage, simplePath, storeChildInput, complexPath, websiteDecision, websiteAudit, coverage, coverageRepairAgent, destroy },
             Connections =
             {
                 new Connection(new Endpoint(initVars), new Endpoint(spawn)),
-                new Connection(new Endpoint(spawn, "Done"), new Endpoint(websiteClassifier)),
+                // Populate SharedBlackboard right after spawn so any child dispatch
+                // (simple path via ExecuteWorkflow, website audit via ExecuteWorkflow)
+                // can read ContainerId + Prompt on first activity. The second store
+                // later (before complexPath) overwrites with research-enhanced prompt.
+                new Connection(new Endpoint(spawn, "Done"), new Endpoint(storeChildInputEarly)),
+                new Connection(new Endpoint(storeChildInputEarly), new Endpoint(websiteClassifier)),
                 new Connection(new Endpoint(spawn, "Failed"), new Endpoint(destroy)),
 
                 // Both website and non-website implementation requests go through the main
