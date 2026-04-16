@@ -21,12 +21,8 @@ public class GeminiRunner : ICliAgentRunner
 
     public string BuildCommand(AgentRequest request)
     {
-        var prompt = request.Prompt ?? "";
-
         // Gemini CLI has no native --json-schema; embed in prompt
-        if (!string.IsNullOrEmpty(request.OutputSchema))
-            prompt = $"Respond with ONLY valid JSON matching this schema (no markdown, no explanation):\n{request.OutputSchema}\n\nTask: {prompt}";
-
+        var prompt = BuildPrompt(request);
         var escaped = Escape(prompt);
         var model = ResolveModel(request.Model ?? DefaultModel);
 
@@ -39,11 +35,7 @@ public class GeminiRunner : ICliAgentRunner
 
     public CliAgentExecutionPlan BuildExecutionPlan(AgentRequest request)
     {
-        var prompt = request.Prompt ?? "";
-
-        if (!string.IsNullOrEmpty(request.OutputSchema))
-            prompt = $"Respond with ONLY valid JSON matching this schema (no markdown, no explanation):\n{request.OutputSchema}\n\nTask: {prompt}";
-
+        var prompt = BuildPrompt(request);
         var model = ResolveModel(request.Model ?? DefaultModel);
 
         return new CliAgentExecutionPlan(
@@ -72,6 +64,14 @@ public class GeminiRunner : ICliAgentRunner
         "flash-lite" => FlashLiteModelId,
         _ => alias
     };
+
+    private static string BuildPrompt(AgentRequest request)
+    {
+        var prompt = request.Prompt ?? "";
+        if (!string.IsNullOrEmpty(request.OutputSchema))
+            return $"Respond with ONLY valid JSON matching this schema (no markdown, no explanation):\n{request.OutputSchema}\n\nTask: {prompt}";
+        return prompt;
+    }
 
     private static string Escape(string value) => value.Replace("'", "'\\''");
 
