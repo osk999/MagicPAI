@@ -145,11 +145,14 @@ builder.Services.AddElsa(elsa =>
     // Default Authentication
     elsa.UseDefaultAuthentication(auth => auth.UseAdminApiKey());
 
-    // HTTP activities
+    // HTTP activities.
+    // BasePath moved off "/workflows" (Elsa's default) so it doesn't 404-intercept
+    // Studio's client-side routes at /workflows/definitions and /workflows/instances.
     elsa.UseHttp(http => http.ConfigureHttpOptions = options =>
     {
         var baseUrl = builder.Configuration["Elsa:Http:BaseUrl"] ?? "https://localhost:5001";
         options.BaseUrl = new Uri(baseUrl);
+        options.BasePath = "/webhooks";
     });
 
     // Scheduling (timers, delays, cron)
