@@ -53,27 +53,62 @@ public class SimpleAgentWorkflow : WorkflowBase
         };
         Pos(verify, 400, 390);
 
+        // Requirements-coverage classifier: grades the finished work against the
+        // original user prompt, item by item. On Incomplete it routes to
+        // coverageRepairAgent which re-invokes Claude with the gap prompt, then
+        // loops back to coverage. Capped at 30 iterations so runaway gaps can't
+        // spin forever.
+        var coverage = new RequirementsCoverageActivity
+        {
+            RunAsynchronously = true,
+            OriginalPrompt = new Input<string>(prompt),
+            ContainerId = new Input<string>(containerId),
+            MaxIterations = new Input<int>(30),
+            ModelPower = new Input<int>(2),
+            Id = "requirements-coverage"
+        };
+        Pos(coverage, 400, 560);
+
+        var coverageRepairAgent = new AiAssistantActivity
+        {
+            RunAsynchronously = true,
+            AiAssistant = resolveAssistant(),
+            Prompt = new Input<string>(ctx => ctx.GetVariable<string>("RepairPrompt") ?? ""),
+            ContainerId = new Input<string>(containerId),
+            Model = resolveModel(),
+            ModelPower = new Input<int>(modelPower),
+            Id = "coverage-repair-agent"
+        };
+        Pos(coverageRepairAgent, 600, 560);
+
         var destroy = new DestroyContainerActivity
         {
             ContainerId = new Input<string>(containerId),
             Id = "destroy-container"
         };
-        Pos(destroy, 400, 560);
+        Pos(destroy, 400, 720);
 
         var flowchart = new Flowchart
         {
             Id = "simple-agent-flow",
             Start = spawn,
-            Activities = { spawn, runAgent, verify, destroy },
+            Activities = { spawn, runAgent, verify, coverage, coverageRepairAgent, destroy },
             Connections =
             {
                 new Connection(new Endpoint(spawn, "Done"), new Endpoint(runAgent)),
                 new Connection(new Endpoint(spawn, "Failed"), new Endpoint(destroy)),
                 new Connection(new Endpoint(runAgent, "Done"), new Endpoint(verify)),
                 new Connection(new Endpoint(runAgent, "Failed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(verify, "Passed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(verify, "Failed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(verify, "Inconclusive"), new Endpoint(destroy)),
+                new Connection(new Endpoint(verify, "Passed"), new Endpoint(coverage)),
+                new Connection(new Endpoint(verify, "Failed"), new Endpoint(coverage)),
+                new Connection(new Endpoint(verify, "Inconclusive"), new Endpoint(coverage)),
+
+                // Coverage loop: incomplete -> re-run agent with gap prompt -> re-check.
+                new Connection(new Endpoint(coverage, "AllMet"), new Endpoint(destroy)),
+                new Connection(new Endpoint(coverage, "Exceeded"), new Endpoint(destroy)),
+                new Connection(new Endpoint(coverage, "Incomplete"), new Endpoint(coverageRepairAgent)),
+                new Connection(new Endpoint(coverageRepairAgent, "Done"), new Endpoint(coverage)),
+                new Connection(new Endpoint(coverageRepairAgent, "Failed"), new Endpoint(coverage)),
             }
         };
 
