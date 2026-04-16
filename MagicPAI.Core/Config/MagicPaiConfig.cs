@@ -16,7 +16,7 @@ public class MagicPaiConfig
     // --- AI Agents ---
     public string DefaultAgent { get; set; } = "claude";
     public string DefaultModel { get; set; } = "auto";
-    public int MaxTurnsPerTask { get; set; } = 20;
+    public int MaxTurnsPerTask { get; set; } = 60;
     public int AgentTimeoutMinutes { get; set; } = 30;
     public bool RequireContainerizedAgentExecution { get; set; } = true;
     public Dictionary<string, Dictionary<string, string>> AssistantModelPowerMap { get; set; } = new();
@@ -24,7 +24,7 @@ public class MagicPaiConfig
     // --- Verification ---
     public bool EnableVerification { get; set; } = true;
     public bool EnableRepair { get; set; } = true;
-    public int MaxRepairAttempts { get; set; } = 5;
+    public int MaxRepairAttempts { get; set; } = 30;
     public string[] DefaultGates { get; set; } = ["compile", "test", "hallucination"];
     public double CoverageThreshold { get; set; } = 70.0;
 
@@ -40,7 +40,7 @@ public class MagicPaiConfig
     // --- Triage ---
     public int ComplexityThreshold { get; set; } = 7; // >= threshold = complex
     public string TriageModel { get; set; } = "sonnet";
-    public int MaxSubTasks { get; set; } = 10;
+    public int MaxSubTasks { get; set; } = 30;
 
     // --- GUI ---
     public bool EnableContainerGui { get; set; }

@@ -72,7 +72,7 @@ public class WebsiteAuditLoopWorkflow : WorkflowBase
         {
             CurrentCount = new Input<int>(discoveryAttempts),
             NextCount = new Output<int>(discoveryAttempts),
-            MaxIterations = new Input<int>(2),
+            MaxIterations = new Input<int>(30),
             Label = new Input<string>("Discovery"),
             Id = "phase1-discovery-gate"
         };

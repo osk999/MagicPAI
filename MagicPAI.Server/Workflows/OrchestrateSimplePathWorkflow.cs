@@ -65,16 +65,52 @@ public class OrchestrateSimplePathWorkflow : WorkflowBase
         };
         Pos(verify, 400, 390);
 
+        // Requirements-coverage classifier: grades completed work against the original
+        // user requirements. On Incomplete, it stores a gap prompt in the RepairPrompt
+        // variable and routes to coverageRepairAgent, which re-invokes Claude with the
+        // focused follow-up; then loops back to coverage for re-verification.
+        var coverage = new RequirementsCoverageActivity
+        {
+            RunAsynchronously = true,
+            OriginalPrompt = new Input<string>(ctx => ctx.GetDispatchInput("Prompt") ?? ctx.GetVariable<string>("Prompt") ?? ""),
+            ContainerId = new Input<string>(containerId),
+            MaxIterations = new Input<int>(30),
+            ModelPower = new Input<int>(2),
+            Id = "simple-coverage"
+        };
+        Pos(coverage, 400, 560);
+
+        var coverageRepairAgent = new AiAssistantActivity
+        {
+            RunAsynchronously = true,
+            AiAssistant = new Input<string>(agent),
+            Prompt = new Input<string>(ctx => ctx.GetVariable<string>("RepairPrompt") ?? ""),
+            ContainerId = new Input<string>(containerId),
+            Model = new Input<string>(model),
+            ModelPower = new Input<int>(modelPower),
+            Id = "simple-coverage-repair-agent"
+        };
+        Pos(coverageRepairAgent, 600, 560);
+
         var flowchart = new Flowchart
         {
             Id = "orchestrate-simple-path-flow",
             Start = researchPrompt,
-            Activities = { researchPrompt, runAgent, verify },
+            Activities = { researchPrompt, runAgent, verify, coverage, coverageRepairAgent },
             Connections =
             {
                 new Connection(new Endpoint(researchPrompt, "Done"), new Endpoint(runAgent)),
                 new Connection(new Endpoint(researchPrompt, "Failed"), new Endpoint(runAgent)),
                 new Connection(new Endpoint(runAgent, "Done"), new Endpoint(verify)),
+                new Connection(new Endpoint(verify, "Passed"), new Endpoint(coverage)),
+                new Connection(new Endpoint(verify, "Failed"), new Endpoint(coverage)),
+                new Connection(new Endpoint(verify, "Inconclusive"), new Endpoint(coverage)),
+
+                // Coverage loop: incomplete -> re-run agent with gap prompt -> re-check.
+                new Connection(new Endpoint(coverage, "Incomplete"), new Endpoint(coverageRepairAgent)),
+                new Connection(new Endpoint(coverageRepairAgent, "Done"), new Endpoint(coverage)),
+                new Connection(new Endpoint(coverageRepairAgent, "Failed"), new Endpoint(coverage)),
+                // AllMet and Exceeded end the workflow naturally (no outbound connection).
             }
         };
 

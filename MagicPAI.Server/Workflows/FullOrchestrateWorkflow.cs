@@ -1,3 +1,4 @@
+using Elsa.Expressions.Models;
 using Elsa.Extensions;
 using Elsa.Workflows;
 using Elsa.Workflows.Activities.Flowchart.Activities;
@@ -204,18 +205,45 @@ public class FullOrchestrateWorkflow : WorkflowBase
         websiteDecision.Id = "website-decision";
         Pos(websiteDecision, 400, 840);
 
+        // Requirements-coverage classifier: grades the completed work against the
+        // original user requirements. On Incomplete it sets RepairPrompt and routes
+        // to coverageRepairAgent, which re-runs Claude with the focused gap prompt
+        // (Claude's own session is resumed so it keeps context). After that, we come
+        // back to coverage to re-verify. Capped at 30 iterations.
+        var coverage = new RequirementsCoverageActivity
+        {
+            RunAsynchronously = true,
+            OriginalPrompt = new Input<string>(prompt),
+            ContainerId = resolveContainerId(),
+            MaxIterations = new Input<int>(30),
+            ModelPower = new Input<int>(2),
+            Id = "requirements-coverage"
+        };
+        Pos(coverage, 400, 970);
+
+        var coverageRepairAgent = new AiAssistantActivity
+        {
+            RunAsynchronously = true,
+            AiAssistant = new Input<string>(new Expression("JavaScript", "getVariable(\"AiAssistant\") || \"claude\"")),
+            Prompt = new Input<string>(new Expression("JavaScript", "getVariable(\"RepairPrompt\") || \"\"")),
+            ContainerId = resolveContainerId(),
+            ModelPower = new Input<int>(2),
+            Id = "coverage-repair-agent"
+        };
+        Pos(coverageRepairAgent, 600, 970);
+
         var destroy = new DestroyContainerActivity
         {
             ContainerId = resolveContainerId(),
             Id = "destroy-container"
         };
-        Pos(destroy, 400, 1040);
+        Pos(destroy, 400, 1100);
 
         var flowchart = new Flowchart
         {
             Id = "full-orchestrate-flow",
             Start = initVars,
-            Activities = { initVars, spawn, websiteClassifier, researchPrompt, triage, simplePath, storeChildInput, complexPath, websiteDecision, websiteAudit, destroy },
+            Activities = { initVars, spawn, websiteClassifier, researchPrompt, triage, simplePath, storeChildInput, complexPath, websiteDecision, websiteAudit, coverage, coverageRepairAgent, destroy },
             Connections =
             {
                 new Connection(new Endpoint(initVars), new Endpoint(spawn)),
@@ -237,9 +265,17 @@ public class FullOrchestrateWorkflow : WorkflowBase
                 new Connection(new Endpoint(simplePath, "Done"), new Endpoint(websiteDecision)),
                 new Connection(new Endpoint(complexPath, "Done"), new Endpoint(websiteDecision)),
 
+                // Website tasks get an audit pass first, then coverage.
                 new Connection(new Endpoint(websiteDecision, "True"), new Endpoint(websiteAudit)),
-                new Connection(new Endpoint(websiteDecision, "False"), new Endpoint(destroy)),
-                new Connection(new Endpoint(websiteAudit, "Done"), new Endpoint(destroy)),
+                new Connection(new Endpoint(websiteDecision, "False"), new Endpoint(coverage)),
+                new Connection(new Endpoint(websiteAudit, "Done"), new Endpoint(coverage)),
+
+                // Coverage loop: incomplete -> run agent again with gap prompt -> re-check.
+                new Connection(new Endpoint(coverage, "AllMet"), new Endpoint(destroy)),
+                new Connection(new Endpoint(coverage, "Exceeded"), new Endpoint(destroy)),
+                new Connection(new Endpoint(coverage, "Incomplete"), new Endpoint(coverageRepairAgent)),
+                new Connection(new Endpoint(coverageRepairAgent, "Done"), new Endpoint(coverage)),
+                new Connection(new Endpoint(coverageRepairAgent, "Failed"), new Endpoint(coverage)),
             }
         };
 
