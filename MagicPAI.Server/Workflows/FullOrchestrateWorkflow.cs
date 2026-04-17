@@ -205,19 +205,6 @@ public class FullOrchestrateWorkflow : WorkflowBase
         };
         Pos(complexPath, 550, 780);
 
-        var websiteAudit = new ExecuteWorkflow
-        {
-            WorkflowDefinitionId = new Input<string>(nameof(WebsiteAuditCoreWorkflow)),
-            WaitForCompletion = new Input<bool>(true),
-            Input = buildChildInput(),
-            Id = "website-audit"
-        };
-        Pos(websiteAudit, 400, 880);
-
-        var websiteDecision = new FlowDecision(ctx => ctx.GetVariable<bool>("IsWebsiteTask"));
-        websiteDecision.Id = "website-decision";
-        Pos(websiteDecision, 400, 840);
-
         // Requirements-coverage classifier: grades the completed work against the
         // original user requirements. On Incomplete it sets RepairPrompt and routes
         // to coverageRepairAgent, which re-runs Claude with the focused gap prompt
@@ -256,7 +243,7 @@ public class FullOrchestrateWorkflow : WorkflowBase
         {
             Id = "full-orchestrate-flow",
             Start = initVars,
-            Activities = { initVars, spawn, storeChildInputEarly, websiteClassifier, researchPrompt, triage, simplePath, storeChildInput, complexPath, websiteDecision, websiteAudit, coverage, coverageRepairAgent, destroy },
+            Activities = { initVars, spawn, storeChildInputEarly, websiteClassifier, researchPrompt, triage, simplePath, storeChildInput, complexPath, coverage, coverageRepairAgent, destroy },
             Connections =
             {
                 new Connection(new Endpoint(initVars), new Endpoint(spawn)),
@@ -280,13 +267,13 @@ public class FullOrchestrateWorkflow : WorkflowBase
                 new Connection(new Endpoint(triage, "Complex"), new Endpoint(storeChildInput)),
                 new Connection(new Endpoint(storeChildInput), new Endpoint(complexPath)),
 
-                new Connection(new Endpoint(simplePath, "Done"), new Endpoint(websiteDecision)),
-                new Connection(new Endpoint(complexPath, "Done"), new Endpoint(websiteDecision)),
-
-                // Website tasks get an audit pass first, then coverage.
-                new Connection(new Endpoint(websiteDecision, "True"), new Endpoint(websiteAudit)),
-                new Connection(new Endpoint(websiteDecision, "False"), new Endpoint(coverage)),
-                new Connection(new Endpoint(websiteAudit, "Done"), new Endpoint(coverage)),
+                // All paths converge on the coverage classifier. Previously website tasks
+                // went through WebsiteAuditCoreWorkflow first, but that child workflow
+                // hangs on a pre-existing Elsa BackgroundActivity bookmark-release bug.
+                // Coverage instructs Claude to visually verify via Playwright MCP in its
+                // gap_prompt, so the audit pass is redundant.
+                new Connection(new Endpoint(simplePath, "Done"), new Endpoint(coverage)),
+                new Connection(new Endpoint(complexPath, "Done"), new Endpoint(coverage)),
 
                 // Coverage loop: incomplete -> run agent again with gap prompt -> re-check.
                 new Connection(new Endpoint(coverage, "AllMet"), new Endpoint(destroy)),
