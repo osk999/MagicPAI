@@ -1,0 +1,83 @@
+@* MagicPAI.Studio/Pages/SessionList.razor — Temporal migration §10.12. *@
+@page "/sessions"
+@inject SessionApiClient SessionClient
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Sessions</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h4">Sessions</MudText>
+    <MudSpacer />
+    <MudButton Color="Color.Primary"
+               Variant="Variant.Filled"
+               StartIcon="@Icons.Material.Filled.Add"
+               Href="/">
+        New session
+    </MudButton>
+    <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Refresh" />
+</MudStack>
+
+<MudTable Items="@_sessions" Loading="@_loading" Hover="true" Dense="true"
+          Breakpoint="Breakpoint.Sm">
+    <HeaderContent>
+        <MudTh>Id</MudTh>
+        <MudTh>Workflow</MudTh>
+        <MudTh>Assistant</MudTh>
+        <MudTh>Started</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Cost</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Id">
+            <MudLink Href="@($"/sessions/{context.SessionId}")">
+                @(context.SessionId.Length > 12 ? context.SessionId[..12] + "…" : context.SessionId)
+            </MudLink>
+        </MudTd>
+        <MudTd DataLabel="Workflow">@context.WorkflowType</MudTd>
+        <MudTd DataLabel="Assistant">@context.AiAssistant</MudTd>
+        <MudTd DataLabel="Started">@context.StartTime.ToLocalTime().ToString("g")</MudTd>
+        <MudTd DataLabel="Status">
+            <SessionStatusBadge Status="@context.Status" />
+        </MudTd>
+        <MudTd DataLabel="Cost">@($"${context.TotalCostUsd:F4}")</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                           Size="Size.Small"
+                           OnClick="@(() => Nav.NavigateTo($"/sessions/{context.SessionId}"))" />
+            <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                           Size="Size.Small"
+                           Color="Color.Warning"
+                           OnClick="@(() => Cancel(context.SessionId))" />
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>No sessions yet. Start one from the <MudLink Href="/">home page</MudLink>.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private bool _loading = true;
+    private List<SessionSummary> _sessions = new();
+
+    protected override async Task OnInitializedAsync() => await Refresh();
+
+    private async Task Refresh()
+    {
+        _loading = true;
+        StateHasChanged();
+        _sessions = await SessionClient.ListAsync(take: 100);
+        _loading = false;
+    }
+
+    private async Task Cancel(string id)
+    {
+        var ok = await SessionClient.CancelAsync(id);
+        if (ok)
+            Snackbar.Add($"Cancelled session {id[..Math.Min(8, id.Length)]}…", Severity.Info);
+        else
+            Snackbar.Add("Cancel request failed.", Severity.Error);
+        await Refresh();
+    }
+}

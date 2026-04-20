@@ -1,0 +1,83 @@
+# Temporal stack overlay. Compose together with docker-compose.yml.
+# See temporal.md §13.3.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.temporal.yml up -d
+version: '3.9'
+
+services:
+
+  temporal-db:
+    container_name: mpai-temporal-db
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: temporal
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes:
+      - temporal-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - mpai-net
+
+  temporal:
+    container_name: mpai-temporal
+    image: temporalio/auto-setup:1.25.0
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-db
+      - DYNAMIC_CONFIG_FILE_PATH=/etc/temporal/config/dynamicconfig/development.yaml
+      - DEFAULT_NAMESPACE=magicpai
+      - DEFAULT_NAMESPACE_RETENTION=72h
+      - ENABLE_ES=false
+    volumes:
+      - ./temporal/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    ports:
+      - "7233:7233"
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+    healthcheck:
+      # Note: temporal auto-setup binds gRPC to the container IP (172.x.x.x),
+      # not 127.0.0.1, so we resolve via hostname -i.
+      test: ["CMD-SHELL", "temporal --address $(hostname -i):7233 operator cluster health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - mpai-net
+
+  temporal-ui:
+    container_name: mpai-temporal-ui
+    image: temporalio/ui:2.30.0
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:5000,http://localhost:3000
+      - TEMPORAL_DEFAULT_NAMESPACE=magicpai
+    ports:
+      - "8233:8080"
+    depends_on:
+      temporal:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - mpai-net
+
+volumes:
+  temporal-pgdata:
+
+networks:
+  mpai-net:
+    # Must match the network name declared in docker-compose.yml
+    name: magicpai_mpai-net
+    external: true

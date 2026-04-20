@@ -230,4 +230,33 @@ public class ClaudeRunnerTests
         Assert.Contains("8", result.Output);
         Assert.Contains("score", result.StructuredOutputJson);
     }
+
+    [Fact]
+    public void BuildExecutionPlan_OversizePrompt_Throws_ClearError()
+    {
+        var oversize = new string('x', 40_000);
+        var ex = Assert.Throws<ArgumentException>(() =>
+            _runner.BuildExecutionPlan(new AgentRequest
+            {
+                Prompt = oversize,
+                Model = "claude-sonnet-4-6",
+                WorkDir = "/workspace",
+            }));
+
+        Assert.Contains("argv", ex.Message);
+    }
+
+    [Fact]
+    public void BuildExecutionPlan_NormalPrompt_Succeeds()
+    {
+        var plan = _runner.BuildExecutionPlan(new AgentRequest
+        {
+            Prompt = "Create hello.txt",
+            Model = "claude-sonnet-4-6",
+            WorkDir = "/workspace",
+        });
+
+        Assert.NotNull(plan.MainRequest);
+        Assert.Contains("Create hello.txt", plan.MainRequest.Arguments);
+    }
 }

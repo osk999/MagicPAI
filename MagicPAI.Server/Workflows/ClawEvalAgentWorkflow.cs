@@ -1,102 +1,100 @@
-using Elsa.Workflows;
-using Elsa.Workflows.Activities.Flowchart.Activities;
-using Elsa.Workflows.Activities.Flowchart.Models;
-using Elsa.Workflows.Models;
+// MagicPAI.Server/Workflows/Temporal/ClawEvalAgentWorkflow.cs
+// Temporal port of the Elsa ClawEvalAgentWorkflow. Specialized for evaluation
+// runs — runs the agent then verifies with compile/test/coverage gates. Expects
+// the caller (evaluation harness) to own container lifecycle. See temporal.md §H.10.
+using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
+using MagicPAI.Activities.Contracts;
+using MagicPAI.Activities.Docker;
+using MagicPAI.Activities.Verification;
+using MagicPAI.Workflows;
+using MagicPAI.Workflows.Contracts;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Benchmark agent-task workflow for evaluation.
-/// Flow: Triage (classify difficulty) -> Context Gathering -> Agent Execution.
-/// Used in benchmark/evaluation suites to measure agent task completion quality.
+/// Runs a single evaluation: agent invocation followed by the full eval gate
+/// set (compile, test, coverage). Surfaces the raw structured gate results JSON
+/// in <see cref="ClawEvalAgentOutput.EvalReport"/> so the evaluation harness
+/// can assert per-gate expectations.
 /// </summary>
-public class ClawEvalAgentWorkflow : WorkflowBase
+/// <remarks>
+/// Container-lifecycle branching mirrors <see cref="SimpleAgentWorkflow"/> (Fix #2).
+/// Evaluation harnesses typically own container lifecycle and pass a non-empty
+/// <c>ContainerId</c>; top-level HTTP dispatch supplies empty and the workflow
+/// spawns its own container (destroyed in <c>finally</c>).
+/// </remarks>
+[Workflow]
+public class ClawEvalAgentWorkflow
 {
-    protected override void Build(IWorkflowBuilder builder)
+    [WorkflowRun]
+    public async Task<ClawEvalAgentOutput> RunAsync(ClawEvalAgentInput input)
     {
-        builder.Name = "Claw Eval Agent";
-        builder.Description =
-            "Benchmark agent workflow: triage, context-gathering, and agent execution for evaluation";
-
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("AiAssistant", "claude");
-        var model = builder.WithVariable<string>("Model", "auto");
-        var modelPower = builder.WithVariable<int>("ModelPower", 0);
-
-        // Step 1: Triage to classify task difficulty
-        var triage = new TriageActivity
+        string containerId;
+        bool ownsContainer;
+        if (!string.IsNullOrWhiteSpace(input.ContainerId))
         {
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Id = "eval-triage"
-        };
-        Pos(triage, 400, 50);
-
-        // Step 2: Context gathering
-        var gatherContext = new AiAssistantActivity
+            containerId = input.ContainerId;
+            ownsContainer = false;
+        }
+        else
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Id = "eval-context"
-        };
-        Pos(gatherContext, 400, 220);
+            var spawnInput = new SpawnContainerInput(
+                SessionId: input.SessionId,
+                WorkspacePath: input.WorkspacePath,
+                EnableGui: false);
 
-        // Step 3a: Simple execution
-        var simpleExec = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
-            ModelPower = new Input<int>(modelPower),
-            Id = "eval-simple-exec"
-        };
-        Pos(simpleExec, 250, 390);
+            var spawn = await Workflow.ExecuteActivityAsync(
+                (DockerActivities a) => a.SpawnAsync(spawnInput),
+                ActivityProfiles.Container);
 
-        // Step 3b: Complex execution (uses Opus)
-        var complexExec = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(1),
-            Id = "eval-complex-exec"
-        };
-        Pos(complexExec, 550, 390);
+            containerId = spawn.ContainerId;
+            ownsContainer = true;
+        }
 
-        var flowchart = new Flowchart
+        try
         {
-            Id = "claw-eval-agent-flow",
-            Start = triage,
-            Activities = { triage, gatherContext, simpleExec, complexExec },
-            Connections =
+            // Step 1 — run the agent against the eval prompt.
+            var runInput = new RunCliAgentInput(
+                Prompt: input.Prompt,
+                ContainerId: containerId,
+                AiAssistant: input.AiAssistant,
+                Model: input.Model,
+                ModelPower: input.ModelPower,
+                WorkingDirectory: input.WorkspacePath,
+                SessionId: input.SessionId);
+
+            var run = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.RunCliAgentAsync(runInput),
+                ActivityProfiles.Long);
+
+            // Step 2 — run the full eval gate set (compile + test + coverage).
+            var verifyInput = new VerifyInput(
+                ContainerId: containerId,
+                WorkingDirectory: input.WorkspacePath,
+                EnabledGates: new[] { "compile", "test", "coverage" },
+                WorkerOutput: run.Response,
+                SessionId: input.SessionId);
+
+            var verify = await Workflow.ExecuteActivityAsync(
+                (VerifyActivities a) => a.RunGatesAsync(verifyInput),
+                ActivityProfiles.Verify);
+
+            return new ClawEvalAgentOutput(
+                Response: run.Response,
+                PassedEval: verify.AllPassed,
+                EvalReport: verify.GateResultsJson,
+                CostUsd: run.CostUsd);
+        }
+        finally
+        {
+            if (ownsContainer)
             {
-                // Triage Simple -> context gathering -> simple exec
-                new Connection(
-                    new Endpoint(triage, "Simple"),
-                    new Endpoint(gatherContext)),
-
-                // Triage Complex -> context gathering (same entry point)
-                new Connection(
-                    new Endpoint(triage, "Complex"),
-                    new Endpoint(gatherContext)),
-
-                // Context done -> simple execution (default path)
-                new Connection(
-                    new Endpoint(gatherContext, "Done"),
-                    new Endpoint(simpleExec)),
-
-                // Context failed -> simple execution anyway
-                new Connection(
-                    new Endpoint(gatherContext, "Failed"),
-                    new Endpoint(simpleExec)),
+                var destroyInput = new DestroyInput(containerId);
+                await Workflow.ExecuteActivityAsync(
+                    (DockerActivities a) => a.DestroyAsync(destroyInput),
+                    ActivityProfiles.ContainerCleanup);
             }
-        };
-
-        builder.Root = flowchart.WithAttachedVariables(builder);
+        }
     }
 }

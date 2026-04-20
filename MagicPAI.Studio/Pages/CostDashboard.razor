@@ -1,93 +1,88 @@
-@page "/magic/costs"
-@using MagicPAI.Shared.Models
-@using MagicPAI.Studio.Services
-@inject SessionApiClient Api
+@* MagicPAI.Studio/Pages/CostDashboard.razor — rewritten for Temporal. *@
+@page "/costs"
+@inject SessionApiClient SessionClient
 @inject SessionHubClient Hub
-
-<PageTitle>Cost Analytics</PageTitle>
-
-<div class="cost-dashboard">
-    <h2>Cost Analytics</h2>
-
-    <!-- Summary Cards -->
-    <div class="summary-cards">
-        <div class="summary-card">
-            <h4>Total Cost</h4>
-            <span class="big-number">$@totalCost.ToString("F4")</span>
-        </div>
-        <div class="summary-card">
-            <h4>Total Sessions</h4>
-            <span class="big-number">@sessions.Count</span>
-        </div>
-        <div class="summary-card">
-            <h4>Total Input Tokens</h4>
-            <span class="big-number">@totalInputTokens.ToString("N0")</span>
-        </div>
-        <div class="summary-card">
-            <h4>Total Output Tokens</h4>
-            <span class="big-number">@totalOutputTokens.ToString("N0")</span>
-        </div>
-    </div>
-
-    <!-- Per-Session Cost Table -->
-    <div class="cost-table card">
-        <h3>Cost by Session</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Session</th>
-                    <th>Agent</th>
-                    <th>State</th>
-                    <th>Cost (USD)</th>
-                    <th>Created</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var s in sessions.OrderByDescending(s => s.CreatedAt))
-                {
-                    <tr>
-                        <td>@(s.Id.Length > 8 ? s.Id[..8] : s.Id)...</td>
-                        <td>@s.Agent</td>
-                        <td><span class="status-badge @s.State.ToLowerInvariant()">@s.State</span></td>
-                        <td>$@s.TotalCostUsd.ToString("F4")</td>
-                        <td>@s.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</div>
-
 @implements IDisposable
 
+<PageTitle>Cost analytics</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Cost analytics</MudText>
+
+<MudGrid>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Total spend (7d)</MudText>
+            <MudText Typo="Typo.h4">@($"${_totalCost:F4}")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Sessions</MudText>
+            <MudText Typo="Typo.h4">@_sessions.Count</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Average cost / session</MudText>
+            <MudText Typo="Typo.h4">@($"${_avgCost:F4}")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Live increments</MudText>
+            <MudText Typo="Typo.h4">@_liveCount</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudPaper Class="pa-4 mt-6" Elevation="2">
+    <MudText Typo="Typo.h5" Class="mb-3">Cost by session</MudText>
+    <MudTable Items="@_sessions.OrderByDescending(s => s.StartTime)" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Session</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>Assistant</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Cost (USD)</MudTh>
+            <MudTh>Started</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                <MudLink Href="@($"/sessions/{context.SessionId}")">
+                    @(context.SessionId.Length > 12 ? context.SessionId[..12] + "…" : context.SessionId)
+                </MudLink>
+            </MudTd>
+            <MudTd>@context.WorkflowType</MudTd>
+            <MudTd>@context.AiAssistant</MudTd>
+            <MudTd><SessionStatusBadge Status="@context.Status" /></MudTd>
+            <MudTd>@($"${context.TotalCostUsd:F4}")</MudTd>
+            <MudTd>@context.StartTime.ToLocalTime().ToString("g")</MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
 @code {
-    private List<SessionInfo> sessions = new();
-    private decimal totalCost;
-    private int totalInputTokens;
-    private int totalOutputTokens;
+    private List<SessionSummary> _sessions = new();
+    private decimal _totalCost;
+    private decimal _avgCost;
+    private int _liveCount;
 
     protected override async Task OnInitializedAsync()
     {
-        Hub.OnCostUpdate += OnCostUpdate;
-        sessions = await Api.ListSessionsAsync();
-        totalCost = sessions.Sum(s => s.TotalCostUsd);
+        Hub.CostUpdate += OnCostUpdate;
+        _sessions = await SessionClient.ListAsync(take: 100);
+        _totalCost = _sessions.Sum(s => s.TotalCostUsd);
+        _avgCost = _sessions.Count == 0 ? 0 : _totalCost / _sessions.Count;
     }
 
-    private void OnCostUpdate(CostUpdateEvent e)
+    private void OnCostUpdate(CostEntry entry)
     {
-        var session = sessions.FirstOrDefault(s => s.Id == e.SessionId);
-        if (session is not null)
-        {
-            session.TotalCostUsd = e.TotalCostUsd;
-        }
-        totalCost = sessions.Sum(s => s.TotalCostUsd);
-        totalInputTokens += e.InputTokens;
-        totalOutputTokens += e.OutputTokens;
-        InvokeAsync(StateHasChanged);
+        _liveCount++;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     public void Dispose()
     {
-        Hub.OnCostUpdate -= OnCostUpdate;
+        Hub.CostUpdate -= OnCostUpdate;
     }
 }

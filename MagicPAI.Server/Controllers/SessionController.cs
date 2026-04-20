@@ -1,295 +1,371 @@
-using Elsa.Common.Models;
-using Elsa.Workflows.Models;
-using Elsa.Workflows.Management;
-using Elsa.Workflows.Runtime;
-using Elsa.Workflows.Runtime.Contracts;
-using Elsa.Workflows.Runtime.Requests;
-using MagicPAI.Core.Models;
-using MagicPAI.Core.Services;
+// MagicPAI.Server/Controllers/SessionController.cs
+// Temporal-unified session API per temporal.md §M.4 / §9.3. Dispatches every
+// workflow type via ITemporalClient.StartWorkflowAsync using strongly-typed
+// inputs built by SessionLaunchPlanner. Coexists with Elsa services
+// (IHostedService WorkflowPublisher, notification handlers) until Phase 3.
 using MagicPAI.Server.Bridge;
-using MagicPAI.Server.Hubs;
 using MagicPAI.Server.Services;
+using MagicPAI.Server.Workflows;
+using MagicPAI.Workflows.Contracts;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.DependencyInjection;
+using Temporalio.Client;
+using Temporalio.Common;
 
 namespace MagicPAI.Server.Controllers;
 
-/// <summary>
-/// REST API for session management. Provides endpoints for creating, listing,
-/// querying, stopping, and approving sessions.
-/// </summary>
 [ApiController]
 [Route("api/sessions")]
 public class SessionController : ControllerBase
 {
-    private readonly IWorkflowDispatcher _dispatcher;
-    private readonly IWorkflowDefinitionService _workflowDefinitionService;
-    private readonly IWorkflowCancellationDispatcher _cancellationDispatcher;
+    private readonly ITemporalClient _temporal;
+    private readonly WorkflowCatalog _catalog;
+    private readonly SessionLaunchPlanner _planner;
     private readonly SessionTracker _tracker;
-    private readonly SessionHistoryReader _historyReader;
-    private readonly IHubContext<SessionHub> _hubContext;
-    private readonly SessionLaunchPlanner _launchPlanner;
-    private readonly WorkflowPublisher _workflowPublisher;
-    private readonly ILogger<SessionController> _logger;
+    private readonly SessionHistoryReader _history;
+    private readonly MagicPaiMetrics _metrics;
+    private readonly ILogger<SessionController> _log;
 
     public SessionController(
-        IWorkflowDispatcher dispatcher,
-        IWorkflowDefinitionService workflowDefinitionService,
-        IWorkflowCancellationDispatcher cancellationDispatcher,
+        ITemporalClient temporal,
+        WorkflowCatalog catalog,
+        SessionLaunchPlanner planner,
         SessionTracker tracker,
-        SessionHistoryReader historyReader,
-        IHubContext<SessionHub> hubContext,
-        SessionLaunchPlanner launchPlanner,
-        WorkflowPublisher workflowPublisher,
-        ILogger<SessionController> logger)
+        SessionHistoryReader history,
+        MagicPaiMetrics metrics,
+        ILogger<SessionController> log)
     {
-        _dispatcher = dispatcher;
-        _workflowDefinitionService = workflowDefinitionService;
-        _cancellationDispatcher = cancellationDispatcher;
+        _temporal = temporal;
+        _catalog = catalog;
+        _planner = planner;
         _tracker = tracker;
-        _historyReader = historyReader;
-        _hubContext = hubContext;
-        _launchPlanner = launchPlanner;
-        _workflowPublisher = workflowPublisher;
-        _logger = logger;
+        _history = history;
+        _metrics = metrics;
+        _log = log;
     }
 
     /// <summary>
-    /// Create a new session by dispatching an Elsa workflow.
+    /// Start a Temporal workflow for the given request. Returns the workflow
+    /// id (used as session id) in an <see cref="AcceptedResult"/>.
     /// </summary>
     [HttpPost]
-    public async Task<ActionResult<CreateSessionResponse>> CreateSession(
-        [FromBody] CreateSessionRequest request)
+    public async Task<IActionResult> Create(
+        [FromBody] CreateSessionRequest req, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Prompt))
+        if (string.IsNullOrWhiteSpace(req.Prompt))
             return BadRequest(new { Message = "Prompt is required" });
+        if (string.IsNullOrWhiteSpace(req.WorkflowType))
+            return BadRequest(new { Message = "WorkflowType is required" });
 
-        await _workflowPublisher.InitializeAsync(HttpContext.RequestAborted);
-
-        var launch = _launchPlanner.Plan(
-            request.Prompt,
-            request.WorkspacePath,
-            request.AiAssistant,
-            request.Agent,
-            request.Model,
-            request.ModelPower ?? 0,
-            request.StructuredOutputSchema,
-            request.WorkflowName ?? "full-orchestrate");
-        var correlationId = Guid.NewGuid().ToString("N");
-        var instanceId = Guid.NewGuid().ToString("N");
-        var sessionInfo = new SessionInfo
+        SessionLaunchPlan plan;
+        try
         {
-            Id = instanceId,
-            WorkflowId = launch.RequestedWorkflowName,
-            State = "running",
-            Agent = launch.ResolvedAssistant,
-            PromptPreview = request.Prompt.Length > 100
-                ? request.Prompt[..100] + "..."
-                : request.Prompt,
-            CreatedAt = DateTime.UtcNow
+            plan = _planner.Plan(req);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
+
+        var workflowId = $"mpai-{Guid.NewGuid():N}";
+        var opts = new WorkflowOptions(workflowId, taskQueue: WorkflowCatalog.DefaultTaskQueue)
+        {
+            TaskTimeout = TimeSpan.FromMinutes(1),
+            TypedSearchAttributes = new SearchAttributeCollection.Builder()
+                .Set(SearchAttributeKey.CreateText("MagicPaiAiAssistant"), plan.AiAssistant)
+                .Set(SearchAttributeKey.CreateText("MagicPaiWorkflowType"), plan.WorkflowType)
+                .Set(SearchAttributeKey.CreateText("MagicPaiSessionKind"), plan.SessionKind)
+                .ToSearchAttributeCollection()
         };
-        _tracker.RegisterSession(instanceId, sessionInfo);
 
         try
         {
-            await DispatchWorkflowAsync(instanceId, launch.DefinitionId, correlationId, launch.Input, HttpContext.RequestAborted);
+            await StartWorkflowAsync(plan, workflowId, opts);
         }
-        catch
+        catch (Temporalio.Exceptions.RpcException ex)
         {
-            _tracker.RemoveSession(instanceId);
-            throw;
+            _log.LogError(ex, "Temporal dispatch failed for workflow {Workflow}", plan.WorkflowType);
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { Message = $"Failed to dispatch workflow: {ex.Message}" });
         }
 
-        _logger.LogInformation("Created session {SessionId}", instanceId);
+        _tracker.RegisterSession(workflowId, new SessionInfo
+        {
+            Id = workflowId,
+            WorkflowId = plan.WorkflowType,
+            State = "running",
+            Agent = plan.AiAssistant,
+            PromptPreview = req.Prompt.Length > 100
+                ? req.Prompt[..100] + "..."
+                : req.Prompt,
+            CreatedAt = DateTime.UtcNow
+        });
 
-        return Ok(new CreateSessionResponse(instanceId, sessionInfo.WorkflowId));
+        _metrics.SessionsStarted.Add(
+            1,
+            new KeyValuePair<string, object?>("workflow_type", plan.WorkflowType),
+            new KeyValuePair<string, object?>("ai_assistant", plan.AiAssistant));
+
+        _log.LogInformation(
+            "Session {Id} started; workflow type={Type} assistant={Assistant}",
+            workflowId, plan.WorkflowType, plan.AiAssistant);
+
+        return Accepted(
+            $"/api/sessions/{workflowId}",
+            new CreateSessionResponse(workflowId, plan.WorkflowType));
     }
 
-    /// <summary>
-    /// List all sessions.
-    /// </summary>
+    /// <summary>List recent sessions via Temporal visibility.</summary>
     [HttpGet]
-    public ActionResult<IReadOnlyCollection<SessionInfo>> ListSessions()
+    public async Task<IActionResult> List([FromQuery] int take = 100, CancellationToken ct = default)
     {
-        return Ok(_tracker.GetAllSessions());
+        var sessions = new List<SessionSummary>();
+        try
+        {
+            await foreach (var s in _history.ListRecentAsync(TimeSpan.FromDays(7), take, ct))
+                sessions.Add(s);
+        }
+        catch (Exception ex) when (ex is Temporalio.Exceptions.RpcException or HttpRequestException)
+        {
+            _log.LogWarning(ex, "Temporal visibility unavailable; falling back to tracker");
+        }
+
+        if (sessions.Count == 0)
+        {
+            // Fall back to the in-memory tracker for local/offline debug flows.
+            foreach (var info in _tracker.GetAllSessions())
+                sessions.Add(new SessionSummary(
+                    SessionId: info.Id,
+                    WorkflowType: info.WorkflowId ?? "unknown",
+                    Status: info.State ?? "unknown",
+                    StartTime: info.CreatedAt,
+                    CloseTime: null,
+                    AiAssistant: info.Agent ?? "",
+                    TotalCostUsd: info.TotalCostUsd));
+        }
+
+        return Ok(sessions);
     }
 
-    /// <summary>
-    /// Get a specific session's state and info.
-    /// </summary>
+    /// <summary>Get a single session's current state via DescribeAsync.</summary>
     [HttpGet("{id}")]
-    public async Task<ActionResult<SessionInfo>> GetSession(string id)
+    public async Task<IActionResult> Get(string id, CancellationToken ct)
     {
-        var session = await _historyReader.GetSessionAsync(
-            id,
-            _tracker.GetSession(id),
-            HttpContext.RequestAborted);
-        if (session is null)
-            return NotFound(new { Message = $"Session {id} not found" });
-
-        return Ok(session);
-    }
-
-    /// <summary>
-    /// Stop a running session by cancelling its workflow.
-    /// </summary>
-    [HttpDelete("{id}")]
-    public async Task<ActionResult> StopSession(string id)
-    {
-        var session = _tracker.GetSession(id);
-        if (session is null)
-            return NotFound(new { Message = $"Session {id} not found" });
-
-        var cancelRequest = new DispatchCancelWorkflowRequest
+        try
         {
-            WorkflowInstanceId = id
-        };
-
-        await _cancellationDispatcher.DispatchAsync(cancelRequest, CancellationToken.None);
-        _tracker.UpdateState(id, "cancelled");
-
-        await _hubContext.Clients.Group(id).SendAsync("sessionStateChanged",
-            new SessionStateEvent(id, "cancelled"));
-
-        _logger.LogInformation("Stopped session {SessionId}", id);
-
-        return Ok(new { Message = $"Session {id} cancelled" });
-    }
-
-    /// <summary>
-    /// Approve or reject a human-in-the-loop gate.
-    /// </summary>
-    [HttpPost("{id}/approve")]
-    public async Task<ActionResult> Approve(string id, [FromBody] ApprovalRequest request)
-    {
-        var session = _tracker.GetSession(id);
-        if (session is null)
-            return NotFound(new { Message = $"Session {id} not found" });
-
-        var resumeRequest = new DispatchWorkflowInstanceRequest(id)
-        {
-            BookmarkId = null, // Will resume the first available bookmark
-            Input = new Dictionary<string, object>
+            var h = _temporal.GetWorkflowHandle(id);
+            var desc = await h.DescribeAsync(
+                new WorkflowDescribeOptions { Rpc = new RpcOptions { CancellationToken = ct } });
+            return Ok(new
             {
-                ["Decision"] = request.Approved ? "approve" : "reject"
-            }
-        };
-
-        await _dispatcher.DispatchAsync(resumeRequest, CancellationToken.None);
-
-        _logger.LogInformation(
-            "Approval for session {SessionId}: {Decision}", id, request.Approved);
-
-        return Ok(new { Message = $"Approval processed for session {id}" });
-    }
-
-    /// <summary>
-    /// Get buffered output for a session.
-    /// </summary>
-    [HttpGet("{id}/output")]
-    public async Task<ActionResult<string[]>> GetOutput(string id)
-    {
-        var session = await _historyReader.GetSessionAsync(
-            id,
-            _tracker.GetSession(id),
-            HttpContext.RequestAborted);
-        if (session is null)
-            return NotFound(new { Message = $"Session {id} not found" });
-
-        return Ok(await _historyReader.GetOutputAsync(
-            id,
-            _tracker.GetOutput(id),
-            HttpContext.RequestAborted));
-    }
-
-    /// <summary>
-    /// Get tracked activity states for a session.
-    /// </summary>
-    [HttpGet("{id}/activities")]
-    public async Task<ActionResult<IReadOnlyList<ActivityState>>> GetActivities(string id)
-    {
-        var session = await _historyReader.GetSessionAsync(
-            id,
-            _tracker.GetSession(id),
-            HttpContext.RequestAborted);
-        if (session is null)
-            return NotFound(new { Message = $"Session {id} not found" });
-
-        return Ok(await _historyReader.GetActivitiesAsync(
-            id,
-            _tracker.GetActivities(id),
-            HttpContext.RequestAborted));
-    }
-
-    /// <summary>
-    /// Get tracked workflow insights for a session.
-    /// </summary>
-    [HttpGet("{id}/insights")]
-    public async Task<ActionResult<IReadOnlyList<TaskInsightEvent>>> GetInsights(string id)
-    {
-        var session = await _historyReader.GetSessionAsync(
-            id,
-            _tracker.GetSession(id),
-            HttpContext.RequestAborted);
-        if (session is null)
-            return NotFound(new { Message = $"Session {id} not found" });
-
-        return Ok(_tracker.GetInsights(id));
-    }
-
-    private async Task<string> DispatchWorkflowAsync(
-        string instanceId,
-        string definitionId,
-        string correlationId,
-        Dictionary<string, object> input,
-        CancellationToken cancellationToken)
-    {
-        var definitionVersionId = await ResolveDefinitionVersionIdAsync(definitionId, cancellationToken);
-        var request = new DispatchWorkflowDefinitionRequest
+                SessionId = id,
+                Status = desc.Status.ToString(),
+                WorkflowType = desc.WorkflowType,
+                StartTime = desc.StartTime,
+                CloseTime = desc.CloseTime,
+                RunId = desc.RunId,
+                TaskQueue = desc.TaskQueue
+            });
+        }
+        catch (Temporalio.Exceptions.RpcException ex)
+            when (ex.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound)
         {
-            DefinitionVersionId = definitionVersionId,
-            InstanceId = instanceId,
-            CorrelationId = correlationId,
-            Input = input
-        };
-
-        var response = await _dispatcher.DispatchAsync(request, cancellationToken);
-        response.ThrowIfFailed();
-        _logger.LogInformation(
-            "Dispatched workflow {DefinitionId} as instance {WorkflowInstanceId}",
-            definitionId,
-            instanceId);
-        return instanceId;
+            return NotFound(new { SessionId = id, Message = "Session not found" });
+        }
     }
 
-    private async Task<string> ResolveDefinitionVersionIdAsync(string definitionId, CancellationToken cancellationToken)
+    /// <summary>Request graceful cancellation.</summary>
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Cancel(string id, CancellationToken ct)
     {
-        if (!WorkflowCatalog.RequiresPublishedDefinitionDispatch(definitionId))
-            return WorkflowCatalog.ResolveDefinitionVersionId(definitionId);
-
-        var definition = await _workflowDefinitionService.FindWorkflowDefinitionAsync(
-            WorkflowDefinitionHandle.ByDefinitionId(definitionId, VersionOptions.Published),
-            cancellationToken);
-        return definition?.Id
-            ?? throw new InvalidOperationException(
-                $"No published workflow definition found for '{definitionId}'.");
+        try
+        {
+            var h = _temporal.GetWorkflowHandle(id);
+            await h.CancelAsync(new WorkflowCancelOptions
+            {
+                Rpc = new RpcOptions { CancellationToken = ct }
+            });
+            _tracker.UpdateState(id, "cancelled");
+            return NoContent();
+        }
+        catch (Temporalio.Exceptions.RpcException ex)
+            when (ex.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound)
+        {
+            return NotFound(new { SessionId = id, Message = "Session not found" });
+        }
     }
+
+    /// <summary>Force-terminate a workflow.</summary>
+    [HttpPost("{id}/terminate")]
+    public async Task<IActionResult> Terminate(
+        string id, [FromBody] TerminateRequest req, CancellationToken ct)
+    {
+        try
+        {
+            var h = _temporal.GetWorkflowHandle(id);
+            await h.TerminateAsync(
+                reason: req?.Reason ?? "Force terminated from API",
+                new WorkflowTerminateOptions
+                {
+                    Rpc = new RpcOptions { CancellationToken = ct }
+                });
+            _tracker.UpdateState(id, "terminated");
+            return NoContent();
+        }
+        catch (Temporalio.Exceptions.RpcException ex)
+            when (ex.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound)
+        {
+            return NotFound(new { SessionId = id, Message = "Session not found" });
+        }
+    }
+
+    /// <summary>Resume a paused workflow via ApproveGate / RejectGate signals.</summary>
+    [HttpPost("{id}/approve")]
+    public async Task<IActionResult> Approve(
+        string id, [FromBody] ApprovalRequest req, CancellationToken ct)
+    {
+        try
+        {
+            var h = _temporal.GetWorkflowHandle(id);
+            if (req.Approved)
+                await h.SignalAsync(
+                    "ApproveGate",
+                    new object[] { "api", req.Comment ?? "" },
+                    new WorkflowSignalOptions { Rpc = new RpcOptions { CancellationToken = ct } });
+            else
+                await h.SignalAsync(
+                    "RejectGate",
+                    new object[] { req.Comment ?? "rejected" },
+                    new WorkflowSignalOptions { Rpc = new RpcOptions { CancellationToken = ct } });
+
+            return Ok(new { Message = $"Approval processed for session {id}", Approved = req.Approved });
+        }
+        catch (Temporalio.Exceptions.RpcException ex)
+            when (ex.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound)
+        {
+            return NotFound(new { SessionId = id, Message = "Session not found" });
+        }
+    }
+
+    /// <summary>Expose the Temporal workflow catalog for Studio form rendering.</summary>
+    [HttpGet("/api/workflows")]
+    public IActionResult ListWorkflows() =>
+        Ok(_catalog.UserVisible.Select(e => new
+        {
+            e.WorkflowTypeName,
+            e.DisplayName,
+            e.Description,
+            e.Category,
+            e.SortOrder,
+            e.RequiresAiAssistant,
+            e.SupportedModels
+        }));
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Internal helpers
+    // ───────────────────────────────────────────────────────────────────────
+
+    private async Task<WorkflowHandle> StartWorkflowAsync(
+        SessionLaunchPlan plan, string workflowId, WorkflowOptions opts) =>
+        plan.WorkflowType switch
+        {
+            "SimpleAgent" => await _temporal.StartWorkflowAsync(
+                (SimpleAgentWorkflow wf) => wf.RunAsync(_planner.AsSimpleAgentInput(plan, workflowId)),
+                opts),
+            "FullOrchestrate" => await _temporal.StartWorkflowAsync(
+                (FullOrchestrateWorkflow wf) => wf.RunAsync(_planner.AsFullOrchestrateInput(plan, workflowId)),
+                opts),
+            "DeepResearchOrchestrate" => await _temporal.StartWorkflowAsync(
+                (DeepResearchOrchestrateWorkflow wf) => wf.RunAsync(_planner.AsDeepResearchInput(plan, workflowId)),
+                opts),
+            "StandardOrchestrate" => await _temporal.StartWorkflowAsync(
+                (StandardOrchestrateWorkflow wf) => wf.RunAsync(_planner.AsStandardInput(plan, workflowId)),
+                opts),
+            "OrchestrateSimplePath" => await _temporal.StartWorkflowAsync(
+                (OrchestrateSimplePathWorkflow wf) => wf.RunAsync(_planner.AsOrchestrateSimplePathInput(plan, workflowId)),
+                opts),
+            "OrchestrateComplexPath" => await _temporal.StartWorkflowAsync(
+                (OrchestrateComplexPathWorkflow wf) => wf.RunAsync(_planner.AsOrchestrateComplexPathInput(plan, workflowId)),
+                opts),
+            "PromptEnhancer" => await _temporal.StartWorkflowAsync(
+                (PromptEnhancerWorkflow wf) => wf.RunAsync(_planner.AsPromptEnhancerInput(plan, workflowId)),
+                opts),
+            "ContextGatherer" => await _temporal.StartWorkflowAsync(
+                (ContextGathererWorkflow wf) => wf.RunAsync(_planner.AsContextGathererInput(plan, workflowId)),
+                opts),
+            "PromptGrounding" => await _temporal.StartWorkflowAsync(
+                (PromptGroundingWorkflow wf) => wf.RunAsync(_planner.AsPromptGroundingInput(plan, workflowId)),
+                opts),
+            "ResearchPipeline" => await _temporal.StartWorkflowAsync(
+                (ResearchPipelineWorkflow wf) => wf.RunAsync(_planner.AsResearchPipelineInput(plan, workflowId)),
+                opts),
+            "PostExecutionPipeline" => await _temporal.StartWorkflowAsync(
+                (PostExecutionPipelineWorkflow wf) => wf.RunAsync(_planner.AsPostExecInput(plan, workflowId)),
+                opts),
+            "WebsiteAuditCore" => await _temporal.StartWorkflowAsync(
+                (WebsiteAuditCoreWorkflow wf) => wf.RunAsync(_planner.AsWebsiteCoreInput(plan, workflowId)),
+                opts),
+            "WebsiteAuditLoop" => await _temporal.StartWorkflowAsync(
+                (WebsiteAuditLoopWorkflow wf) => wf.RunAsync(_planner.AsWebsiteLoopInput(plan, workflowId)),
+                opts),
+            "VerifyAndRepair" => await _temporal.StartWorkflowAsync(
+                (VerifyAndRepairWorkflow wf) => wf.RunAsync(_planner.AsVerifyRepairInput(plan, workflowId)),
+                opts),
+            "ClawEvalAgent" => await _temporal.StartWorkflowAsync(
+                (ClawEvalAgentWorkflow wf) => wf.RunAsync(_planner.AsClawEvalInput(plan, workflowId)),
+                opts),
+            "ComplexTaskWorker" => await _temporal.StartWorkflowAsync(
+                (ComplexTaskWorkerWorkflow wf) => wf.RunAsync(_planner.AsComplexTaskWorkerInput(plan, workflowId)),
+                opts),
+            _ => throw new ArgumentException($"Unknown workflow type: {plan.WorkflowType}")
+        };
 
 }
 
-// --- Request/Response DTOs ---
+// ───────────────────────────────────────────────────────────────────────────
+// Request / Response records
+// ───────────────────────────────────────────────────────────────────────────
 
+/// <summary>
+/// Generic request for creating a session. Workflow-specific optional
+/// parameters (SectionId, EvalTaskId, Gates, etc.) are carried here so the
+/// typed planner converters can project them into the appropriate input
+/// record. Null when not applicable.
+/// </summary>
 public record CreateSessionRequest(
     string Prompt,
-    string? WorkspacePath = null,
+    string WorkflowType = "FullOrchestrate",
     string? AiAssistant = null,
-    string? Agent = null,
     string? Model = null,
-    int? ModelPower = null,
-    string? StructuredOutputSchema = null,
-    string? WorkflowName = null);
+    int ModelPower = 0,
+    string? WorkspacePath = null,
+    bool? EnableGui = null,
 
-public record CreateSessionResponse(string SessionId, string? WorkflowId);
+    // Workflow-specific passthroughs ────────────────────────────────────────
+    string? SectionId = null,
+    IReadOnlyList<string>? SectionIds = null,
+    string? EvalTaskId = null,
+    string? TaskId = null,
+    IReadOnlyList<string>? DependsOn = null,
+    IReadOnlyList<string>? FilesTouched = null,
+    string? ParentSessionId = null,
+    string? ContainerId = null,
+    string? WorkerOutput = null,
+    IReadOnlyList<string>? Gates = null,
+    int? MaxRepairAttempts = null,
+    // FullOrchestrate HITL gate passthrough — when true, the workflow parks
+    // after triage and awaits an ApproveGate/RejectGate signal.
+    bool? RequireTriageApproval = null,
+    int? GateApprovalTimeoutHours = null,
+    // Triage complexity threshold (1–10) — lower values force more prompts
+    // down the complex-path branch (decomposition). Default 7.
+    int? ComplexityThreshold = null,
+    // SimpleAgent coverage-fast-path — skip GradeCoverage call when all gates
+    // pass on first verify. Saves ~5-10s per successful run.
+    bool? SkipCoverageWhenGatesPass = null,
+    Dictionary<string, string>? CustomParams = null);
 
-public record ApprovalRequest(bool Approved);
+public record CreateSessionResponse(string SessionId, string WorkflowType);
+
+public record ApprovalRequest(bool Approved, string? Comment = null);
+
+public record TerminateRequest(string? Reason);

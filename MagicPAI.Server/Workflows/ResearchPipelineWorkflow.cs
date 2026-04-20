@@ -1,100 +1,83 @@
-using Elsa.Extensions;
-using Elsa.Workflows;
-using Elsa.Workflows.Activities.Flowchart.Activities;
-using Elsa.Workflows.Activities.Flowchart.Models;
-using Elsa.Workflows.Models;
+// MagicPAI.Server/Workflows/Temporal/ResearchPipelineWorkflow.cs
+// Temporal port of the Elsa ResearchPipelineWorkflow. Thin wrapper around the
+// ResearchPromptAsync activity using the strongest model (ModelPower=1) so that
+// research quality is maximized; this differs from the default ModelPower=2
+// used by FullOrchestrate's inline research. See temporal.md §H.8.
+using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
+using MagicPAI.Activities.Contracts;
+using MagicPAI.Activities.Docker;
+using MagicPAI.Workflows;
+using MagicPAI.Workflows.Contracts;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Research-first orchestration pipeline:
-/// run the research component, triage, then route to simple or complex execution.
+/// Runs <see cref="AiActivities.ResearchPromptAsync"/> against an existing
+/// container and returns the researched prompt + context. Uses ModelPower=1
+/// (strongest model) since deep research is the whole point of this workflow.
 /// </summary>
-public class ResearchPipelineWorkflow : WorkflowBase
+/// <remarks>
+/// Container-lifecycle branching mirrors <see cref="SimpleAgentWorkflow"/> (Fix #2).
+/// When dispatched top-level via HTTP, <c>ContainerId</c> is empty and the
+/// workflow spawns its own container (destroyed in <c>finally</c>). When nested,
+/// it reuses the caller's container.
+/// </remarks>
+[Workflow]
+public class ResearchPipelineWorkflow
 {
-    protected override void Build(IWorkflowBuilder builder)
+    [WorkflowRun]
+    public async Task<ResearchPipelineOutput> RunAsync(ResearchPipelineInput input)
     {
-        builder.Name = "Research Pipeline";
-        builder.Description =
-            "Research-first orchestration: ground the prompt, triage it, then route to execution";
-
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var containerId = builder.WithVariable<string>("ContainerId", "");
-        var agent = builder.WithVariable<string>("AiAssistant", "claude");
-        var model = builder.WithVariable<string>("Model", "auto");
-        var modelPower = builder.WithVariable<int>("ModelPower", 0);
-        var researchedPrompt = builder.WithVariable<string>("ResearchedPrompt", "");
-
-        Input<string> resolveBestPrompt() => new(ctx =>
-            string.IsNullOrWhiteSpace(ctx.GetVariable<string>("ResearchedPrompt"))
-                ? ctx.GetVariable<string>("Prompt") ?? ""
-                : ctx.GetVariable<string>("ResearchedPrompt") ?? "");
-
-        var researchPrompt = new ResearchPromptActivity
+        string containerId;
+        bool ownsContainer;
+        if (!string.IsNullOrWhiteSpace(input.ContainerId))
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            EnhancedPrompt = new Output<string>(researchedPrompt),
-            Id = "research-prompt"
-        };
-        Pos(researchPrompt, 400, 50);
-
-        var triage = new TriageActivity
+            containerId = input.ContainerId;
+            ownsContainer = false;
+        }
+        else
         {
-            Prompt = resolveBestPrompt(),
-            ContainerId = new Input<string>(containerId),
-            Id = "research-triage"
-        };
-        Pos(triage, 400, 220);
+            var spawnInput = new SpawnContainerInput(
+                SessionId: input.SessionId,
+                WorkspacePath: input.WorkingDirectory,
+                EnableGui: false);
 
-        var simpleAgent = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(agent),
-            Prompt = resolveBestPrompt(),
-            ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(model),
-            ModelPower = new Input<int>(modelPower),
-            Id = "research-simple-exec"
-        };
-        Pos(simpleAgent, 200, 390);
+            var spawn = await Workflow.ExecuteActivityAsync(
+                (DockerActivities a) => a.SpawnAsync(spawnInput),
+                ActivityProfiles.Container);
 
-        var architect = new ArchitectActivity
-        {
-            Prompt = resolveBestPrompt(),
-            ContainerId = new Input<string>(containerId),
-            Id = "research-architect"
-        };
-        Pos(architect, 600, 390);
+            containerId = spawn.ContainerId;
+            ownsContainer = true;
+        }
 
-        var complexAgent = new AiAssistantActivity
+        try
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = resolveBestPrompt(),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(1),
-            Id = "research-complex-exec"
-        };
-        Pos(complexAgent, 600, 560);
+            var researchInput = new ResearchPromptInput(
+                Prompt: input.Prompt,
+                AiAssistant: input.AiAssistant,
+                ContainerId: containerId,
+                ModelPower: 1,
+                SessionId: input.SessionId);
 
-        var flowchart = new Flowchart
+            var research = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.ResearchPromptAsync(researchInput),
+                ActivityProfiles.Long);
+
+            return new ResearchPipelineOutput(
+                ResearchedPrompt: research.EnhancedPrompt,
+                ResearchContext: research.ResearchContext,
+                CostUsd: 0m);
+        }
+        finally
         {
-            Id = "research-pipeline-flow",
-            Start = researchPrompt,
-            Activities = { researchPrompt, triage, simpleAgent, architect, complexAgent },
-            Connections =
+            if (ownsContainer)
             {
-                new Connection(new Endpoint(researchPrompt, "Done"), new Endpoint(triage)),
-                new Connection(new Endpoint(researchPrompt, "Failed"), new Endpoint(triage)),
-
-                new Connection(new Endpoint(triage, "Simple"), new Endpoint(simpleAgent)),
-                new Connection(new Endpoint(triage, "Complex"), new Endpoint(architect)),
-                new Connection(new Endpoint(architect, "Done"), new Endpoint(complexAgent)),
+                var destroyInput = new DestroyInput(containerId);
+                await Workflow.ExecuteActivityAsync(
+                    (DockerActivities a) => a.DestroyAsync(destroyInput),
+                    ActivityProfiles.ContainerCleanup);
             }
-        };
-
-        builder.Root = flowchart.WithAttachedVariables(builder);
+        }
     }
 }

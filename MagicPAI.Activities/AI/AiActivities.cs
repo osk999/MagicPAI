@@ -1,0 +1,1188 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Temporalio.Activities;
+using Temporalio.Exceptions;
+using MagicPAI.Activities.Contracts;
+using MagicPAI.Core.Config;
+using MagicPAI.Core.Models;
+using MagicPAI.Core.Services;
+using MagicPAI.Core.Services.Auth;
+
+namespace MagicPAI.Activities.AI;
+
+/// <summary>
+/// Temporal activity group for AI CLI agent orchestration.
+/// Day 3 scope: <see cref="RunCliAgentAsync"/>.
+/// Day 4 adds <see cref="TriageAsync"/>, <see cref="ClassifyAsync"/>,
+/// <see cref="RouteModelAsync"/>, <see cref="EnhancePromptAsync"/>.
+/// Day 5+ adds Architect, ResearchPrompt, ClassifyWebsiteTask, GradeCoverage.
+/// See temporal.md §7.8 and §I.1 for the full spec.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The reference template in temporal.md §7.8 assumes
+/// <c>IContainerManager.ExecStreamingAsync</c> returns an
+/// <see cref="IAsyncEnumerable{T}"/> of lines. The real MagicPAI API is
+/// callback-based (<c>onOutput</c> + <see cref="TimeSpan"/> timeout), identical
+/// to the shape already handled in <see cref="Docker.DockerActivities.StreamAsync"/>.
+/// We re-use that adaptation pattern here: split chunks by newline in the callback,
+/// run line accounting / heartbeating / SignalR fan-out inside the callback, and
+/// let <see cref="IContainerManager.ExecStreamingAsync(string, ContainerExecRequest, Action{string}, TimeSpan, CancellationToken)"/>
+/// own the process lifecycle (including cancellation).
+/// </para>
+/// <para>
+/// Auth recovery: if the raw output matches known auth-error patterns
+/// (see <see cref="AuthErrorDetector"/>), we attempt credential refresh via
+/// <see cref="AuthRecoveryService"/> and inject the fresh credentials into the
+/// container. We then throw a <i>retryable</i> <see cref="ApplicationFailureException"/>
+/// of type <c>"AuthRefreshed"</c> so Temporal schedules another attempt with
+/// the new credentials. If recovery fails, we throw a non-retryable
+/// <c>"AuthError"</c> so the workflow fails fast (retrying would just fail again).
+/// </para>
+/// </remarks>
+public class AiActivities
+{
+    private readonly ICliAgentFactory _factory;
+    private readonly IContainerManager _docker;
+    private readonly ISessionStreamSink _sink;
+    private readonly AuthRecoveryService _auth;
+    private readonly MagicPaiConfig _config;
+    private readonly ILogger<AiActivities> _log;
+
+    public AiActivities(
+        ICliAgentFactory factory,
+        IContainerManager docker,
+        ISessionStreamSink sink,
+        AuthRecoveryService auth,
+        MagicPaiConfig config,
+        ILogger<AiActivities>? log = null)
+    {
+        _factory = factory;
+        _docker = docker;
+        _sink = sink;
+        _auth = auth;
+        _config = config;
+        _log = log ?? NullLogger<AiActivities>.Instance;
+    }
+
+    [Activity]
+    public async Task<RunCliAgentOutput> RunCliAgentAsync(RunCliAgentInput input)
+    {
+        var ctx = ActivityExecutionContext.Current;
+        var ct = ctx.CancellationToken;
+
+        // Resume marker: on retry, skip output we already streamed.
+        var resumeOffset = 0;
+        if (ctx.Info.HeartbeatDetails.Count > 0)
+        {
+            try
+            {
+                resumeOffset = await ctx.Info.HeartbeatDetailAtAsync<int>(0);
+            }
+            catch
+            {
+                resumeOffset = 0;
+            }
+        }
+
+        var assistantName = AiAssistantResolver.NormalizeAssistant(
+            input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+        var resolvedModel = ResolveModel(input, runner);
+
+        var request = new AgentRequest
+        {
+            Prompt = input.Prompt,
+            Model = resolvedModel,
+            OutputSchema = string.IsNullOrWhiteSpace(input.StructuredOutputSchema)
+                ? null : input.StructuredOutputSchema,
+            WorkDir = NormalizeContainerWorkDir(input.WorkingDirectory),
+            // CLI session ID is a CLI-provider UUID (Claude/Codex/Gemini), NOT the MagicPAI workflow ID.
+            // Only pass it when the workflow has received one from a prior activity invocation.
+            SessionId = input.AssistantSessionId,
+        };
+
+        var plan = runner.BuildExecutionPlan(request);
+
+        // Run any one-time setup commands (e.g., workspace init) before the main call.
+        foreach (var setup in plan.SetupRequests ?? [])
+        {
+            var setupResult = await _docker.ExecAsync(input.ContainerId, setup, ct);
+            if (setupResult.ExitCode != 0)
+                throw new ApplicationFailureException(
+                    $"Failed to prepare assistant execution: {setupResult.Error}",
+                    errorType: "SetupError",
+                    nonRetryable: false);
+        }
+
+        var lineCount = 0;
+        var captured = new StringBuilder();
+        var timeout = TimeSpan.FromMinutes(Math.Max(1, input.InactivityTimeoutMinutes));
+
+        void OnOutput(string chunk)
+        {
+            // Callback surface: chunks may hold multiple lines. We split by \n and
+            // perform heartbeating / sink fan-out per line, mirroring the temporal.md
+            // §7.8 template (which assumes an IAsyncEnumerable<string> per line).
+            foreach (var line in chunk.Split('\n'))
+            {
+                if (string.IsNullOrEmpty(line)) continue;
+                lineCount++;
+                if (lineCount <= resumeOffset) continue;
+
+                captured.AppendLine(line);
+
+                if (input.SessionId is not null)
+                {
+                    // Fire-and-forget: SignalR emit is best-effort. Do not fail the
+                    // activity if the sink is offline; the line still counts toward
+                    // the captured buffer and the heartbeat offset.
+                    try
+                    {
+                        _sink.EmitChunkAsync(input.SessionId, line, ct)
+                            .GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogDebug(ex, "Sink emit failed for {SessionId}", input.SessionId);
+                    }
+                }
+
+                if (lineCount % 20 == 0)
+                    ctx.Heartbeat(lineCount);
+            }
+        }
+
+        ExecResult result;
+        try
+        {
+            result = await _docker.ExecStreamingAsync(
+                input.ContainerId,
+                plan.MainRequest,
+                OnOutput,
+                timeout,
+                ct);
+        }
+        catch (OperationCanceledException)
+        {
+            _log.LogInformation("RunCliAgent cancelled at line {Line}", lineCount);
+            throw;
+        }
+
+        var raw = captured.ToString();
+        // Fall back to ExecResult.Output if the callback did not observe any chunks
+        // (some container managers may only report on stream close).
+        if (raw.Length == 0 && !string.IsNullOrEmpty(result.Output))
+            raw = result.Output;
+
+        // Auth recovery path — detect → recover → inject → retry via Temporal.
+        if (AuthErrorDetector.ContainsAuthError(raw)
+            || AuthErrorDetector.ContainsAuthError(result.Error))
+        {
+            _log.LogWarning("Auth error detected; attempting credential recovery");
+            var (recovered, authError, credsJson) = await _auth.RecoverAuthAsync(ct);
+            if (recovered && !string.IsNullOrEmpty(credsJson))
+            {
+                await CredentialInjector.InjectAsync(input.ContainerId, credsJson, ct);
+                // Retryable: Temporal will re-run the activity with fresh creds.
+                throw new ApplicationFailureException(
+                    "Auth recovered; retrying",
+                    errorType: "AuthRefreshed",
+                    nonRetryable: false);
+            }
+
+            // When no AuthServiceUrl is configured we have no way to refresh
+            // credentials — but the "auth error pattern" detection is heuristic
+            // and often fires on Claude's own narration of auth concepts (false
+            // positives). Rather than fail the whole workflow non-retryably,
+            // log a warning and let the output flow through as-is. The operator
+            // can configure AuthServiceUrl in production for true expired-token
+            // handling; in dev we don't want a spurious content match to abort.
+            if (string.Equals(authError, "AuthServiceUrl not configured", StringComparison.Ordinal))
+            {
+                _log.LogWarning(
+                    "Auth-like pattern in CLI output but AuthServiceUrl not configured; treating as content, not failure. Session={SessionId}",
+                    input.SessionId);
+                // fall through to normal parse path below
+            }
+            else
+            {
+                // Non-retryable: retrying without fresh creds will just fail again.
+                throw new ApplicationFailureException(
+                    $"Auth recovery failed: {authError ?? "no details"}",
+                    errorType: "AuthError",
+                    nonRetryable: true);
+            }
+        }
+
+        // Parse the raw response. Keep parse failures soft — we still return the
+        // raw output to the caller so downstream can inspect/log it.
+        CliAgentResponse parsed;
+        try
+        {
+            parsed = runner.ParseResponse(raw);
+        }
+        catch (Exception parseEx)
+        {
+            _log.LogWarning(parseEx, "ParseResponse threw; returning raw output");
+            parsed = new CliAgentResponse(
+                Success: false,
+                Output: raw,
+                CostUsd: 0m,
+                FilesModified: Array.Empty<string>(),
+                InputTokens: 0,
+                OutputTokens: 0,
+                SessionId: null);
+        }
+
+        var response = !string.IsNullOrWhiteSpace(parsed.Output)
+            ? parsed.Output
+            : raw;
+
+        // Cap the return-value Response at 8 KB. The full raw output is already
+        // streamed to SignalR chunk-by-chunk via ISessionStreamSink during the
+        // run; Temporal's event history doesn't need it and a multi-hundred-KB
+        // activity return value bloats history across replays and visibility.
+        // The head of the output is the "final assistant message" which is the
+        // actionable part; everything before it is tool_use/stream_event
+        // framing that the SignalR consumer already received live.
+        const int MaxHistoryBytes = 8 * 1024;
+        var truncatedResponse = TruncateForHistory(response, MaxHistoryBytes);
+
+        return new RunCliAgentOutput(
+            Response: truncatedResponse,
+            StructuredOutputJson: parsed.StructuredOutputJson,
+            Success: result.ExitCode == 0 && parsed.Success,
+            CostUsd: parsed.CostUsd,
+            InputTokens: parsed.InputTokens,
+            OutputTokens: parsed.OutputTokens,
+            FilesModified: parsed.FilesModified ?? Array.Empty<string>(),
+            ExitCode: result.ExitCode,
+            AssistantSessionId: parsed.SessionId);
+    }
+
+    /// <summary>
+    /// Truncates a response string to fit comfortably in Temporal history.
+    /// Keeps the tail (last N bytes) because the final model message usually
+    /// lives at the end of the stream-json output; prepends a marker so
+    /// consumers know the truncation happened.
+    /// </summary>
+    internal static string TruncateForHistory(string? value, int maxBytes)
+    {
+        if (string.IsNullOrEmpty(value)) return value ?? "";
+        var utf8 = System.Text.Encoding.UTF8;
+        var bytes = utf8.GetByteCount(value);
+        if (bytes <= maxBytes) return value;
+
+        // Byte-window of tail to keep; floor at 1024 bytes so the result is
+        // still useful for short maxBytes. Reserve ~256 bytes for the header.
+        var targetTailBytes = Math.Max(1024, maxBytes - 256);
+
+        // Walk the string from the end and accumulate chars until the tail
+        // reaches ~targetTailBytes. This works for multi-byte UTF-8 (e.g. emoji,
+        // accented chars) where char-count and byte-count diverge.
+        var tailBytes = 0;
+        var takeFrom = value.Length;
+        while (takeFrom > 0)
+        {
+            var ch = value[takeFrom - 1];
+            // Approximate UTF-8 byte size: ASCII=1, BMP non-ASCII=~3, surrogate pair=~4.
+            var chBytes = ch < 0x80 ? 1 : ch < 0x800 ? 2 : 3;
+            if (tailBytes + chBytes > targetTailBytes) break;
+            tailBytes += chBytes;
+            takeFrom--;
+        }
+        var tail = value[takeFrom..];
+        var header = $"[truncated {bytes} bytes → keeping last {utf8.GetByteCount(tail)}]\n";
+
+        // Paranoia: if the header+tail somehow exceeds the original byte count
+        // (happens for very-multi-byte input with tiny maxBytes), return the
+        // input unchanged — never make the payload larger than the source.
+        var resultBytes = utf8.GetByteCount(header) + utf8.GetByteCount(tail);
+        if (resultBytes >= bytes) return value;
+        return header + tail;
+    }
+
+    /// <summary>
+    /// Day 4 — classify a coding task's complexity (1-10), bucket it into a category,
+    /// and recommend a model power. Runs under a cheap model (power=3) by default.
+    /// Falls back to a deterministic heuristic when the agent fails or returns
+    /// unparsable JSON, so the caller can always proceed. temporal.md §I.1.
+    /// </summary>
+    [Activity]
+    public async Task<TriageOutput> TriageAsync(TriageInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "Triage requires a ContainerId; AI agents always run inside a worker container.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+
+        var assistantName = AiAssistantResolver.NormalizeAssistant(input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+        var triagePrompt = BuildTriagePrompt(input.Prompt, input.ClassificationInstructions);
+        var schema = SchemaGenerator.FromType<TriageResult>();
+
+        var request = new AgentRequest
+        {
+            Prompt = triagePrompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, 3),
+            OutputSchema = schema,
+            WorkDir = _config.ContainerWorkDir ?? "/workspace",
+            SessionId = null /* fresh Claude session — continuity only in RunCliAgentAsync */
+        };
+
+        var plan = runner.BuildExecutionPlan(request);
+
+        foreach (var setup in plan.SetupRequests ?? [])
+            await _docker.ExecAsync(input.ContainerId, setup, ct);
+
+        TriageResult parsed;
+        try
+        {
+            var result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+
+            // Auth recovery: retry once if auth error detected on the first attempt.
+            if (result.ExitCode != 0
+                && AuthErrorDetector.ContainsAuthError((result.Output ?? "") + (result.Error ?? "")))
+            {
+                _log.LogWarning("Triage auth error detected; attempting credential recovery");
+                var (recovered, authError, credsJson) = await _auth.RecoverAuthAsync(ct);
+                if (recovered && !string.IsNullOrEmpty(credsJson))
+                {
+                    await CredentialInjector.InjectAsync(input.ContainerId, credsJson, ct);
+                    result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+                }
+                else
+                {
+                    _log.LogWarning("Triage auth recovery failed: {Error}", authError);
+                }
+            }
+
+            if (result.ExitCode != 0)
+            {
+                _log.LogWarning(
+                    "Triage agent exited with code {ExitCode}; falling back. Error: {Error}",
+                    result.ExitCode, Truncate(result.Error));
+                parsed = FallbackTriageResult(input.Prompt);
+            }
+            else
+            {
+                var parsedResp = runner.ParseResponse(result.Output ?? "");
+                parsed = ParseTriageJson(parsedResp.Output ?? result.Output ?? "");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "Triage threw; falling back");
+            parsed = FallbackTriageResult(input.Prompt);
+        }
+
+        var recommendedModel = AiAssistantResolver.ResolveModelForPower(
+            runner, _config, parsed.RecommendedModelPower);
+        var isComplex = parsed.Complexity >= input.ComplexityThreshold;
+
+        return new TriageOutput(
+            Complexity: parsed.Complexity,
+            Category: parsed.Category,
+            RecommendedModel: recommendedModel,
+            RecommendedModelPower: parsed.RecommendedModelPower,
+            NeedsDecomposition: parsed.NeedsDecomposition,
+            IsComplex: isComplex);
+    }
+
+    /// <summary>
+    /// Day 4 — binary classifier: asks the agent a yes/no question about the
+    /// prompt and returns { result, confidence, rationale }. Falls back to
+    /// { false, 0, "parse-failure" } on any error. temporal.md §I.1.
+    /// </summary>
+    [Activity]
+    public async Task<ClassifierOutput> ClassifyAsync(ClassifierInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "Classify requires a ContainerId; AI agents always run inside a worker container.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+
+        var assistantName = AiAssistantResolver.NormalizeAssistant(input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+        var prompt = $"""
+            Answer yes or no with rationale:
+            Question: {input.ClassificationQuestion}
+            Content: {input.Prompt}
+            """;
+
+        var schema = """
+            {"type":"object","properties":{"result":{"type":"boolean"},"confidence":{"type":"number"},"rationale":{"type":"string"}},"required":["result","rationale"],"additionalProperties":false}
+            """;
+
+        var modelPower = input.ModelPower > 0 ? input.ModelPower : 3;
+
+        var request = new AgentRequest
+        {
+            Prompt = prompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, modelPower),
+            OutputSchema = schema,
+            WorkDir = _config.ContainerWorkDir ?? "/workspace",
+            SessionId = null /* fresh Claude session — continuity only in RunCliAgentAsync */
+        };
+
+        var plan = runner.BuildExecutionPlan(request);
+
+        foreach (var setup in plan.SetupRequests ?? [])
+            await _docker.ExecAsync(input.ContainerId, setup, ct);
+
+        ExecResult result;
+        try
+        {
+            result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+
+            if (result.ExitCode != 0
+                && AuthErrorDetector.ContainsAuthError((result.Output ?? "") + (result.Error ?? "")))
+            {
+                _log.LogWarning("Classify auth error detected; attempting credential recovery");
+                var (recovered, authError, credsJson) = await _auth.RecoverAuthAsync(ct);
+                if (recovered && !string.IsNullOrEmpty(credsJson))
+                {
+                    await CredentialInjector.InjectAsync(input.ContainerId, credsJson, ct);
+                    result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+                }
+                else
+                {
+                    _log.LogWarning("Classify auth recovery failed: {Error}", authError);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "Classify threw; returning parse-failure fallback");
+            return new ClassifierOutput(Result: false, Confidence: 0m, Rationale: "parse-failure");
+        }
+
+        try
+        {
+            var parsedResp = runner.ParseResponse(result.Output ?? "");
+            var body = !string.IsNullOrWhiteSpace(parsedResp.StructuredOutputJson)
+                ? parsedResp.StructuredOutputJson!
+                : parsedResp.Output ?? result.Output ?? "{}";
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            return new ClassifierOutput(
+                Result: root.TryGetProperty("result", out var r) && r.GetBoolean(),
+                Confidence: root.TryGetProperty("confidence", out var c) ? (decimal)c.GetDouble() : 0.5m,
+                Rationale: root.TryGetProperty("rationale", out var rat) ? rat.GetString() ?? "" : "");
+        }
+        catch
+        {
+            return new ClassifierOutput(Result: false, Confidence: 0m, Rationale: "parse-failure");
+        }
+    }
+
+    /// <summary>
+    /// Day 4 — pure CPU model router. No container required, no AI call. Maps
+    /// (complexity, preferredAgent) to a concrete (agent, model) pair using
+    /// the configured model-power map. temporal.md §I.1.
+    /// </summary>
+    [Activity]
+    public Task<RouteModelOutput> RouteModelAsync(RouteModelInput input)
+    {
+        var agentName = !string.IsNullOrWhiteSpace(input.PreferredAgent)
+            ? input.PreferredAgent!
+            : _config.DefaultAgent;
+        var normalized = AiAssistantResolver.NormalizeAssistant(agentName, _config.DefaultAgent);
+        var power = input.Complexity switch
+        {
+            >= 8 => 1,      // opus / gpt-5.4 — strongest
+            >= 4 => 2,      // sonnet / gpt-5.3-codex — balanced
+            _    => 3       // haiku / gemini-flash — cheapest
+        };
+        var runner = _factory.Create(normalized);
+        var model = AiAssistantResolver.ResolveModelForPower(runner, _config, power);
+        return Task.FromResult(new RouteModelOutput(
+            SelectedAgent: normalized,
+            SelectedModel: model));
+    }
+
+    /// <summary>
+    /// Day 4 — enhance / rewrite a prompt per the caller-supplied instructions.
+    /// Returns the enhanced prompt plus a wasEnhanced flag. On parse failure,
+    /// returns the original prompt with wasEnhanced=false. temporal.md §I.1.
+    /// </summary>
+    [Activity]
+    public async Task<EnhancePromptOutput> EnhancePromptAsync(EnhancePromptInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "EnhancePrompt requires a ContainerId; AI agents always run inside a worker container.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+
+        var assistantName = AiAssistantResolver.NormalizeAssistant(input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+
+        var enhancePrompt = $$"""
+            {{input.EnhancementInstructions}}
+
+            Original prompt:
+            {{input.OriginalPrompt}}
+
+            Return JSON only: {"enhancedPrompt": "...", "wasEnhanced": true|false, "rationale": "..."}
+            """;
+
+        const string schema = """
+            {"type":"object","properties":{"enhancedPrompt":{"type":"string"},"wasEnhanced":{"type":"boolean"},"rationale":{"type":"string"}},"required":["enhancedPrompt","wasEnhanced","rationale"],"additionalProperties":false}
+            """;
+
+        var modelPower = input.ModelPower > 0 ? input.ModelPower : 2;
+
+        var request = new AgentRequest
+        {
+            Prompt = enhancePrompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, modelPower),
+            OutputSchema = schema,
+            WorkDir = _config.ContainerWorkDir ?? "/workspace",
+            SessionId = null /* fresh Claude session — continuity only in RunCliAgentAsync */
+        };
+
+        var plan = runner.BuildExecutionPlan(request);
+
+        foreach (var setup in plan.SetupRequests ?? [])
+            await _docker.ExecAsync(input.ContainerId, setup, ct);
+
+        ExecResult result;
+        try
+        {
+            result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+
+            if (result.ExitCode != 0
+                && AuthErrorDetector.ContainsAuthError((result.Output ?? "") + (result.Error ?? "")))
+            {
+                _log.LogWarning("EnhancePrompt auth error detected; attempting credential recovery");
+                var (recovered, authError, credsJson) = await _auth.RecoverAuthAsync(ct);
+                if (recovered && !string.IsNullOrEmpty(credsJson))
+                {
+                    await CredentialInjector.InjectAsync(input.ContainerId, credsJson, ct);
+                    result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+                }
+                else
+                {
+                    _log.LogWarning("EnhancePrompt auth recovery failed: {Error}", authError);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "EnhancePrompt threw; returning original prompt");
+            return new EnhancePromptOutput(input.OriginalPrompt, WasEnhanced: false, Rationale: "parse-failure");
+        }
+
+        try
+        {
+            var parsedResp = runner.ParseResponse(result.Output ?? "");
+            var body = !string.IsNullOrWhiteSpace(parsedResp.StructuredOutputJson)
+                ? parsedResp.StructuredOutputJson!
+                : parsedResp.Output ?? result.Output ?? "{}";
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            var enhanced = root.TryGetProperty("enhancedPrompt", out var e)
+                ? e.GetString() ?? input.OriginalPrompt
+                : input.OriginalPrompt;
+            var wasEnhanced = root.TryGetProperty("wasEnhanced", out var w) && w.GetBoolean();
+            var rationale = root.TryGetProperty("rationale", out var rt) ? rt.GetString() : null;
+            return new EnhancePromptOutput(enhanced, wasEnhanced, rationale);
+        }
+        catch
+        {
+            return new EnhancePromptOutput(input.OriginalPrompt, WasEnhanced: false, Rationale: "parse-failure");
+        }
+    }
+
+    /// <summary>
+    /// Day 5 — decompose a task into independent subtasks with file ownership.
+    /// Runs on the strongest model (ModelPower=1) since planning quality impacts
+    /// every downstream step. Returns a structured task list plus the raw JSON
+    /// for workflows that want to route by it. temporal.md §I.1.
+    /// </summary>
+    [Activity]
+    public async Task<ArchitectOutput> ArchitectAsync(ArchitectInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "Architect requires a ContainerId; AI agents always run inside a worker container.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+
+        var assistantName = AiAssistantResolver.NormalizeAssistant(input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+        var architectPrompt = $$"""
+            Decompose this task into independent subtasks with file ownership.
+            Task: {{input.Prompt}}
+            {{(string.IsNullOrWhiteSpace(input.GapContext) ? "" : $"Additional context:\n{input.GapContext}")}}
+            Return JSON only:
+            {
+              "tasks": [
+                { "id": "task-1", "description": "...", "dependsOn": [], "filesTouched": ["..."] }
+              ]
+            }
+            """;
+
+        var request = new AgentRequest
+        {
+            Prompt = architectPrompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, 1),
+            WorkDir = _config.ContainerWorkDir ?? "/workspace",
+            SessionId = null /* fresh Claude session — continuity only in RunCliAgentAsync */
+        };
+
+        var plan = runner.BuildExecutionPlan(request);
+
+        foreach (var setup in plan.SetupRequests ?? [])
+            await _docker.ExecAsync(input.ContainerId, setup, ct);
+
+        ExecResult result;
+        try
+        {
+            result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+
+            if (result.ExitCode != 0
+                && AuthErrorDetector.ContainsAuthError((result.Output ?? "") + (result.Error ?? "")))
+            {
+                _log.LogWarning("Architect auth error detected; attempting credential recovery");
+                var (recovered, authError, credsJson) = await _auth.RecoverAuthAsync(ct);
+                if (recovered && !string.IsNullOrEmpty(credsJson))
+                {
+                    await CredentialInjector.InjectAsync(input.ContainerId, credsJson, ct);
+                    result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+                }
+                else
+                {
+                    _log.LogWarning("Architect auth recovery failed: {Error}", authError);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "Architect threw; returning empty plan");
+            return new ArchitectOutput(
+                TaskListJson: "[]",
+                TaskCount: 0,
+                Tasks: Array.Empty<TaskPlanEntry>());
+        }
+
+        var parsedResp = runner.ParseResponse(result.Output ?? "");
+        var body = !string.IsNullOrWhiteSpace(parsedResp.StructuredOutputJson)
+            ? parsedResp.StructuredOutputJson!
+            : parsedResp.Output ?? result.Output ?? "";
+        var tasks = ParseTasks(body);
+        // TaskListJson is a serialized echo of Tasks; cap it so pathological
+        // architect outputs (30+ tasks with long descriptions) don't balloon
+        // the parent's Temporal history. The structured `Tasks` list is the
+        // authoritative payload consumers iterate over.
+        return new ArchitectOutput(
+            TaskListJson: TruncateForHistory(JsonSerializer.Serialize(tasks), 16 * 1024),
+            TaskCount: tasks.Count,
+            Tasks: tasks);
+    }
+
+    /// <summary>
+    /// Day 5 — long-running research activity. Streams CLI output with periodic
+    /// heartbeats so Temporal can resume from the last observed line on retry.
+    /// Strong model by caller's <paramref name="input.ModelPower"/> (typical: 2).
+    /// Splits the final response into rewritten / analysis / context / rationale
+    /// sections. temporal.md §I.1.
+    /// </summary>
+    [Activity]
+    public async Task<ResearchPromptOutput> ResearchPromptAsync(ResearchPromptInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "ResearchPrompt requires a ContainerId; AI agents always run inside a worker container.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ctx = ActivityExecutionContext.Current;
+        var ct = ctx.CancellationToken;
+
+        // Resume marker: on retry, skip output we already streamed.
+        var resumeOffset = 0;
+        if (ctx.Info.HeartbeatDetails.Count > 0)
+        {
+            try
+            {
+                resumeOffset = await ctx.Info.HeartbeatDetailAtAsync<int>(0);
+            }
+            catch
+            {
+                resumeOffset = 0;
+            }
+        }
+
+        var assistantName = AiAssistantResolver.NormalizeAssistant(input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+
+        var researchPrompt = $"""
+            Research the codebase in the current working directory. Identify files,
+            patterns, and conventions relevant to this task. Then return a grounded
+            rewrite of the task and a summary of your findings.
+
+            Task: {input.Prompt}
+
+            Structure your response as four markdown H2 sections exactly in this order:
+            ## Rewritten Task
+            (a detailed rewrite of the task grounded in the codebase)
+            ## Codebase Analysis
+            (key files, patterns, conventions relevant to the task)
+            ## Research Context
+            (external docs or links, if relevant)
+            ## Rationale
+            (why the rewrite is complete and grounded)
+            """;
+
+        var modelPower = input.ModelPower > 0 ? input.ModelPower : 2;
+
+        var request = new AgentRequest
+        {
+            Prompt = researchPrompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, modelPower),
+            WorkDir = _config.ContainerWorkDir ?? "/workspace",
+            SessionId = null /* fresh Claude session — continuity only in RunCliAgentAsync */
+        };
+
+        var plan = runner.BuildExecutionPlan(request);
+
+        foreach (var setup in plan.SetupRequests ?? [])
+            await _docker.ExecAsync(input.ContainerId, setup, ct);
+
+        var captured = new StringBuilder();
+        var lineCount = 0;
+        var timeout = TimeSpan.FromMinutes(30);
+
+        void OnOutput(string chunk)
+        {
+            foreach (var line in chunk.Split('\n'))
+            {
+                if (string.IsNullOrEmpty(line)) continue;
+                lineCount++;
+                if (lineCount <= resumeOffset) continue;
+
+                captured.AppendLine(line);
+
+                if (input.SessionId is not null)
+                {
+                    try
+                    {
+                        _sink.EmitChunkAsync(input.SessionId, line, ct)
+                            .GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogDebug(ex, "Sink emit failed for {SessionId}", input.SessionId);
+                    }
+                }
+
+                if (lineCount % 20 == 0)
+                    ctx.Heartbeat(lineCount);
+            }
+        }
+
+        ExecResult result;
+        try
+        {
+            result = await _docker.ExecStreamingAsync(
+                input.ContainerId,
+                plan.MainRequest,
+                OnOutput,
+                timeout,
+                ct);
+        }
+        catch (OperationCanceledException)
+        {
+            _log.LogInformation("ResearchPrompt cancelled at line {Line}", lineCount);
+            throw;
+        }
+
+        // Prefer the raw ExecResult.Output buffer over the line-split `captured`
+        // buffer when parsing. The callback splits chunks on '\n' which is lossy
+        // when a Windows PTY injects \r\n inside JSON string literals mid-object
+        // (docker exec wraps at ~256 chars). ExecResult.Output retains the full
+        // stream verbatim, so ClaudeRunner.ParseResponse's balanced-brace scanner
+        // can reconstitute objects even when the wrap tore them apart.
+        var raw = !string.IsNullOrEmpty(result.Output)
+            ? result.Output
+            : captured.ToString();
+
+        if (AuthErrorDetector.ContainsAuthError(raw)
+            || AuthErrorDetector.ContainsAuthError(result.Error))
+        {
+            _log.LogWarning("ResearchPrompt auth error detected; attempting credential recovery");
+            var (recovered, authError, credsJson) = await _auth.RecoverAuthAsync(ct);
+            if (recovered && !string.IsNullOrEmpty(credsJson))
+            {
+                await CredentialInjector.InjectAsync(input.ContainerId, credsJson, ct);
+                throw new ApplicationFailureException(
+                    "Auth recovered; retrying",
+                    errorType: "AuthRefreshed",
+                    nonRetryable: false);
+            }
+
+            // No AuthServiceUrl → heuristic match, not a real expired token.
+            if (string.Equals(authError, "AuthServiceUrl not configured", StringComparison.Ordinal))
+            {
+                _log.LogWarning("ResearchPrompt: auth-like pattern but AuthServiceUrl unconfigured; continuing.");
+            }
+            else
+            {
+                throw new ApplicationFailureException(
+                    $"Auth recovery failed: {authError ?? "no details"}",
+                    errorType: "AuthError",
+                    nonRetryable: true);
+            }
+        }
+
+        string responseText;
+        try
+        {
+            var parsed = runner.ParseResponse(raw);
+            responseText = !string.IsNullOrWhiteSpace(parsed.Output) ? parsed.Output! : raw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "ResearchPrompt ParseResponse threw; using raw output");
+            responseText = raw;
+        }
+
+        var (rewritten, analysis, context, rationale) = SplitResearchOutput(responseText);
+        // Research can emit megabytes of codebase scanning output. The downstream
+        // consumers need the high-signal summaries (enhanced prompt, analysis,
+        // context); the raw firehose already reached the UI via SignalR.
+        const int MaxResearchBytes = 16 * 1024;
+        return new ResearchPromptOutput(
+            EnhancedPrompt: TruncateForHistory(rewritten, MaxResearchBytes),
+            CodebaseAnalysis: TruncateForHistory(analysis, MaxResearchBytes),
+            ResearchContext: TruncateForHistory(context, MaxResearchBytes),
+            Rationale: TruncateForHistory(rationale, 2 * 1024));
+    }
+
+    /// <summary>
+    /// Day 5 — convenience wrapper around <see cref="ClassifyAsync"/> that asks a
+    /// fixed question to decide whether a task is website / frontend related.
+    /// Used to gate the website-audit branch in orchestration workflows. temporal.md §I.1.
+    /// </summary>
+    [Activity]
+    public async Task<WebsiteClassifyOutput> ClassifyWebsiteTaskAsync(WebsiteClassifyInput input)
+    {
+        var classify = await ClassifyAsync(new ClassifierInput(
+            Prompt: input.Prompt,
+            ClassificationQuestion: "Is this task about a website, web application, UI/UX, or frontend?",
+            ContainerId: input.ContainerId,
+            ModelPower: 3,
+            AiAssistant: input.AiAssistant,
+            SessionId: input.SessionId));
+
+        return new WebsiteClassifyOutput(
+            IsWebsiteTask: classify.Result,
+            Confidence: classify.Confidence,
+            Rationale: classify.Rationale);
+    }
+
+    /// <summary>
+    /// Day 5 — grade whether the work done inside the container meets the original
+    /// requirement. Returns a gap prompt when coverage is insufficient, so the
+    /// orchestrator can feed it into the next iteration. temporal.md §I.1.
+    /// </summary>
+    [Activity]
+    public async Task<CoverageOutput> GradeCoverageAsync(CoverageInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "GradeCoverage requires a ContainerId; AI agents always run inside a worker container.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+
+        var assistantName = AiAssistantResolver.NormalizeAssistant(input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+
+        var coveragePrompt = $$"""
+            Grade the completed work against this original requirement.
+            Requirement: {{input.OriginalPrompt}}
+            Iteration: {{input.CurrentIteration}} of {{input.MaxIterations}}
+
+            Return JSON only:
+            {
+              "allMet": true|false,
+              "gapPrompt": "if not all met, a prompt to fix the gap; otherwise empty",
+              "report": "structured report"
+            }
+            """;
+
+        const string schema = """
+            {"type":"object","properties":{"allMet":{"type":"boolean"},"gapPrompt":{"type":"string"},"report":{"type":"string"}},"required":["allMet","gapPrompt","report"],"additionalProperties":false}
+            """;
+
+        var modelPower = input.ModelPower > 0 ? input.ModelPower : 2;
+
+        var request = new AgentRequest
+        {
+            Prompt = coveragePrompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, modelPower),
+            OutputSchema = schema,
+            WorkDir = NormalizeContainerWorkDir(input.WorkingDirectory),
+            SessionId = null /* fresh Claude session — continuity only in RunCliAgentAsync */
+        };
+
+        var plan = runner.BuildExecutionPlan(request);
+
+        foreach (var setup in plan.SetupRequests ?? [])
+            await _docker.ExecAsync(input.ContainerId, setup, ct);
+
+        ExecResult result;
+        try
+        {
+            result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+
+            if (result.ExitCode != 0
+                && AuthErrorDetector.ContainsAuthError((result.Output ?? "") + (result.Error ?? "")))
+            {
+                _log.LogWarning("GradeCoverage auth error detected; attempting credential recovery");
+                var (recovered, authError, credsJson) = await _auth.RecoverAuthAsync(ct);
+                if (recovered && !string.IsNullOrEmpty(credsJson))
+                {
+                    await CredentialInjector.InjectAsync(input.ContainerId, credsJson, ct);
+                    result = await _docker.ExecAsync(input.ContainerId, plan.MainRequest, ct);
+                }
+                else
+                {
+                    _log.LogWarning("GradeCoverage auth recovery failed: {Error}", authError);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "GradeCoverage threw; returning retry-in-plain-English gap");
+            return new CoverageOutput(
+                AllMet: false,
+                GapPrompt: "Retry in plain English.",
+                CoverageReportJson: "{}",
+                Iteration: input.CurrentIteration);
+        }
+
+        try
+        {
+            var parsedResp = runner.ParseResponse(result.Output ?? "");
+            var body = !string.IsNullOrWhiteSpace(parsedResp.StructuredOutputJson)
+                ? parsedResp.StructuredOutputJson!
+                : parsedResp.Output ?? result.Output ?? "{}";
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            // GapPrompt is consumed by the next RunCliAgent call so keep a
+            // useful length; CoverageReportJson is a diagnostic echo of the
+            // body so cap it to 8 KB for history.
+            var gapPrompt = root.TryGetProperty("gapPrompt", out var g) ? g.GetString() ?? "" : "";
+            return new CoverageOutput(
+                AllMet: root.TryGetProperty("allMet", out var a) && a.GetBoolean(),
+                GapPrompt: TruncateForHistory(gapPrompt, 4 * 1024),
+                CoverageReportJson: TruncateForHistory(body, 8 * 1024),
+                Iteration: input.CurrentIteration);
+        }
+        catch
+        {
+            return new CoverageOutput(
+                AllMet: false,
+                GapPrompt: "Retry in plain English.",
+                CoverageReportJson: "{}",
+                Iteration: input.CurrentIteration);
+        }
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Normalizes a <c>WorkingDirectory</c> input to a container-side Linux
+    /// absolute path. Workflows historically pass <see cref="SimpleAgentInput.WorkspacePath"/>
+    /// (a HOST path like <c>C:/tmp/foo</c> on Windows) as the activity's
+    /// <c>WorkingDirectory</c>, but Docker <c>exec -w</c> interprets that path
+    /// inside the container, producing "OCI runtime exec failed: Cwd must be
+    /// an absolute path". Any value that isn't a Linux absolute path (doesn't
+    /// start with <c>/</c>) or that contains a Windows drive prefix is replaced
+    /// with the container's configured workspace mount point.
+    /// </summary>
+    internal string NormalizeContainerWorkDir(string? candidate)
+    {
+        var containerDefault = _config.ContainerWorkDir ?? "/workspace";
+        if (string.IsNullOrWhiteSpace(candidate))
+            return containerDefault;
+
+        // Linux absolute path — accept as-is.
+        if (candidate.StartsWith('/'))
+            return candidate;
+
+        // Anything else (Windows drive letter, relative path, UNC path) is not
+        // a valid container Cwd — coerce to the mount point.
+        return containerDefault;
+    }
+
+    private static string BuildTriagePrompt(string userPrompt, string? classificationInstructions)
+    {
+        var instructionBlock = string.IsNullOrWhiteSpace(classificationInstructions)
+            ? "Analyze this coding task and respond with JSON only:"
+            : $"{classificationInstructions!.Trim()}\nRespond with JSON only:";
+
+        return
+        $$"""
+        {{instructionBlock}}
+        {
+          "complexity": <1-10>,
+          "category": "<code_gen|bug_fix|refactor|architecture|testing|docs>",
+          "needs_decomposition": <true|false>,
+          "recommended_model_power": <1|2>
+        }
+
+        Model power guide:
+        1 = strongest / deepest reasoning (opus-class)
+        2 = balanced default (sonnet-class)
+        Always use 1 for complex tasks and 2 for simple tasks. Never recommend 3.
+
+        Task: {{userPrompt}}
+        """;
+    }
+
+    private static TriageResult ParseTriageJson(string output)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(output);
+            var root = doc.RootElement;
+            return new TriageResult(
+                Complexity: root.TryGetProperty("complexity", out var c) ? c.GetInt32() : 5,
+                Category: root.TryGetProperty("category", out var cat) ? cat.GetString() ?? "code_gen" : "code_gen",
+                RecommendedModelPower: root.TryGetProperty("recommended_model_power", out var m) ? m.GetInt32() : 2,
+                NeedsDecomposition: root.TryGetProperty("needs_decomposition", out var nd) && nd.GetBoolean());
+        }
+        catch
+        {
+            return new TriageResult(5, "code_gen", 2, false);
+        }
+    }
+
+    private static TriageResult FallbackTriageResult(string prompt) =>
+        new(Complexity: 5, Category: "code_gen", RecommendedModelPower: 2, NeedsDecomposition: false);
+
+    private static string Truncate(string? value, int maxLength = 2000)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private string? ResolveModel(RunCliAgentInput input, ICliAgentRunner runner)
+    {
+        if (!string.IsNullOrWhiteSpace(input.Model)
+            && !string.Equals(input.Model, "auto", StringComparison.OrdinalIgnoreCase))
+            return input.Model;
+        if (input.ModelPower > 0)
+            return AiAssistantResolver.ResolveModelForPower(runner, _config, input.ModelPower);
+        return null;  // runner picks default
+    }
+
+    private static List<TaskPlanEntry> ParseTasks(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return new List<TaskPlanEntry>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(output);
+            var root = doc.RootElement;
+
+            // Support both { "tasks": [...] } and a bare array at the root.
+            JsonElement taskArray;
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                taskArray = root;
+            }
+            else if (root.ValueKind == JsonValueKind.Object
+                     && root.TryGetProperty("tasks", out var tasksProp)
+                     && tasksProp.ValueKind == JsonValueKind.Array)
+            {
+                taskArray = tasksProp;
+            }
+            else
+            {
+                return new List<TaskPlanEntry>();
+            }
+
+            var list = new List<TaskPlanEntry>();
+            foreach (var t in taskArray.EnumerateArray())
+            {
+                if (t.ValueKind != JsonValueKind.Object) continue;
+                list.Add(new TaskPlanEntry(
+                    Id: t.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? Guid.NewGuid().ToString() : Guid.NewGuid().ToString(),
+                    Description: t.TryGetProperty("description", out var descEl) ? descEl.GetString() ?? "" : "",
+                    DependsOn: t.TryGetProperty("dependsOn", out var d) && d.ValueKind == JsonValueKind.Array
+                        ? d.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToArray()
+                        : Array.Empty<string>(),
+                    FilesTouched: t.TryGetProperty("filesTouched", out var f) && f.ValueKind == JsonValueKind.Array
+                        ? f.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToArray()
+                        : Array.Empty<string>()));
+            }
+            return list;
+        }
+        catch
+        {
+            return new List<TaskPlanEntry>();
+        }
+    }
+
+    private static (string rewritten, string analysis, string context, string rationale) SplitResearchOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return ("", "", "", "");
+
+        // Split on markdown H2 sections. The first part before any ## is dropped
+        // (that's typically preamble); each remaining section is the header line
+        // followed by its body.
+        var sections = output.Split("\n## ", StringSplitOptions.None);
+
+        string FindSection(string keyword)
+        {
+            foreach (var section in sections)
+            {
+                var trimmed = section.TrimStart();
+                if (trimmed.StartsWith(keyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Strip the header line and return the body.
+                    var newlineIdx = trimmed.IndexOf('\n');
+                    return newlineIdx < 0 ? "" : trimmed[(newlineIdx + 1)..].Trim();
+                }
+            }
+            return "";
+        }
+
+        var rewritten = FindSection("Rewritten");
+        var analysis = FindSection("Codebase");
+        var context = FindSection("Research");
+        var rationale = FindSection("Rationale");
+
+        // If no sections matched at all, fall back to the entire output as both
+        // the rewritten prompt and the codebase analysis so downstream callers
+        // still get useful content instead of empty strings.
+        if (string.IsNullOrEmpty(rewritten)
+            && string.IsNullOrEmpty(analysis)
+            && string.IsNullOrEmpty(context)
+            && string.IsNullOrEmpty(rationale))
+        {
+            var fallback = output.Trim();
+            rewritten = fallback;
+            analysis = fallback;
+        }
+
+        return (rewritten, analysis, context, rationale);
+    }
+}

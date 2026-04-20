@@ -9,7 +9,8 @@
     <InternalsVisibleTo Include="MagicPAI.RefactorTests" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Elsa.Workflows.Core" Version="3.6.0" />
+    <!-- Temporal SDK — sole workflow runtime after Phase 3 Elsa retirement. -->
+    <PackageReference Include="Temporalio" Version="1.13.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />

@@ -1,210 +1,101 @@
-using System.Linq;
-using Elsa.Extensions;
-using Elsa.Workflows;
-using Elsa.Workflows.Activities.Flowchart.Activities;
-using Elsa.Workflows.Activities.Flowchart.Models;
-using Elsa.Workflows.Models;
+// MagicPAI.Server/Workflows/Temporal/StandardOrchestrateWorkflow.cs
+// Temporal port of the Elsa StandardOrchestrateWorkflow. Middle-complexity
+// orchestrator sitting between SimpleAgentWorkflow and FullOrchestrateWorkflow:
+// spawns a container, enhances the prompt, runs the agent, then delegates
+// verify-and-repair to the child workflow. See temporal.md §H.9.
+using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
+using MagicPAI.Activities.Contracts;
 using MagicPAI.Activities.Docker;
-using MagicPAI.Activities.Verification;
-using MagicPAI.Server.Workflows.Components;
+using MagicPAI.Workflows;
+using MagicPAI.Workflows.Contracts;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Balanced orchestration with research-first prompt grounding,
-/// triage, and complex/simple routing.
+/// Standard orchestration path. Owns container lifecycle (spawn + destroy in
+/// finally) and composes EnhancePrompt → RunCliAgent → VerifyAndRepair (child).
 /// </summary>
-public class StandardOrchestrateWorkflow : WorkflowBase
+[Workflow]
+public class StandardOrchestrateWorkflow
 {
-    protected override void Build(IWorkflowBuilder builder)
+    private decimal _totalCost;
+
+    [WorkflowQuery]
+    public decimal TotalCostUsd => _totalCost;
+
+    [WorkflowRun]
+    public async Task<StandardOrchestrateOutput> RunAsync(StandardOrchestrateInput input)
     {
-        builder.Name = "Standard Orchestrate";
-        builder.Description =
-            "Balanced pipeline: research-first prompt grounding, triage, complex/simple routing, verification";
+        var spawnInput = new SpawnContainerInput(
+            SessionId: input.SessionId,
+            WorkspacePath: input.WorkspacePath,
+            EnableGui: input.EnableGui);
 
-        var containerId = builder.WithVariable<string>("ContainerId", "");
-        var researchedPrompt = builder.WithVariable<string>("ResearchedPrompt", "");
-        var recommendedModel = builder.WithVariable<string>("RecommendedModel", "");
-        var recommendedModelPower = builder.WithVariable<int>("RecommendedModelPower", 0);
-        var architectTasks = builder.WithVariable<string[]>("ArchitectTasks", []);
-        var complexWorkerOutput = builder.WithVariable<string>("ComplexWorkerOutput", "");
+        var spawn = await Workflow.ExecuteActivityAsync(
+            (DockerActivities a) => a.SpawnAsync(spawnInput),
+            ActivityProfiles.Container);
 
-        // NOTE: ctx.GetInput() is shadowed by same-named variables. Use helpers.
-        Input<string> resolveContainerId() => new(ctx => ctx.Resolve("ContainerId"));
-
-        Input<string> resolveBestPrompt() => new(ctx =>
+        try
         {
-            var researched = ctx.GetVariable<string>("ResearchedPrompt");
-            return !string.IsNullOrWhiteSpace(researched) ? researched : ctx.GetDispatchInput("Prompt") ?? "";
-        });
+            // Step 1 — enhance the original prompt for specificity.
+            var enhanceInput = new EnhancePromptInput(
+                OriginalPrompt: input.Prompt,
+                EnhancementInstructions: "Improve specificity and add missing context.",
+                ContainerId: spawn.ContainerId,
+                ModelPower: 2,
+                AiAssistant: input.AiAssistant,
+                SessionId: input.SessionId);
 
-        Input<string> resolveRecommendedModel() => new(ctx =>
+            var enhance = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.EnhancePromptAsync(enhanceInput),
+                ActivityProfiles.Medium);
+
+            // Step 2 — run the enhanced prompt through the agent.
+            var runInput = new RunCliAgentInput(
+                Prompt: enhance.EnhancedPrompt,
+                ContainerId: spawn.ContainerId,
+                AiAssistant: input.AiAssistant,
+                Model: input.Model,
+                ModelPower: input.ModelPower,
+                WorkingDirectory: input.WorkspacePath,
+                SessionId: input.SessionId);
+
+            var run = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.RunCliAgentAsync(runInput),
+                ActivityProfiles.Long);
+
+            _totalCost += run.CostUsd;
+
+            // Step 3 — verify + repair via the reusable child workflow.
+            var verifyInput = new VerifyAndRepairInput(
+                SessionId: input.SessionId,
+                ContainerId: spawn.ContainerId,
+                WorkingDirectory: input.WorkspacePath,
+                OriginalPrompt: input.Prompt,
+                AiAssistant: input.AiAssistant,
+                Model: input.Model,
+                ModelPower: input.ModelPower,
+                Gates: new[] { "compile", "test" },
+                WorkerOutput: run.Response);
+
+            var verify = await Workflow.ExecuteChildWorkflowAsync(
+                (VerifyAndRepairWorkflow w) => w.RunAsync(verifyInput),
+                new ChildWorkflowOptions { Id = $"{input.SessionId}-verify" });
+
+            _totalCost += verify.RepairCostUsd;
+
+            return new StandardOrchestrateOutput(
+                Response: run.Response,
+                VerificationPassed: verify.Success,
+                TotalCostUsd: _totalCost);
+        }
+        finally
         {
-            var requestedModel = ctx.GetDispatchInput("Model");
-            if (!string.IsNullOrWhiteSpace(requestedModel) &&
-                !string.Equals(requestedModel, "auto", StringComparison.OrdinalIgnoreCase))
-                return requestedModel;
-
-            return ctx.GetVariable<string>("RecommendedModel") ?? requestedModel ?? "";
-        });
-
-        Input<int> resolveRecommendedPower() => new(ctx =>
-        {
-            var requestedModel = ctx.GetDispatchInput("Model");
-            if (!string.IsNullOrWhiteSpace(requestedModel) &&
-                !string.Equals(requestedModel, "auto", StringComparison.OrdinalIgnoreCase))
-                return ctx.GetDispatchInput<int?>("ModelPower") ?? 0;
-
-            return ctx.GetVariable<int?>("RecommendedModelPower") ?? ctx.GetDispatchInput<int?>("ModelPower") ?? 0;
-        });
-
-        Input<string> resolveComplexPrompt() => new(ctx =>
-        {
-            var originalPrompt = resolveBestPrompt().Get(ctx);
-            var tasks = ctx.GetVariable<string[]>("ArchitectTasks") ?? [];
-            if (tasks.Length == 0)
-                return originalPrompt;
-
-            var plan = string.Join(Environment.NewLine, tasks.Select((task, index) => $"{index + 1}. {task}"));
-            return $$"""
-                Execute the task using the architected sub-task plan below.
-
-                Context-rich prompt:
-                {{originalPrompt}}
-
-                Sub-tasks:
-                {{plan}}
-                """;
-        });
-
-        var spawn = new SpawnContainerActivity
-        {
-            WorkspacePath = new Input<string>("/workspace"),
-            ContainerId = new Output<string>(containerId),
-            Id = "std-spawn"
-        };
-        Pos(spawn, 400, 50);
-
-        var researchPrompt = new ResearchPromptActivity
-        {
-            AiAssistant = new Input<string>(""),
-            Prompt = new Input<string>(""),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            EnhancedPrompt = new Output<string>(researchedPrompt),
-            Id = "std-research-prompt"
-        };
-        Pos(researchPrompt, 400, 200);
-
-        var triage = new TriageActivity
-        {
-            Prompt = resolveBestPrompt(),
-            ContainerId = new Input<string>(containerId),
-            RecommendedModel = new Output<string>(recommendedModel),
-            RecommendedModelPower = new Output<int>(recommendedModelPower),
-            Id = "std-triage"
-        };
-        Pos(triage, 400, 370);
-
-        var simpleAgent = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(""),
-            Prompt = resolveBestPrompt(),
-            ContainerId = new Input<string>(containerId),
-            Model = resolveRecommendedModel(),
-            ModelPower = resolveRecommendedPower(),
-            Id = "std-simple-agent"
-        };
-        Pos(simpleAgent, 200, 540);
-
-        var simpleVerify = new RunVerificationActivity
-        {
-            ContainerId = new Input<string>(containerId),
-            Id = "std-simple-verify"
-        };
-        Pos(simpleVerify, 200, 710);
-
-        var architect = new ArchitectActivity
-        {
-            Prompt = resolveBestPrompt(),
-            ContainerId = new Input<string>(containerId),
-            TaskListJson = new Output<string[]>(architectTasks),
-            Id = "std-architect"
-        };
-        Pos(architect, 600, 540);
-
-        var complexAgent = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(""),
-            Prompt = resolveComplexPrompt(),
-            ContainerId = new Input<string>(containerId),
-            Model = resolveRecommendedModel(),
-            ModelPower = resolveRecommendedPower(),
-            Response = new Output<string>(complexWorkerOutput),
-            Id = "std-complex-agent"
-        };
-        Pos(complexAgent, 600, 710);
-
-        var complexLoop = VerifyAndRepairLoop.Create(
-            verifyId: "std-complex-verify",
-            repairId: "std-complex-repair",
-            repairAgentId: "std-repair-agent",
-            containerId: new Input<string>(containerId),
-            originalPrompt: new Input<string>(ctx => ctx.GetDispatchInput("Prompt") ?? ""),
-            assistant: new Input<string>(ctx => ctx.ResolveFirst("", "AiAssistant", "Agent")),
-            model: resolveRecommendedModel(),
-            modelPower: resolveRecommendedPower(),
-            workerOutput: new Input<string?>(complexWorkerOutput));
-        var complexVerify = complexLoop.Verify;
-        var complexRepair = complexLoop.Repair;
-        var repairAgent = complexLoop.RepairAgent;
-        Pos(complexVerify, 600, 880);
-        Pos(complexRepair, 500, 1050);
-        Pos(repairAgent, 700, 1050);
-
-        var destroy = new DestroyContainerActivity
-        {
-            ContainerId = resolveContainerId(),
-            Id = "std-destroy"
-        };
-        Pos(destroy, 400, 1220);
-
-        var flowchart = new Flowchart
-        {
-            Id = "standard-orchestrate-flow",
-            Start = spawn,
-            Activities = { spawn, researchPrompt, triage, simpleAgent, simpleVerify, architect, complexAgent, complexVerify, complexRepair, repairAgent, destroy },
-            Connections =
-            {
-                new Connection(new Endpoint(spawn, "Done"), new Endpoint(researchPrompt)),
-                new Connection(new Endpoint(spawn, "Failed"), new Endpoint(destroy)),
-
-                new Connection(new Endpoint(researchPrompt, "Done"), new Endpoint(triage)),
-                new Connection(new Endpoint(researchPrompt, "Failed"), new Endpoint(triage)),
-
-                new Connection(new Endpoint(triage, "Simple"), new Endpoint(simpleAgent)),
-                new Connection(new Endpoint(triage, "Complex"), new Endpoint(architect)),
-
-                new Connection(new Endpoint(simpleAgent, "Done"), new Endpoint(simpleVerify)),
-                new Connection(new Endpoint(simpleAgent, "Failed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(simpleVerify, "Passed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(simpleVerify, "Failed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(simpleVerify, "Inconclusive"), new Endpoint(destroy)),
-
-                new Connection(new Endpoint(architect, "Done"), new Endpoint(complexAgent)),
-                new Connection(new Endpoint(architect, "Failed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(complexAgent, "Done"), new Endpoint(complexVerify)),
-                new Connection(new Endpoint(complexAgent, "Failed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(complexVerify, "Passed"), new Endpoint(destroy)),
-                new Connection(new Endpoint(complexVerify, "Inconclusive"), new Endpoint(destroy)),
-                new Connection(new Endpoint(complexRepair, "Exceeded"), new Endpoint(destroy)),
-            }
-        };
-
-        foreach (var connection in complexLoop.InternalConnections)
-            flowchart.Connections.Add(connection);
-
-        builder.Root = flowchart.WithAttachedVariables(builder);
+            var destroyInput = new DestroyInput(spawn.ContainerId);
+            await Workflow.ExecuteActivityAsync(
+                (DockerActivities a) => a.DestroyAsync(destroyInput),
+                ActivityProfiles.ContainerCleanup);
+        }
     }
 }

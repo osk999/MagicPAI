@@ -62,8 +62,13 @@ public class WorkerPodGarbageCollector : BackgroundService
 
         foreach (var session in sessions)
         {
-            // Only clean up terminal sessions
-            if (session.State is not ("completed" or "failed" or "cancelled"))
+            // Only clean up terminal sessions. "terminated" is included because
+            // Temporal's terminate is non-cooperative — the workflow's `finally`
+            // block doesn't get to destroy the container, so the GC sweeps up.
+            // "cancelled" is included too for completeness; cancellation normally
+            // lets finally run, but if the destroy activity itself gets cancelled,
+            // the container can leak and GC picks it up on the next scan.
+            if (session.State is not ("completed" or "failed" or "cancelled" or "terminated"))
                 continue;
 
             // Need a container ID to clean up

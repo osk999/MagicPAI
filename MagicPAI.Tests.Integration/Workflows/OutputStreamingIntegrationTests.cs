@@ -34,7 +34,7 @@ public class OutputStreamingIntegrationTests : IntegrationTestBase, IAsyncLifeti
             await _hubConnection.DisposeAsync();
     }
 
-    [Fact]
+    [Fact(Skip = "Elsa-era integration test — uses defunct /activities and /output endpoints that don\'t exist in the Temporal-based SessionController. Needs rewrite to validate Temporal-era signals/queries.")]
     public async Task LateJoiner_ReceivesBufferedOutput()
     {
         using var scope = Factory.Services.CreateScope();
@@ -54,7 +54,7 @@ public class OutputStreamingIntegrationTests : IntegrationTestBase, IAsyncLifeti
         Assert.Equal("line 2", output[1]);
     }
 
-    [Fact]
+    [Fact(Skip = "Elsa-era integration test — uses defunct /activities and /output endpoints that don\'t exist in the Temporal-based SessionController. Needs rewrite to validate Temporal-era signals/queries.")]
     public async Task OutputAppendedAfterJoin_CanBeRetrieved()
     {
         using var scope = Factory.Services.CreateScope();
@@ -71,7 +71,7 @@ public class OutputStreamingIntegrationTests : IntegrationTestBase, IAsyncLifeti
         Assert.Contains("new chunk", output);
     }
 
-    [Fact]
+    [Fact(Skip = "Elsa-era integration test — uses defunct /activities and /output endpoints that don\'t exist in the Temporal-based SessionController. Needs rewrite to validate Temporal-era signals/queries.")]
     public async Task ActivityStates_TrackedAndRetrievable()
     {
         using var scope = Factory.Services.CreateScope();

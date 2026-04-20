@@ -1,122 +1,79 @@
 ---
 name: activities
-description: Build MagicPAI.Activities — all custom Elsa 3 activities
+description: Build MagicPAI.Activities — Temporal [Activity] methods grouped by domain (AI, Docker, Git, Verify, Blackboard)
 isolation: worktree
 ---
 
-You are building the **MagicPAI.Activities** project — custom Elsa 3 activities.
+You are working on **MagicPAI.Activities** — Temporal activity classes.
 
-## Your Scope (ONLY touch these files)
+## Your scope (ONLY touch these files)
 - `MagicPAI.Activities/**`
+- `MagicPAI.Tests/Activities/**` (when adding/updating tests)
 
 ## Prerequisites
-Wait until `MagicPAI.Core` is built (interfaces and models must exist).
-Read files in `MagicPAI.Core/Services/` and `MagicPAI.Core/Models/` to understand the contracts.
+- `MagicPAI.Core` interfaces and models must exist (they already do; do not modify Core).
+- Read `MagicPAI.Core/Services/` to understand the real `IContainerManager` / `ICliAgentFactory` / `SharedBlackboard` / `VerificationPipeline` signatures before writing activity bodies.
 
-## What to Build
+## What to build
 
-Read `MAGICPAI_PLAN.md` for detailed code examples. Build in this order:
+All activities are plain methods on one of these classes — never one-class-per-activity:
 
-### Step 1: AI Agent Activities (MagicPAI.Activities/AI/)
+| Class | Methods | Path |
+|---|---|---|
+| `AiActivities` | `RunCliAgentAsync`, `TriageAsync`, `ClassifyAsync`, `RouteModelAsync`, `EnhancePromptAsync`, `ArchitectAsync`, `ResearchPromptAsync`, `ClassifyWebsiteTaskAsync`, `GradeCoverageAsync` | `MagicPAI.Activities/AI/AiActivities.cs` |
+| `DockerActivities` | `SpawnAsync`, `ExecAsync`, `StreamAsync`, `DestroyAsync` | `MagicPAI.Activities/Docker/DockerActivities.cs` |
+| `GitActivities` | `CreateWorktreeAsync`, `MergeWorktreeAsync`, `CleanupWorktreeAsync` | `MagicPAI.Activities/Git/GitActivities.cs` |
+| `VerifyActivities` | `RunGatesAsync`, `GenerateRepairPromptAsync` | `MagicPAI.Activities/Verification/VerifyActivities.cs` |
+| `BlackboardActivities` | `ClaimFileAsync`, `ReleaseFileAsync` | `MagicPAI.Activities/Infrastructure/BlackboardActivities.cs` |
 
-**RunCliAgentActivity.cs** — The core activity. See MAGICPAI_PLAN.md Section 6.2.
-```
-[Activity("MagicPAI", "AI Agents", "Execute a prompt via an AI CLI agent")]
-[FlowNode("Done", "Failed")]
-```
-- Inputs: Agent (dropdown: claude/codex/gemini), Prompt (multiline), ContainerId, WorkingDirectory, Model, MaxTurns, TimeoutMinutes
-- Outputs: Response, Success, CostUsd, FilesModified, ExitCode
-- Uses IContainerManager + ICliAgentFactory from DI
+Input/output records live in `MagicPAI.Activities/Contracts/*.cs` (one file per class group).
 
-**TriageActivity.cs** — Classify prompt complexity. See MAGICPAI_PLAN.md Section 10.4.
-```
-[FlowNode("Simple", "Complex")]
-```
-- Input: Prompt, ContainerId
-- Output: Complexity (int), Category, RecommendedModel
-- Uses Haiku model for cheap triage
+## Specifications (authoritative)
 
-**ArchitectActivity.cs** — Task decomposition. See MAGICPAI_PLAN.md Section 6.
-- Input: Prompt, ContainerId, GapContext
-- Output: TaskListJson (string[]), TaskCount
+- **Detailed code templates:** `temporal.md` §I.1-I.4 + §7.2-7.6 (contracts).
+- **Activity shape template:** `temporal.md` Appendix R (inside CLAUDE.md section).
+- **Day-by-day work plan:** `docs/phase-guides/Phase2-Day4.md` (AI part 1), `Phase2-Day5.md` (remaining).
 
-**ModelRouterActivity.cs** — Model selection. See MAGICPAI_PLAN.md Section 15.1.
-- Input: TaskCategory, Complexity, PreferredAgent
-- Output: SelectedAgent, SelectedModel
+## Key Temporal patterns (do not violate)
 
-### Step 2: Docker Activities (MagicPAI.Activities/Docker/)
+1. Method attribute: `[Temporalio.Activities.Activity]` (fully-qualified to avoid Elsa-era collision if any remains).
+2. Method signature: `public async Task<TOut> NameAsync(TIn input)`. Use typed record input/output — never `Dictionary<string, object>`.
+3. Inside activity body:
+   - Get context via `ActivityExecutionContext.Current`.
+   - Get cancellation via `ctx.CancellationToken`.
+   - Long-running? Call `ctx.Heartbeat(offset)` every ~20 stream lines or ~30s.
+   - For retries that need resume state, use `ctx.Info.HeartbeatDetails`.
+4. DI via constructor — never `context.GetRequiredService<T>()` (that's the Elsa pattern).
+5. Errors:
+   - Transient → throw normally; Temporal retries.
+   - Non-retryable → `throw new ApplicationFailureException(message, type: "ConfigError", nonRetryable: true)`.
+   - Cancellation → let `OperationCanceledException` propagate (clean up containers first in catch).
+6. Never output raw CLI stdout in the return value. Emit to `ISessionStreamSink` side-channel for SignalR streaming; return only small summary fields.
 
-**SpawnContainerActivity.cs** — See MAGICPAI_PLAN.md Section 6.3.
-- Inputs: Image, WorkspacePath, MemoryLimitMb, EnableGui, EnvVars (JsonEditor)
-- Outputs: ContainerId, GuiUrl
+## Docker invariant (never violate)
 
-**ExecInContainerActivity.cs** — Run shell command in container.
-- Inputs: ContainerId, Command, WorkingDirectory
-- Outputs: Output, ExitCode
+Per `temporal.md` §11: every AI/CLI activity MUST execute inside a Docker container. `DockerActivities.SpawnAsync` is the only way to get a container ID; every downstream activity takes `ContainerId` as required input.
 
-**StreamFromContainerActivity.cs** — Stream real-time output from container.
-- Inputs: ContainerId, Command
-- Output: FullOutput
+## Testing
 
-**DestroyContainerActivity.cs** — Cleanup container.
-- Input: ContainerId
+Every new activity method needs at least one unit test in `MagicPAI.Tests/Activities/` using `Temporalio.Testing.ActivityEnvironment` + Moq-ed `IContainerManager` / `ICliAgentFactory`. Tag `[Trait("Category","Unit")]`.
 
-### Step 3: Verification Activities (MagicPAI.Activities/Verification/)
+See `temporal.md` §15.3 (unit test template) and `docs/phase-guides/Phase2-Day4.md` Step 4 for examples.
 
-**RunVerificationActivity.cs** — See MAGICPAI_PLAN.md Section 6.4.
-```
-[FlowNode("Passed", "Failed", "Inconclusive")]
-```
-- Inputs: ContainerId, WorkingDirectory, Gates (CheckList), WorkerOutput
-- Outputs: AllPassed, FailedGates (string[]), GateResultsJson
+## Registration (coordinate with server agent)
 
-**RepairActivity.cs** — Generate AI repair prompt from failed gates.
-- Inputs: ContainerId, FailedGates, OriginalPrompt, GateResultsJson
-- Output: RepairPrompt
+The server agent registers each class via `.AddScopedActivities<TClass>()` in `Program.cs`. New methods on an already-registered class are picked up automatically. New classes need a new `.AddScopedActivities<T>()` call — ping the server agent.
 
-### Step 4: Git Activities (MagicPAI.Activities/Git/)
+## Don't do
 
-**CreateWorktreeActivity.cs**
-- Inputs: ContainerId, BranchName
-- Output: WorktreePath
+- Don't use Elsa base class `Activity` or Elsa `Input<T>` / `Output<T>` — those are gone.
+- Don't use `[FlowNode("Done","Failed")]` — Temporal uses return values + exceptions.
+- Don't use `context.GetRequiredService<T>()` — use constructor DI.
+- Don't do I/O or HTTP in workflow code (workflows live in `MagicPAI.Server/Workflows/`, not here) — activities ARE where I/O belongs.
+- Don't change `MagicPAI.Core` signatures — treat them as fixed.
 
-**MergeWorktreeActivity.cs**
-- Inputs: ContainerId, BranchName
-- Output: Success, ConflictFiles
+## After changes
 
-**CleanupWorktreeActivity.cs**
-- Input: ContainerId, WorktreePath
-
-### Step 5: Infrastructure Activities (MagicPAI.Activities/Infrastructure/)
-
-**EmitOutputChunkActivity.cs** — Log output chunk for SignalR bridge.
-**UpdateCostActivity.cs** — Track token costs.
-**ClaimFileActivity.cs** — Atomic file ownership via SharedBlackboard.
-**HumanApprovalActivity.cs** — Bookmark-based approval gate. See MAGICPAI_PLAN.md Section 15.3.
-
-## Elsa Activity Pattern (follow exactly)
-```csharp
-[Activity("MagicPAI", "Category", "Description")]
-[FlowNode("Done", "Failed")]
-public class MyActivity : Activity
-{
-    [Input(DisplayName = "My Input")] 
-    public Input<string> MyInput { get; set; } = default!;
-    
-    [Output(DisplayName = "My Output")]
-    public Output<string> MyOutput { get; set; } = default!;
-
-    protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
-    {
-        var service = context.GetRequiredService<IMyService>();
-        // ... logic ...
-        MyOutput.Set(context, result);
-        await context.CompleteActivityWithOutcomesAsync("Done");
-    }
-}
-```
-
-## Rules
-- NEVER use constructor injection in activities — use context.GetRequiredService<T>()
-- ALWAYS add [Activity] and [FlowNode] attributes
-- Run `dotnet build MagicPAI.Activities/MagicPAI.Activities.csproj` after each step
+1. `dotnet build MagicPAI.Activities/MagicPAI.Activities.csproj` — 0 errors.
+2. `dotnet test MagicPAI.Tests --filter "Category=Unit"` — green.
+3. Update `SCORECARD.md` Phase 2 → Activities ported row for your method.

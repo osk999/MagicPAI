@@ -1,127 +1,115 @@
-using Microsoft.AspNetCore.Components;
+// MagicPAI.Studio/Services/SessionHubClient.cs
+// Temporal migration §J.4: thin SignalR wrapper around /hub.
+// Subscribes to every event defined in MagicPAI.Shared.Hubs.ISessionHubClient.
+using MagicPAI.Shared.Hubs;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.Configuration;
-using MagicPAI.Shared.Models;
 
 namespace MagicPAI.Studio.Services;
 
 /// <summary>
-/// Type-safe SignalR client for the MagicPAI SessionHub.
-/// Provides strongly typed events and hub method invocations.
+/// Browser-side SignalR client for the server-side SessionHub. Subscribes to
+/// every method on <see cref="ISessionHubClient"/> and surfaces them as
+/// strongly-typed C# events. Invokes hub methods (JoinSession, ApproveGate,
+/// etc.) via <see cref="HubConnection.InvokeAsync(string, object?[])"/>.
 /// </summary>
 public class SessionHubClient : IAsyncDisposable
 {
-    private readonly HubConnection _connection;
+    private readonly HubConnection _conn;
     private bool _started;
 
-    public event Action<OutputChunkEvent>? OnOutputChunk;
-    public event Action<WorkflowProgressEvent>? OnWorkflowProgress;
-    public event Action<VerificationUpdateEvent>? OnVerificationUpdate;
-    public event Action<CostUpdateEvent>? OnCostUpdate;
-    public event Action<SessionStateEvent>? OnSessionStateChanged;
-    public event Action<ContainerEvent>? OnContainerSpawned;
-    public event Action<ContainerLogEvent>? OnContainerLog;
-    public event Action<TaskInsightEvent>? OnTaskInsight;
-    public event Action<ErrorEvent>? OnError;
+    public event Action<string>? OutputChunk;
+    public event Action<string, object>? StructuredEvent;
+    public event Action<string>? StageChanged;
+    public event Action<CostEntry>? CostUpdate;
+    public event Action<VerifyGateResult>? VerificationResult;
+    public event Action<GateAwaitingPayload>? GateAwaiting;
+    public event Action<ContainerSpawnedPayload>? ContainerSpawned;
+    public event Action<ContainerDestroyedPayload>? ContainerDestroyed;
+    public event Action<SessionCompletedPayload>? SessionCompleted;
+    public event Action<SessionFailedPayload>? SessionFailed;
+    public event Action<SessionCancelledPayload>? SessionCancelled;
 
-    public HubConnectionState State => _connection.State;
+    public HubConnectionState State => _conn.State;
 
-    public SessionHubClient(IConfiguration config, NavigationManager navigation)
+    public SessionHubClient(HttpClient http)
     {
-        var hubUrl = ResolveHubUrl(config, navigation);
-        _connection = new HubConnectionBuilder()
+        var hubUrl = new Uri(http.BaseAddress!, "hub");
+        _conn = new HubConnectionBuilder()
             .WithUrl(hubUrl)
-            .WithAutomaticReconnect([
+            .WithAutomaticReconnect(new[]
+            {
                 TimeSpan.Zero,
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(3),
                 TimeSpan.FromSeconds(5)
-            ])
+            })
             .Build();
 
-        _connection.On<OutputChunkEvent>("outputChunk",
-            e => OnOutputChunk?.Invoke(e));
-        _connection.On<WorkflowProgressEvent>("workflowProgress",
-            e => OnWorkflowProgress?.Invoke(e));
-        _connection.On<VerificationUpdateEvent>("verificationUpdate",
-            e => OnVerificationUpdate?.Invoke(e));
-        _connection.On<CostUpdateEvent>("costUpdate",
-            e => OnCostUpdate?.Invoke(e));
-        _connection.On<SessionStateEvent>("sessionStateChanged",
-            e => OnSessionStateChanged?.Invoke(e));
-        _connection.On<ContainerEvent>("containerEvent",
-            e => OnContainerSpawned?.Invoke(e));
-        _connection.On<ContainerLogEvent>("containerLog",
-            e => OnContainerLog?.Invoke(e));
-        _connection.On<TaskInsightEvent>("taskInsight",
-            e => OnTaskInsight?.Invoke(e));
-        _connection.On<ErrorEvent>("error",
-            e => OnError?.Invoke(e));
+        _conn.On<string>("OutputChunk",
+            line => OutputChunk?.Invoke(line));
+        _conn.On<string, object>("StructuredEvent",
+            (name, payload) => StructuredEvent?.Invoke(name, payload));
+        _conn.On<string>("StageChanged",
+            stage => StageChanged?.Invoke(stage));
+        _conn.On<CostEntry>("CostUpdate",
+            c => CostUpdate?.Invoke(c));
+        _conn.On<VerifyGateResult>("VerificationResult",
+            r => VerificationResult?.Invoke(r));
+        _conn.On<GateAwaitingPayload>("GateAwaiting",
+            p => GateAwaiting?.Invoke(p));
+        _conn.On<ContainerSpawnedPayload>("ContainerSpawned",
+            p => ContainerSpawned?.Invoke(p));
+        _conn.On<ContainerDestroyedPayload>("ContainerDestroyed",
+            p => ContainerDestroyed?.Invoke(p));
+        _conn.On<SessionCompletedPayload>("SessionCompleted",
+            p => SessionCompleted?.Invoke(p));
+        _conn.On<SessionFailedPayload>("SessionFailed",
+            p => SessionFailed?.Invoke(p));
+        _conn.On<SessionCancelledPayload>("SessionCancelled",
+            p => SessionCancelled?.Invoke(p));
     }
 
-    private static string ResolveHubUrl(IConfiguration config, NavigationManager navigation)
-        => BackendUrlResolver.ResolveHubUrl(config, navigation);
-
-    public async Task ConnectAsync()
+    public async Task StartAsync()
     {
-        if (_started)
-            return;
-
-        await _connection.StartAsync();
+        if (_started) return;
+        await _conn.StartAsync();
         _started = true;
-    }
-
-    public async Task<string> CreateSessionAsync(
-        string prompt,
-        string workspacePath,
-        string aiAssistant = "claude",
-        string model = "auto",
-        int modelPower = 0,
-        string structuredOutputSchema = "",
-        string workflowName = "full-orchestrate")
-    {
-        var result = await _connection.InvokeAsync<CreateSessionResult>(
-            "CreateSession",
-            prompt,
-            workspacePath,
-            aiAssistant,
-            model,
-            modelPower,
-            aiAssistant,
-            structuredOutputSchema,
-            workflowName);
-        return result?.SessionId ?? "";
-    }
-
-    private record CreateSessionResult(string SessionId, string WorkflowName);
-
-    public async Task StopSessionAsync(string sessionId)
-    {
-        await _connection.InvokeAsync("StopSession", sessionId);
     }
 
     public async Task JoinSessionAsync(string sessionId)
     {
-        await ConnectAsync();
-        await _connection.InvokeAsync("JoinSession", sessionId);
+        await StartAsync();
+        await _conn.InvokeAsync("JoinSession", sessionId);
     }
 
     public async Task LeaveSessionAsync(string sessionId)
     {
-        if (!_started)
-            return;
-
-        await _connection.InvokeAsync("LeaveSession", sessionId);
+        if (!_started) return;
+        try
+        {
+            await _conn.InvokeAsync("LeaveSession", sessionId);
+        }
+        catch
+        {
+            // Hub may already be disconnected — ignore.
+        }
     }
 
-    public async Task ApproveAsync(string sessionId, bool approve)
-    {
-        await _connection.InvokeAsync("Approve", sessionId, approve);
-    }
+    public Task ApproveGateAsync(string sessionId, string approver = "web-user", string? comment = null)
+        => _conn.InvokeAsync("ApproveGate", sessionId, approver, comment);
+
+    public Task RejectGateAsync(string sessionId, string reason)
+        => _conn.InvokeAsync("RejectGate", sessionId, reason);
+
+    public Task InjectPromptAsync(string sessionId, string newPrompt)
+        => _conn.InvokeAsync("InjectPrompt", sessionId, newPrompt);
+
+    public Task CancelSessionAsync(string sessionId)
+        => _conn.InvokeAsync("CancelSession", sessionId);
 
     public async ValueTask DisposeAsync()
     {
         if (_started)
-            await _connection.DisposeAsync();
+            await _conn.DisposeAsync();
     }
 }

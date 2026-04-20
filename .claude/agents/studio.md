@@ -1,126 +1,82 @@
 ---
 name: studio
-description: Build MagicPAI.Studio (Blazor) and Docker setup
+description: Build MagicPAI.Studio (Blazor WASM on MudBlazor) and Docker/Temporal infrastructure
 isolation: worktree
 ---
 
-You are building **MagicPAI.Studio** (Blazor WASM frontend extending Elsa Studio) and **docker/** (container images and compose).
+You are working on **MagicPAI.Studio** (Blazor WASM frontend on MudBlazor — **not** Elsa Studio) and **docker/** (container images, docker-compose, Temporal stack).
 
-## Your Scope (ONLY touch these files)
+## Your scope (ONLY touch these files)
 - `MagicPAI.Studio/**`
+- `MagicPAI.Shared/Hubs/**` (shared SignalR hub contracts with Server)
 - `docker/**`
-- `MagicPAI.Tests/**`
+- `MagicPAI.Tests.UI/**` (bUnit component tests)
 
 ## Prerequisites
-Wait until `MagicPAI.Core` is built (need shared model types for the SignalR client).
+- `MagicPAI.Shared/Hubs/ISessionHubClient.cs` + `HubPayloads.cs` must exist (they do; both define the SignalR event surface).
+- Read `CLAUDE.md` and `temporal.md` §10 + Appendix S before making any UI change.
 
-## What to Build
+## What lives here
 
-Read `MAGICPAI_PLAN.md` for detailed specifications.
+### MagicPAI.Studio/
+- `MagicPAI.Studio.csproj` — Blazor WASM. Packages: `MudBlazor 7.15.0`, `Microsoft.AspNetCore.SignalR.Client`, `Microsoft.AspNetCore.Components.WebAssembly[.DevServer]`. **No `Elsa.Studio.*`**.
+- `Program.cs` — minimal MudBlazor host (~30 lines). `AddMudServices()`, scoped `HttpClient`, scoped `SessionApiClient` / `SessionHubClient` / `WorkflowCatalogClient` / `TemporalUiUrlBuilder`, scoped `BackendUrlResolver`.
+- `App.razor` — pure MudBlazor Router; no Elsa Shell.
+- `_Imports.razor` — `@using MudBlazor`, `@using MagicPAI.Studio.Components`, `@using MagicPAI.Studio.Services`, `@using MagicPAI.Shared.Hubs`. **No `@using Elsa.*`**.
+- `Layout/MainLayout.razor` + `Layout/NavMenu.razor` — MudLayout shell.
+- `Components/` — 8 MudBlazor components:
+  - `SessionInputForm.razor` — workflow-type dropdown + prompt + assistant/model/workspace + submit.
+  - `CliOutputStream.razor` — live stdout pane (MudBlazor dark monospace, auto-scroll).
+  - `CostDisplay.razor` — subscribes to `SessionHubClient.CostUpdate`.
+  - `GateApprovalPanel.razor` — approve/reject buttons dispatching Temporal signals.
+  - `ContainerStatusPanel.razor` — subscribes to `ContainerSpawned`/`ContainerDestroyed`.
+  - `VerificationResultsTable.razor` — gate results table.
+  - `SessionStatusBadge.razor` — status chip.
+  - `PipelineStageChip.razor` — stage chip.
+- `Pages/` — `Home.razor`, `SessionList.razor`, `SessionView.razor`, `SessionInspect.razor` (iframes Temporal UI), `Dashboard.razor`, `CostDashboard.razor`, `Settings.razor`.
+- `Services/` —
+  - `BackendUrlResolver.cs` — resolves `/api` URL from config.
+  - `SessionApiClient.cs` — `POST /api/sessions`, `GET /api/sessions`, `DELETE /api/sessions/{id}`, signal/approve/terminate endpoints.
+  - `SessionHubClient.cs` — SignalR client matching `ISessionHubClient` — all events (`OutputChunk`, `StructuredEvent`, `StageChanged`, `CostUpdate`, `VerificationResult`, `GateAwaiting`, `ContainerSpawned`, `ContainerDestroyed`, `SessionCompleted`, `SessionFailed`, `SessionCancelled`).
+  - `TemporalUiUrlBuilder.cs` — deep-link to `http://localhost:8233/namespaces/magicpai/workflows/{id}`.
+  - `WorkflowCatalogClient.cs` — fetches `GET /api/workflows`.
 
-### Step 1: MagicPAI.Studio Project Setup
+### docker/
+- `docker-compose.yml` — base: `server`, `db` (magicpai Postgres), `worker-env-builder` (profile `build`).
+- `docker-compose.temporal.yml` — overlay: `temporal` (auto-setup 1.25), `temporal-db` (Postgres), `temporal-ui` (2.30). Use together with base.
+- `temporal/dynamicconfig/development.yaml` + `production.yaml` — Temporal dynamic config.
+- `temporal/README.md` — explains the Temporal config.
+- `worker-env/Dockerfile` + `entrypoint.sh` — session container image (`magicpai-env:latest`) with Claude/Codex/Gemini CLIs + credential mounting. **Unchanged by the Temporal migration.**
+- `server/Dockerfile` — MagicPAI.Server container image. Publishes Blazor WASM static files into server's wwwroot.
 
-Create `MagicPAI.Studio.csproj` as Blazor WASM:
-```xml
-<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Elsa.Studio" Version="3.6.0" />
-    <PackageReference Include="Elsa.Studio.Core.BlazorWasm" Version="3.6.0" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />
-  </ItemGroup>
-</Project>
-```
+## Specifications
 
-### Step 2: MagicPAI.Studio/Program.cs
+- **Plan:** `temporal.md` §10 (Studio migration), §S (Blazor components full code), §13 (Docker infrastructure).
+- **Day-by-day guide:** `docs/phase-guides/Phase2-Day11.md`.
 
-See MAGICPAI_PLAN.md Section 13.3. Register Elsa Studio, custom menu items, SignalR client.
+## Key patterns
 
-### Step 3: MagicPAI.Studio/wwwroot/
+- MudBlazor components only — no custom Bootstrap/Radzen/Fluent/BlazorMonaco.
+- Every hub event subscription must unsubscribe on Dispose (`IAsyncDisposable` or `IDisposable`).
+- `TemporalUiUrlBuilder.InitializeAsync()` fetches `/api/config/temporal` with a silent fallback to defaults — don't fail the UI if the server doesn't expose that endpoint.
+- Studio is pure client; don't embed server logic. Everything goes through `SessionApiClient` or `SessionHubClient`.
 
-- `index.html` — Blazor WASM host page with `<script src="_framework/blazor.webassembly.js"></script>`
-- `css/app.css` — Custom styles for dashboard, session view, output panel
+## Docker invariant
 
-### Step 4: MagicPAI.Studio/Layout/MainLayout.razor
+Session containers (`magicpai-env`) ALWAYS run in Docker. The compose overlay `docker-compose.temporal.yml` adds the Temporal stack but does NOT change the session-container model.
 
-Shared layout extending Elsa Studio's layout. Navigation sidebar with custom menu items.
+## Don't do
 
-### Step 5: MagicPAI.Studio/Services/SessionHubClient.cs
+- Don't re-introduce `Elsa.Studio.*` packages.
+- Don't embed iframe to Elsa Studio (it's gone).
+- Don't put any server logic in the Studio project.
+- Don't route large CLI stdout through anything but SignalR `OutputChunk`.
+- Don't modify `MagicPAI.Core` or `MagicPAI.Server`.
 
-Type-safe SignalR client. See MAGICPAI_PLAN.md Section 13.4.
-- Events: OnOutputChunk, OnWorkflowProgress, OnVerificationUpdate, OnCostUpdate, OnSessionStateChanged, OnContainerSpawned, OnError
-- Methods: ConnectAsync, CreateSessionAsync, StopSessionAsync, ApproveAsync
-- Auto-reconnect with 0/1/3/5s delays
+## After changes
 
-### Step 6: MagicPAI.Studio/Services/SessionApiClient.cs
-
-REST API client using HttpClient:
-- ListSessionsAsync() → GET /api/sessions
-- GetSessionAsync(id) → GET /api/sessions/{id}
-- DeleteSessionAsync(id) → DELETE /api/sessions/{id}
-
-### Step 7: MagicPAI.Studio/Pages/
-
-**Dashboard.razor** — See MAGICPAI_PLAN.md Section 13.5.
-- Session list cards (id, state, cost)
-- Quick start form: prompt textarea, agent dropdown, workspace path input
-- CreateSession button that calls SessionHubClient
-
-**SessionView.razor** — See MAGICPAI_PLAN.md Section 13.6.
-- Route: `/sessions/{SessionId}`
-- OutputPanel showing streaming text
-- Sidebar with status, CostTracker, VerificationBadge
-- Stop button
-
-**CostDashboard.razor** — Token usage + cost analytics per session.
-
-**Settings.razor** — Agent configuration, model routing preferences.
-
-### Step 8: MagicPAI.Studio/Components/
-
-- `OutputPanel.razor` — `<pre>` with auto-scroll, appends text from OnOutputChunk
-- `DagView.razor` — Visual progress view (activity names + status badges)
-- `VerificationBadge.razor` — Green/red badges for passed/failed gates
-- `AgentSelector.razor` — Dropdown: Claude Code, Codex CLI, Gemini CLI
-- `CostTracker.razor` — Live $X.XXXX display updating from OnCostUpdate
-- `ContainerStatus.razor` — Docker container health indicator
-
-### Step 9: docker/worker-env/Dockerfile
-
-See MAGICPAI_PLAN.md Section 9.2. Based on MagicPrompt's env-gui Dockerfile.
-Debian bookworm with: Node.js 24, .NET 10/9/8, Python 3, Go, Rust, Playwright+Chromium,
-Docker CLI, Claude Code CLI, noVNC/Xvfb/fluxbox for GUI.
-
-### Step 10: docker/worker-env/entrypoint.sh
-
-See MagicPrompt's entrypoint.sh. Configure Docker socket, start Xvfb, fluxbox, VNC, noVNC.
-
-### Step 11: docker/server/Dockerfile
-
-Multi-stage: SDK build → aspnet runtime. Install Docker CLI in runtime image.
-
-### Step 12: docker/docker-compose.yml
-
-See MAGICPAI_PLAN.md Section 16.1. Services: server (ports 5000:8080), db (postgres:17-alpine), worker-env-builder (build profile).
-
-### Step 13: MagicPAI.Tests/
-
-Create test project with xUnit + Moq. Write tests for:
-- `ClaudeRunnerTests.cs` — BuildCommand format, ParseResponse with sample JSON
-- `SharedBlackboardTests.cs` — concurrent ClaimFile, ReleaseFile
-- `VerificationPipelineTests.cs` — gate chain with mock gates, early-stop on blocking failure
-- `DockerContainerManagerTests.cs` — mock Docker client
-- `RunCliAgentActivityTests.cs` — mock IContainerManager + ICliAgentFactory
-
-## Rules
-- Blazor components use `@inject SessionHubClient Hub` for SignalR
-- Use `InvokeAsync(StateHasChanged)` when updating UI from event handlers
-- Run `dotnet build` after each step
-- Docker files don't need dotnet build — test with `docker build`
+1. `dotnet build MagicPAI.Studio/MagicPAI.Studio.csproj` — 0 errors.
+2. `dotnet test MagicPAI.Tests.UI` — 5+ tests pass.
+3. `dotnet publish MagicPAI.Studio -c Release` — verify `wwwroot/_content/` contains only `MudBlazor/` (no Elsa assets).
+4. Start server + open `http://localhost:5000` to manually verify the Blazor shell boots and the workflow dropdown is populated.
+5. Update `SCORECARD.md` Phase 2 Studio rebuild section.

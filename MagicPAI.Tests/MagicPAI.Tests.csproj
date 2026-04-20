@@ -8,15 +8,27 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="6.12.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" />
+    <!-- Temporal SDK (added Phase 1 Day 2 — ActivityEnvironment + WorkflowEnvironment test helpers). -->
+    <PackageReference Include="Temporalio" Version="1.13.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MagicPAI.Shared\MagicPAI.Shared.csproj" />
     <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />
     <ProjectReference Include="..\MagicPAI.Activities\MagicPAI.Activities.csproj" />
+    <!-- Workflow contracts + ActivityProfiles (added Phase 1 Day 3). -->
+    <ProjectReference Include="..\MagicPAI.Workflows\MagicPAI.Workflows.csproj" />
     <ProjectReference Include="..\MagicPAI.Server\MagicPAI.Server.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Phase 1 Day 3: replay fixture files shipped with the test assembly. -->
+    <None Update="Workflows\Histories\**\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

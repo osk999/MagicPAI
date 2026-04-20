@@ -1,0 +1,45 @@
+@* MagicPAI.Studio/Components/GateApprovalPanel.razor — Temporal migration §S.3. *@
+@inject SessionApiClient Client
+
+<MudPaper Class="pa-4 mud-theme-warning-lighten-5">
+    <MudText Typo="Typo.subtitle1">Human approval required</MudText>
+    <MudText Typo="Typo.body2">@GateName</MudText>
+    <MudText Typo="Typo.caption" Class="mt-2">@PromptForHuman</MudText>
+
+    <MudTextField T="string"
+                  Label="Comment (optional)"
+                  @bind-Value="_comment"
+                  Lines="2"
+                  Class="mt-3" />
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Success" OnClick="OnApproveClicked">Approve</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="OnRejectClicked">Reject</MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = "";
+    [Parameter] public string GateName { get; set; } = "Gate";
+    [Parameter] public string PromptForHuman { get; set; } = "";
+    [Parameter] public EventCallback<string> OnApprove { get; set; }
+    [Parameter] public EventCallback<string> OnReject { get; set; }
+
+    private string _comment = "";
+
+    private async Task OnApproveClicked()
+    {
+        await Client.ApproveGateAsync(SessionId, _comment);
+        await OnApprove.InvokeAsync(_comment);
+    }
+
+    private async Task OnRejectClicked()
+    {
+        if (string.IsNullOrWhiteSpace(_comment))
+        {
+            _comment = "Rejected without comment";
+        }
+        await Client.RejectGateAsync(SessionId, _comment);
+        await OnReject.InvokeAsync(_comment);
+    }
+}

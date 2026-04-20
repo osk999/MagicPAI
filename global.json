@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/sdk/main/src/Tasks/Microsoft.NET.Build.Tasks/targets/LatestPreview.json",
+  "sdk": {
+    "version": "10.0.100",
+    "rollForward": "latestFeature",
+    "allowPrerelease": false
+  },
+  "msbuild-sdks": {
+  }
+}

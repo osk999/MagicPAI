@@ -24,6 +24,47 @@ Desktop.ini
 appsettings.*.local.json
 *.pfx
 *.p12
+*.key
+*.pem
+*.crt
+!docker/temporal/certs/ca.pub.crt
 artifacts/
 .playwright-mcp/
 document_refernce_opensource/
+
+## Temporal
+docker/temporal/certs/
+temporal.db
+temporal-dev.db
+/tmp/temporal-*
+
+## Secrets (Phase 1+)
+secrets/
+.env
+.env.local
+.env.*.local
+!.env.example
+
+## Test output
+test-results/
+coverage-report/
+TestResults/
+**/*.trx
+**/*.coverage
+**/*.cobertura.xml
+
+## Local backups
+backups/
+*.sql.gz
+*.sql.zip
+
+## Screenshots (dev captures; should not be committed)
+run*-*.png
+vnc-*.png
+screenshot-*.png
+
+## OS-specific
+.claude/kl.*.md
+
+## .NET SDK lockfiles (comment out if you want reproducible builds)
+# packages.lock.json

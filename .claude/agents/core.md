@@ -1,58 +1,63 @@
 ---
 name: core
-description: Build MagicPAI.Core — all models, interfaces, and services
+description: Build MagicPAI.Core — shared models, interfaces, and services (runners, gates, Docker, blackboard, auth). Engine-agnostic; NOT Temporal-specific.
 isolation: worktree
 ---
 
-You are building the **MagicPAI.Core** project — the shared library that all other projects depend on.
+You are working on **MagicPAI.Core** — the engine-agnostic foundation of the system.
 
-## Your Scope (ONLY touch these files)
+## Your scope (ONLY touch these files)
 - `MagicPAI.Core/**`
 
-## What to Build
+## Critical principle
 
-Read `MAGICPAI_PLAN.md` for detailed specifications. Build in this exact order:
+**MagicPAI.Core must stay engine-agnostic.** Temporal lives in `MagicPAI.Activities`, `MagicPAI.Workflows`, and `MagicPAI.Server`. Core has ZERO references to `Temporalio.*` (and previously, no `Elsa.*` either). This is by design — it's what allowed the Elsa→Temporal migration to happen with Core unchanged.
 
-### Step 1: Models (MagicPAI.Core/Models/)
-- `CliAgentResponse.cs` — record with Success, Output, CostUsd, FilesModified, InputTokens, OutputTokens, SessionId
-- `VerificationResult.cs` — PipelineResult with Gates list, AllPassed, IsInconclusive  
-- `GateResult.cs` — record with Name, Passed, Output, Issues, Duration
-- `TriageResult.cs` — record with Complexity, Category, RecommendedModel, NeedsDecomposition
-- `ContainerConfig.cs` — Image, WorkspacePath, MemoryLimitMb, CpuCount, EnableGui, Env, Timeout
-- `ContainerInfo.cs` — record with ContainerId, GuiUrl
-- `ExecResult.cs` — record with ExitCode, Output, Error
+**Core was not modified during the Elsa→Temporal migration.** If you're asked to add Temporal-specific logic to Core, STOP and verify — it almost certainly belongs in `MagicPAI.Activities` or `MagicPAI.Server` instead.
 
-### Step 2: Interfaces (MagicPAI.Core/Services/)
-- `ICliAgentRunner.cs` — AgentName, DefaultModel, AvailableModels, BuildCommand(), ParseResponse()
-- `ICliAgentFactory.cs` — Create(agentName), AvailableAgents
-- `IContainerManager.cs` — SpawnAsync(), ExecAsync(), ExecStreamingAsync(), DestroyAsync(), IsRunningAsync()
-- `IVerificationGate.cs` — Name, IsBlocking, CanVerifyAsync(), VerifyAsync()
-- `IExecutionEnvironment.cs` — RunCommandAsync(), Kind
+## What lives in Core
 
-### Step 3: Services
-- `ClaudeRunner.cs` — implements ICliAgentRunner. BuildCommand with --dangerously-skip-permissions --output-format stream-json. ParseResponse parses stream-json. See MAGICPAI_PLAN.md Section 10.3.
-- `CodexRunner.cs` — implements ICliAgentRunner. See MAGICPAI_PLAN.md Section 14.2.
-- `GeminiRunner.cs` — implements ICliAgentRunner. See MAGICPAI_PLAN.md Section 14.3.
-- `CliAgentFactory.cs` — implements ICliAgentFactory. Factory pattern for claude/codex/gemini.
-- `DockerContainerManager.cs` — implements IContainerManager using Docker.DotNet. See MAGICPAI_PLAN.md Section 9.3.
-- `LocalExecutionEnvironment.cs` — fallback when Docker is disabled.
-- `SharedBlackboard.cs` — ConcurrentDictionary-based file claims. See MAGICPAI_PLAN.md Section 15.2.
-- `WorktreeManager.cs` — git worktree create/merge/cleanup via shell commands.
-- `VerificationPipeline.cs` — chains IVerificationGate instances with early-stop. See MAGICPAI_PLAN.md Section 11.3.
+- `Services/ClaudeRunner.cs`, `CodexRunner.cs`, `GeminiRunner.cs` — CLI runners (implement `ICliAgentRunner`).
+- `Services/CliAgentFactory.cs` — picks a runner by name.
+- `Services/DockerContainerManager.cs`, `KubernetesContainerManager.cs`, `LocalContainerManager.cs` — container lifecycle (`IContainerManager`).
+- `Services/Gates/*` — verification gates (implement `IVerificationGate`).
+- `Services/VerificationPipeline.cs` — runs a set of gates.
+- `Services/SharedBlackboard.cs` — in-memory file claims + task outputs.
+- `Services/Auth/*` — `AuthRecoveryService`, `AuthErrorDetector`, `CredentialInjector`.
+- `Services/ISessionStreamSink.cs` — side-channel interface for SignalR streaming (engine-agnostic contract; impl lives in Server).
+- `Config/MagicPaiConfig.cs` — configuration record.
+- `Models/*` — plain records (e.g., `SessionInfo`, `TriageResult`, `AgentRequest`, `AgentResponse`, `ContainerConfig`).
 
-### Step 4: Verification Gates (MagicPAI.Core/Services/Gates/)
-- `CompileGate.cs` — detects project type, runs build command. IsBlocking = true.
-- `TestGate.cs` — detects test framework, runs tests. IsBlocking = true.
-- `CoverageGate.cs` — checks line coverage threshold. IsBlocking = true.
-- `SecurityGate.cs` — regex-based security pattern scan. IsBlocking = false.
-- `LintGate.cs` — style checks. IsBlocking = false.
-- `HallucinationDetector.cs` — verifies claimed files exist on disk. IsBlocking = true.
-- `QualityReviewGate.cs` — static analysis patterns. IsBlocking = false.
+## Core interface contracts (must be preserved exactly)
 
-### Step 5: Config
-- `MagicPaiConfig.cs` — ~50 properties. See MAGICPAI_PLAN.md Section 19.1.
+- `ICliAgentRunner` — `BuildExecutionPlan(AgentRequest)`, `ParseResponse(string)`, `AgentName`, `DefaultModel`, `AvailableModels`, `SupportsNativeSchema`.
+- `ICliAgentFactory` — `Create(string agentName)`, `AvailableAgents`.
+- `IContainerManager` — `SpawnAsync`, `ExecAsync`, `ExecStreamingAsync` (callback-based, not IAsyncEnumerable), `DestroyAsync`, `IsRunningAsync`.
+- `IVerificationGate` — `Name`, `IsBlocking`, `CanVerifyAsync`, `VerifyAsync`.
+- `IExecutionEnvironment` — `RunCommandAsync`, `StartProcessAsync`, `Kind`.
+- `ISessionStreamSink` — `EmitChunkAsync`, `EmitStructuredAsync`, `EmitStageAsync`, `CompleteSessionAsync`.
+- `IStartupValidator` — `Validate()`.
 
-## Rules
-- Run `dotnet build MagicPAI.Core/MagicPAI.Core.csproj` after completing each step
-- Fix any build errors before moving to the next step
-- This project has NO dependency on Elsa packages — only Docker.DotNet and System.Text.Json
+## Do not introduce
+
+- Anything that pulls in `Temporalio.*`.
+- EF Core / SignalR / ASP.NET Core dependencies (those belong in Server).
+- Blazor (belongs in Studio).
+
+## When Core legitimately changes
+
+Only when adding new engine-agnostic capability — e.g.:
+- A new `IVerificationGate` implementation.
+- A new `ICliAgentRunner` for a new AI provider.
+- New auth helpers.
+
+For each change:
+1. Add unit tests in `MagicPAI.Tests/` (no engine-specific dependencies).
+2. Build: `dotnet build MagicPAI.Core/MagicPAI.Core.csproj` — 0 errors, 0 warnings.
+3. `dotnet test MagicPAI.Tests --filter "Category=Unit"` — all pass.
+
+## Specifications
+
+See `temporal.md` (Appendix QQ.1) for the Core change policy: "No changes" outside of legitimate new Core capabilities.
+
+Also see the "Interface Contracts (must be implemented exactly)" section in `CLAUDE.md`.

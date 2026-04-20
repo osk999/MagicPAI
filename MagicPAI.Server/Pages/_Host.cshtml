@@ -1,37 +1,31 @@
 @page "/{**slug}"
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 
+@* Fallback page used by MapFallbackToPage("/_Host") to bootstrap the Blazor
+   WASM Studio for any unhandled route. Content mirrors MagicPAI.Studio
+   wwwroot/index.html so client-side routing (e.g. /sessions/{id}) works when
+   the user deep-links. See temporal.md §10 (Studio migration). *@
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MagicPAI Studio</title>
     <base href="/" />
 
-    <link rel="apple-touch-icon" sizes="180x180" href="/_content/Elsa.Studio.Shell/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/_content/Elsa.Studio.Shell/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/_content/Elsa.Studio.Shell/favicon-16x16.png">
-
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
 
     <link href="/_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
-    <link href="/_content/CodeBeam.MudBlazor.Extensions/MudExtensions.min.css" rel="stylesheet" />
-    <link href="/_content/Radzen.Blazor/css/material-base.css" rel="stylesheet">
-    <link href="/_content/Elsa.Studio.Shell/css/shell.css" rel="stylesheet">
     <link href="/css/app.css" rel="stylesheet" />
 </head>
 <body>
     <div id="app">
-        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background:#0f172a;color:#f1f5f9;font-family:Inter,system-ui,sans-serif;gap:1rem;">
-            <div style="width:40px;height:40px;border:3px solid #334155;border-top-color:#6366f1;border-radius:50%;animation:spin .8s linear infinite;"></div>
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background:#0f172a;color:#f1f5f9;font-family:Roboto,system-ui,sans-serif;gap:1rem;">
+            <div style="width:40px;height:40px;border:3px solid #334155;border-top-color:#6366f1;border-radius:50%;animation:mpai-spin .8s linear infinite;"></div>
             <p style="color:#94a3b8;font-size:.875rem;">Loading MagicPAI Studio&hellip;</p>
-            <style>@@keyframes spin{to{transform:rotate(360deg)}}</style>
+            <style>@@keyframes mpai-spin{to{transform:rotate(360deg)}}</style>
         </div>
     </div>
 
@@ -41,41 +35,8 @@
         <a class="dismiss" style="cursor:pointer;">Dismiss</a>
     </div>
 
-    <!-- Monaco AMD loader (must load before editor.main) -->
-    <script src="/_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
-    <script>require.config({ paths: { 'vs': '/_content/BlazorMonaco/lib/monaco-editor/min/vs' }});</script>
-
     <script src="/_content/MudBlazor/MudBlazor.min.js"></script>
-    <script src="/_content/CodeBeam.MudBlazor.Extensions/MudExtensions.min.js"></script>
-    <script src="/_content/Radzen.Blazor/Radzen.Blazor.js"></script>
-    <script>
-        window.getClientConfig = function () {
-            return {
-                apiUrl: window.location.origin,
-                elsaApiUrl: window.location.origin + "/elsa/api",
-                elsaApiKey: "00000000-0000-0000-0000-000000000000"
-            };
-        };
-    </script>
-
-    <!-- Blazor: delay start until Monaco is fully loaded -->
-    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
-    <script>
-        (function () {
-            require(['vs/editor/editor.main'], function (m) {
-                // Monaco 0.50+ exports API nested under m.m instead of setting window.monaco
-                if (typeof window.monaco === 'undefined' && m && m.m) {
-                    window.monaco = m.m;
-                }
-                // Load BlazorMonaco interop AFTER monaco global is set
-                var script = document.createElement('script');
-                script.src = '/_content/BlazorMonaco/jsInterop.js';
-                script.onload = function () {
-                    Blazor.start();
-                };
-                document.head.appendChild(script);
-            });
-        })();
-    </script>
+    <script src="/mpai.js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
 </body>
 </html>

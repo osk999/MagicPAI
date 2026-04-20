@@ -1,0 +1,23 @@
+@* MagicPAI.Studio/Components/PipelineStageChip.razor — Temporal migration §S.7. *@
+
+<MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@StageIcon">@Stage</MudChip>
+
+@code {
+    [Parameter] public string Stage { get; set; } = "initializing";
+
+    private string StageIcon => Stage switch
+    {
+        "initializing"       => Icons.Material.Filled.HourglassEmpty,
+        "spawning-container" => Icons.Material.Filled.Build,
+        "classifying-website" or "triage" or "research-prompt"
+                             => Icons.Material.Filled.Psychology,
+        "complex-path"       => Icons.Material.Filled.AccountTree,
+        "simple-path"        => Icons.Material.Filled.Shortcut,
+        "verifying"          => Icons.Material.Filled.CheckCircle,
+        "coverage"           => Icons.Material.Filled.Rule,
+        "website-audit"      => Icons.Material.Filled.Web,
+        "cleanup"            => Icons.Material.Filled.CleaningServices,
+        "completed"          => Icons.Material.Filled.Done,
+        _                    => Icons.Material.Filled.PlayArrow
+    };
+}

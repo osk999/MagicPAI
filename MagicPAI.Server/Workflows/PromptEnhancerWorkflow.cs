@@ -1,116 +1,90 @@
-using Elsa.Extensions;
-using Elsa.Workflows;
-using Elsa.Workflows.Activities.Flowchart.Activities;
-using Elsa.Workflows.Activities.Flowchart.Models;
-using Elsa.Workflows.Models;
+// MagicPAI.Server/Workflows/Temporal/PromptEnhancerWorkflow.cs
+// Temporal port of the Elsa PromptEnhancerWorkflow. Thin wrapper around
+// AiActivities.EnhancePromptAsync so clients can dispatch prompt enhancement as a
+// standalone workflow (surfacing progress + cost through Temporal history).
+// See temporal.md §H.2.
+using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
+using MagicPAI.Activities.Contracts;
+using MagicPAI.Activities.Docker;
+using MagicPAI.Workflows;
+using MagicPAI.Workflows.Contracts;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Classify prompt vagueness, enhance with Sonnet, quality check, escalate to Opus if needed.
-/// Flow: Triage (vagueness check) -> Enhance with Sonnet -> Quality Check Triage -> [if still vague: Opus enhancement]
+/// Runs the prompt-enhancement activity once. Callers pass optional enhancement
+/// instructions; when omitted, the workflow uses a sensible default that asks the
+/// model to improve clarity without changing intent.
 /// </summary>
-public class PromptEnhancerWorkflow : WorkflowBase
+/// <remarks>
+/// Container-lifecycle branching mirrors <see cref="SimpleAgentWorkflow"/> (Fix #2).
+/// When dispatched top-level via HTTP, <c>ContainerId</c> is empty and the workflow
+/// spawns its own container (destroyed in <c>finally</c>). When nested, the caller
+/// supplies its <c>ContainerId</c> and this workflow reuses it.
+/// </remarks>
+[Workflow]
+public class PromptEnhancerWorkflow
 {
-    protected override void Build(IWorkflowBuilder builder)
+    [WorkflowRun]
+    public async Task<PromptEnhancerOutput> RunAsync(PromptEnhancerInput input)
     {
-        builder.Name = "Prompt Enhancer";
-        builder.Description =
-            "Classify prompt vagueness and enhance using Sonnet, escalating to Opus if needed";
-
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var agent = builder.WithVariable<string>("AiAssistant", "claude");
-        var containerId = builder.WithVariable<string>("ContainerId", "");
-        var enhancedPrompt = builder.WithVariable<string>("EnhancedPrompt", "");
-
-        // Step 1: Classify vagueness
-        var classifyVagueness = new TriageActivity
+        string containerId;
+        bool ownsContainer;
+        if (!string.IsNullOrWhiteSpace(input.ContainerId))
         {
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Id = "classify-vagueness"
-        };
-        Pos(classifyVagueness, 400, 50);
-
-        // Step 2: Enhance with Sonnet (for vague/complex prompts)
-        var enhanceSonnet = new AiAssistantActivity
+            containerId = input.ContainerId;
+            ownsContainer = false;
+        }
+        else
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            TrackPromptTransform = new Input<bool>(true),
-            PromptTransformLabel = new Input<string>("Prompt Enhancement (Sonnet)"),
-            Response = new Output<string>(enhancedPrompt),
-            Id = "enhance-sonnet"
-        };
-        Pos(enhanceSonnet, 200, 220);
+            var spawnInput = new SpawnContainerInput(
+                SessionId: input.SessionId,
+                WorkspacePath: input.WorkspacePath,
+                EnableGui: false);
 
-        // Step 3: Quality check the enhanced prompt
-        var qualityCheck = new TriageActivity
-        {
-            Prompt = new Input<string>(enhancedPrompt),
-            ContainerId = new Input<string>(containerId),
-            Id = "quality-check"
-        };
-        Pos(qualityCheck, 400, 220);
+            var spawn = await Workflow.ExecuteActivityAsync(
+                (DockerActivities a) => a.SpawnAsync(spawnInput),
+                ActivityProfiles.Container);
 
-        // Step 4: Escalate to Opus if quality check shows still complex
-        var enhanceOpus = new AiAssistantActivity
-        {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                string.IsNullOrWhiteSpace(ctx.GetVariable<string>("EnhancedPrompt"))
-                    ? ctx.GetVariable<string>("Prompt") ?? ""
-                    : ctx.GetVariable<string>("EnhancedPrompt") ?? ""),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(1),
-            TrackPromptTransform = new Input<bool>(true),
-            PromptTransformLabel = new Input<string>("Prompt Enhancement (Opus)"),
-            Response = new Output<string>(enhancedPrompt),
-            Id = "enhance-opus"
-        };
-        Pos(enhanceOpus, 600, 390);
+            containerId = spawn.ContainerId;
+            ownsContainer = true;
+        }
 
-        // Simple prompts go directly to Sonnet enhancement (still benefit from it)
-        var flowchart = new Flowchart
+        try
         {
-            Id = "prompt-enhancer-flow",
-            Start = classifyVagueness,
-            Activities = { classifyVagueness, enhanceSonnet, qualityCheck, enhanceOpus },
-            Connections =
+            var enhanceInput = new EnhancePromptInput(
+                OriginalPrompt: input.OriginalPrompt,
+                EnhancementInstructions:
+                    input.EnhancementInstructions
+                        ?? "Improve clarity, add missing context, preserve intent.",
+                ContainerId: containerId,
+                ModelPower: input.ModelPower,
+                AiAssistant: input.AiAssistant,
+                SessionId: input.SessionId);
+
+            var result = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.EnhancePromptAsync(enhanceInput),
+                ActivityProfiles.Medium);
+
+            // Cost is emitted by the activity through ISessionStreamSink; the workflow
+            // returns 0 here so the output record stays decoupled from the activity's
+            // internal token accounting. See temporal.md §H.2.
+            return new PromptEnhancerOutput(
+                EnhancedPrompt: result.EnhancedPrompt,
+                WasEnhanced: result.WasEnhanced,
+                Rationale: result.Rationale,
+                CostUsd: 0m);
+        }
+        finally
+        {
+            if (ownsContainer)
             {
-                // Vague/Complex -> Sonnet enhancement
-                new Connection(
-                    new Endpoint(classifyVagueness, "Complex"),
-                    new Endpoint(enhanceSonnet)),
-
-                // Simple prompts also get enhanced
-                new Connection(
-                    new Endpoint(classifyVagueness, "Simple"),
-                    new Endpoint(enhanceSonnet)),
-
-                // After Sonnet enhancement -> quality check
-                new Connection(
-                    new Endpoint(enhanceSonnet, "Done"),
-                    new Endpoint(qualityCheck)),
-
-                // Quality check says simple -> done (good enough)
-                // (terminal - no further connections needed)
-
-                // Quality check says still complex -> escalate to Opus
-                new Connection(
-                    new Endpoint(qualityCheck, "Complex"),
-                    new Endpoint(enhanceOpus)),
-
-                // Sonnet failed -> try Opus directly
-                new Connection(
-                    new Endpoint(enhanceSonnet, "Failed"),
-                    new Endpoint(enhanceOpus)),
+                var destroyInput = new DestroyInput(containerId);
+                await Workflow.ExecuteActivityAsync(
+                    (DockerActivities a) => a.DestroyAsync(destroyInput),
+                    ActivityProfiles.ContainerCleanup);
             }
-        };
-
-        builder.Root = flowchart.WithAttachedVariables(builder);
+        }
     }
 }

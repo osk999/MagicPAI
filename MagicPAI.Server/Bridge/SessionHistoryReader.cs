@@ -1,252 +1,118 @@
-using System.Data.Common;
-using System.Text.Json;
-using MagicPAI.Core.Models;
-using Microsoft.Data.Sqlite;
-using Npgsql;
+// MagicPAI.Server/Bridge/SessionHistoryReader.cs
+// Temporal-backed session history reader per temporal.md §12.6. Queries
+// Temporal's visibility store (ListWorkflowsAsync) for recent workflow
+// executions and hydrates per-session cost from the MagicPAI DB when
+// available. During Phase 2 the DB schema may not yet have a cost table;
+// the reader returns 0 in that case.
+using System.Runtime.CompilerServices;
+using Temporalio.Client;
+using Temporalio.Common;
 
 namespace MagicPAI.Server.Bridge;
 
 public class SessionHistoryReader
 {
-    private readonly string? _connectionString;
-    private readonly bool _useSqlite;
+    private readonly ITemporalClient _temporal;
+    private readonly ILogger<SessionHistoryReader> _log;
 
-    public SessionHistoryReader(IConfiguration configuration)
+    public SessionHistoryReader(ITemporalClient temporal, ILogger<SessionHistoryReader> log)
     {
-        _connectionString = configuration.GetConnectionString("MagicPai");
-        _useSqlite = !string.IsNullOrWhiteSpace(_connectionString) &&
-            _connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
+        _temporal = temporal;
+        _log = log;
     }
 
-    public async Task<SessionInfo?> GetSessionAsync(string sessionId, SessionInfo? tracked, CancellationToken ct)
+    /// <summary>
+    /// Enumerates recent sessions (workflows started within <paramref name="window"/>)
+    /// newest first, capped at <paramref name="take"/>.
+    /// </summary>
+    public async IAsyncEnumerable<SessionSummary> ListRecentAsync(
+        TimeSpan window,
+        int take = 100,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(_connectionString))
-            return tracked;
+        var since = DateTime.UtcNow - window;
+        // NOTE: the default Temporal visibility store (SQL) does not support
+        // `ORDER BY` in list queries — it throws "invalid query: operation is
+        // not supported: 'order by' clause". We fetch the filtered set (up to
+        // 2x `take` to give the sort some headroom for out-of-order arrivals)
+        // and sort client-side, capping at `take`.
+        var query = $"StartTime > \"{since:yyyy-MM-ddTHH:mm:ss.fffZ}\"";
 
-        try
+        var fetched = new List<WorkflowExecution>();
+        var fetchCap = Math.Max(take * 2, take);
+        await foreach (var wf in _temporal
+            .ListWorkflowsAsync(query,
+                new WorkflowListOptions { Rpc = new RpcOptions { CancellationToken = ct } })
+            .WithCancellation(ct))
         {
-            await using var conn = CreateConnection();
-            await conn.OpenAsync(ct);
-
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"""
-                SELECT "DefinitionId", "Status", "SubStatus", "CreatedAt"
-                FROM {Table("WorkflowInstances")}
-                WHERE "Id" = @id
-                LIMIT 1;
-                """;
-            AddParameter(cmd, "id", sessionId);
-
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-            if (!await reader.ReadAsync(ct))
-                return tracked;
-
-            var session = tracked ?? new SessionInfo { Id = sessionId };
-            session.WorkflowId ??= FriendlyWorkflowName(reader.GetString(0));
-            session.State = MapState(reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2));
-            if (session.CreatedAt == default)
-                session.CreatedAt = reader.GetFieldValue<DateTime>(3);
-            return session;
+            fetched.Add(wf);
+            if (fetched.Count >= fetchCap) break;
         }
-        catch
+
+        foreach (var wf in fetched
+            .OrderByDescending(w => w.StartTime)
+            .Take(take))
         {
-            // Schema may not exist yet — fall back to in-memory tracker data
-            return tracked;
+            var assistant = TryGetAttribute(wf, "MagicPaiAiAssistant");
+
+            yield return new SessionSummary(
+                SessionId: wf.Id,
+                WorkflowType: wf.WorkflowType,
+                Status: wf.Status.ToString(),
+                StartTime: wf.StartTime,
+                CloseTime: wf.CloseTime,
+                AiAssistant: assistant ?? "",
+                TotalCostUsd: 0m);  // Hydrated from cost_tracking in Phase 3
         }
     }
 
-    public async Task<IReadOnlyList<ActivityState>> GetActivitiesAsync(
+    /// <summary>
+    /// Enumerate the event history for one workflow — used for debugging and
+    /// deterministic replay verification.
+    /// </summary>
+    public async IAsyncEnumerable<WorkflowHistoryEventSummary> GetEventsAsync(
         string sessionId,
-        IReadOnlyList<ActivityState> tracked,
-        CancellationToken ct)
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(_connectionString))
-            return tracked;
+        var handle = _temporal.GetWorkflowHandle(sessionId);
+        await foreach (var evt in handle
+            .FetchHistoryEventsAsync(
+                new WorkflowHistoryEventFetchOptions { Rpc = new RpcOptions { CancellationToken = ct } })
+            .WithCancellation(ct))
+        {
+            yield return new WorkflowHistoryEventSummary(
+                EventId: evt.EventId,
+                EventType: evt.EventType.ToString(),
+                EventTime: evt.EventTime?.ToDateTime() ?? DateTime.MinValue,
+                Attributes: evt.AttributesCase.ToString());
+        }
+    }
 
+    private static string? TryGetAttribute(WorkflowExecution wf, string key)
+    {
         try
         {
-            var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var order = new List<string>();
-
-            foreach (var activity in tracked)
-            {
-                if (merged.ContainsKey(activity.Name))
-                    continue;
-
-                merged[activity.Name] = activity.Status;
-                order.Add(activity.Name);
-            }
-
-            await using var conn = CreateConnection();
-            await conn.OpenAsync(ct);
-
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"""
-                WITH RECURSIVE workflow_tree AS (
-                    SELECT "Id"
-                    FROM {Table("WorkflowInstances")}
-                    WHERE "Id" = @id
-                    UNION ALL
-                    SELECT child."Id"
-                    FROM {Table("WorkflowInstances")} child
-                    INNER JOIN workflow_tree parent ON child."ParentWorkflowInstanceId" = parent."Id"
-                )
-                SELECT logs."ActivityId", logs."ActivityName", logs."ActivityType", logs."EventName", logs."Timestamp", logs."Sequence"
-                FROM {Table("WorkflowExecutionLogRecords")} logs
-                INNER JOIN workflow_tree tree ON tree."Id" = logs."WorkflowInstanceId"
-                ORDER BY "Timestamp" ASC, "Sequence" ASC;
-                """;
-            AddParameter(cmd, "id", sessionId);
-
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                var activityId = reader.IsDBNull(0) ? "" : reader.GetString(0);
-                var activityName = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                var activityType = reader.IsDBNull(2) ? "" : reader.GetString(2);
-                var eventName = reader.IsDBNull(3) ? "" : reader.GetString(3);
-
-                var name = !string.IsNullOrWhiteSpace(activityId)
-                    ? activityId
-                    : !string.IsNullOrWhiteSpace(activityName)
-                        ? activityName
-                        : activityType;
-                var status = eventName switch
-                {
-                    "Started" => "running",
-                    "Completed" => "completed",
-                    "Faulted" => "failed",
-                    _ => null
-                };
-
-                if (!string.IsNullOrWhiteSpace(name) && status is not null)
-                {
-                    if (!merged.ContainsKey(name))
-                        order.Add(name);
-
-                    merged[name] = status;
-                }
-            }
-
-            return order
-                .Select(name => new ActivityState(name, merged[name]))
-                .ToList();
+            var k = SearchAttributeKey.CreateText(key);
+            return wf.TypedSearchAttributes.TryGetValue(k, out var value) ? value : null;
         }
         catch
         {
-            return tracked;
+            return null;
         }
-    }
-
-    public async Task<string[]> GetOutputAsync(string sessionId, string[] tracked, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString))
-            return tracked;
-
-        try
-        {
-            var chunks = new List<string>();
-
-            await using var conn = CreateConnection();
-            await conn.OpenAsync(ct);
-
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"""
-                WITH RECURSIVE workflow_tree AS (
-                    SELECT "Id"
-                    FROM {Table("WorkflowInstances")}
-                    WHERE "Id" = @id
-                    UNION ALL
-                    SELECT child."Id"
-                    FROM {Table("WorkflowInstances")} child
-                    INNER JOIN workflow_tree parent ON child."ParentWorkflowInstanceId" = parent."Id"
-                )
-                SELECT logs."Message"
-                FROM {Table("WorkflowExecutionLogRecords")} logs
-                INNER JOIN workflow_tree tree ON tree."Id" = logs."WorkflowInstanceId"
-                WHERE logs."EventName" IN ('OutputChunk', 'StreamChunk')
-                ORDER BY "Timestamp" ASC, "Sequence" ASC;
-                """;
-            AddParameter(cmd, "id", sessionId);
-
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                if (reader.IsDBNull(0))
-                    continue;
-
-                var message = reader.GetString(0);
-                chunks.Add(ExtractOutputText(message));
-            }
-
-            if (chunks.Count == 0)
-                return tracked;
-
-            if (tracked.Length == 0)
-                return chunks.ToArray();
-
-            var merged = new List<string>(chunks);
-            foreach (var trackedChunk in tracked)
-            {
-                if (!merged.Contains(trackedChunk, StringComparer.Ordinal))
-                    merged.Add(trackedChunk);
-            }
-
-            return merged.ToArray();
-        }
-        catch
-        {
-            return tracked;
-        }
-    }
-
-    private static string ExtractOutputText(string message)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(message);
-            if (doc.RootElement.TryGetProperty("text", out var text))
-                return text.GetString() ?? "";
-        }
-        catch (JsonException)
-        {
-        }
-
-        return message;
-    }
-
-    private static string MapState(string status, string? subStatus) => status switch
-    {
-        "Running" => "running",
-        "Finished" when string.Equals(subStatus, "Finished", StringComparison.OrdinalIgnoreCase) => "completed",
-        "Finished" when string.Equals(subStatus, "Faulted", StringComparison.OrdinalIgnoreCase) => "failed",
-        "Finished" when string.Equals(subStatus, "Cancelled", StringComparison.OrdinalIgnoreCase) => "cancelled",
-        "Finished" => "completed",
-        _ => "unknown"
-    };
-
-    private static string FriendlyWorkflowName(string definitionId)
-    {
-        if (definitionId.EndsWith("Workflow", StringComparison.Ordinal))
-            definitionId = definitionId[..^"Workflow".Length];
-
-        return string.Concat(definitionId.Select((c, i) =>
-            i > 0 && char.IsUpper(c) ? "-" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
-    }
-
-    private DbConnection CreateConnection() => _useSqlite
-        ? new SqliteConnection(_connectionString)
-        : new NpgsqlConnection(_connectionString);
-
-    private string Table(string tableName) => _useSqlite
-        ? $"\"{tableName}\""
-        : $"\"Elsa\".\"{tableName}\"";
-
-    private static void AddParameter(DbCommand command, string name, object value)
-    {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        parameter.Value = value;
-        command.Parameters.Add(parameter);
     }
 }
+
+public record SessionSummary(
+    string SessionId,
+    string WorkflowType,
+    string Status,
+    DateTime StartTime,
+    DateTime? CloseTime,
+    string AiAssistant,
+    decimal TotalCostUsd);
+
+public record WorkflowHistoryEventSummary(
+    long EventId,
+    string EventType,
+    DateTime EventTime,
+    string Attributes);

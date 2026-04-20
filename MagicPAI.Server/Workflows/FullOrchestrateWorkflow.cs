@@ -1,289 +1,342 @@
-using Elsa.Expressions.Models;
-using Elsa.Extensions;
-using Elsa.Workflows;
-using Elsa.Workflows.Activities.Flowchart.Activities;
-using Elsa.Workflows.Activities.Flowchart.Models;
-using Elsa.Workflows.Models;
-using Elsa.Workflows.Runtime.Activities;
+// MagicPAI.Server/Workflows/Temporal/FullOrchestrateWorkflow.cs
+// Temporal port of the Elsa FullOrchestrateWorkflow — the central orchestrator.
+// Routes a session through one of three pipelines (website audit / simple /
+// complex) based on website-classification and triage verdicts. Exposes three
+// signals (gate approve/reject, prompt injection) and two queries (pipeline
+// stage, total cost). See temporal.md §8.6.
+using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
+using MagicPAI.Activities.Contracts;
 using MagicPAI.Activities.Docker;
+using MagicPAI.Workflows;
+using MagicPAI.Workflows.Contracts;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Parent orchestration workflow that owns the container lifecycle and delegates
-/// specialized execution to reusable child workflows.
+/// Central orchestrator. Spawns a container, classifies whether the task is
+/// website-related, and routes accordingly: website-audit child workflow,
+/// complex-path child, or simple-path child. Container lifetime is owned here
+/// — destroy happens in <c>finally</c>. See temporal.md §8.6 for the reference.
 /// </summary>
-public class FullOrchestrateWorkflow : WorkflowBase
+/// <remarks>
+/// <para><b>Signals.</b> Three signal handlers, each async Task (required by the
+/// Temporal SDK even when the body is synchronous) and side-effect only:
+/// <see cref="ApproveGateAsync"/>, <see cref="RejectGateAsync"/>,
+/// <see cref="InjectPromptAsync"/>. The run body consumes the injected prompt
+/// by substituting it for the research-enhanced prompt after triage completes.
+/// </para>
+/// <para><b>Queries.</b> <see cref="PipelineStage"/> reports the human-readable
+/// pipeline phase; <see cref="TotalCostUsd"/> accumulates across branches.
+/// Both are observable while the workflow runs.
+/// </para>
+/// </remarks>
+[Workflow]
+public class FullOrchestrateWorkflow
 {
-    protected override void Build(IWorkflowBuilder builder)
+    // Observable state.
+    private string _pipelineStage = "initializing";
+    private decimal _totalCost;
+    private string? _injectedPrompt;
+    private bool _gateApproved;
+    private string? _gateRejectReason;
+    private int _coverageIteration;
+
+    [WorkflowQuery]
+    public string PipelineStage => _pipelineStage;
+
+    [WorkflowQuery]
+    public decimal TotalCostUsd => _totalCost;
+
+    /// <summary>
+    /// Coverage-loop counter exposed for Studio progress. Counts iterations
+    /// entered in the complex-path post-execution coverage check. Zero on the
+    /// simple/website-audit branches (their own workflows track coverage).
+    /// </summary>
+    [WorkflowQuery]
+    public int CoverageIteration => _coverageIteration;
+
+    /// <summary>
+    /// Observable gate-approval state. Surfaced as a query so Studio can
+    /// render an approval-pending badge while a signal is awaited by upstream
+    /// policy. The §8.6 reference stores it but does not gate on it — future
+    /// policy gates may <c>Workflow.WaitConditionAsync(() =&gt; _gateApproved)</c>.
+    /// </summary>
+    [WorkflowQuery]
+    public bool GateApproved => _gateApproved;
+
+    [WorkflowQuery]
+    public string? GateRejectReason => _gateRejectReason;
+
+    /// <summary>
+    /// Observable HITL state. <c>true</c> while the workflow is parked at the
+    /// triage-approval gate awaiting an <see cref="ApproveGateAsync"/> or
+    /// <see cref="RejectGateAsync"/> signal. Studio renders an approval prompt
+    /// when this flips true.
+    /// </summary>
+    [WorkflowQuery]
+    public bool AwaitingApproval => _pipelineStage == "awaiting-gate-approval";
+
+    [WorkflowSignal]
+    public Task ApproveGateAsync(string approver)
     {
-        builder.Name = "Full Orchestrate";
-        builder.Description =
-            "Complete AI orchestration: website routing, research prompt grounding, child workflow execution, and cleanup";
+        _gateApproved = true;
+        return Task.CompletedTask;
+    }
 
-        var prompt = builder.WithVariable<string>("Prompt", "").WithWorkflowStorage();
-        var containerId = builder.WithVariable<string>("ContainerId", "").WithWorkflowStorage();
-        var assistant = builder.WithVariable<string>("AiAssistant", "").WithWorkflowStorage();
-        var model = builder.WithVariable<string>("Model", "").WithWorkflowStorage();
-        var modelPower = builder.WithVariable<int>("ModelPower", 0).WithWorkflowStorage();
-        var recommendedModel = builder.WithVariable<string>("RecommendedModel", "").WithWorkflowStorage();
-        var isWebsiteTask = builder.WithVariable<bool>("IsWebsiteTask", false).WithWorkflowStorage();
-        var researchedPrompt = builder.WithVariable<string>("ResearchedPrompt", "").WithWorkflowStorage();
+    [WorkflowSignal]
+    public Task RejectGateAsync(string reason)
+    {
+        _gateRejectReason = reason;
+        return Task.CompletedTask;
+    }
 
-        // Initialize variables from dispatch input at workflow start.
-        // Elsa variables with the same name as input keys shadow the input,
-        // so we copy input to variables explicitly.
-        var initVars = new Elsa.Workflows.Activities.Inline(ctx =>
+    [WorkflowSignal]
+    public Task InjectPromptAsync(string newPrompt)
+    {
+        _injectedPrompt = newPrompt;
+        return Task.CompletedTask;
+    }
+
+    [WorkflowRun]
+    public async Task<FullOrchestrateOutput> RunAsync(FullOrchestrateInput input)
+    {
+        _pipelineStage = "spawning-container";
+
+        var spawnInput = new SpawnContainerInput(
+            SessionId: input.SessionId,
+            WorkspacePath: input.WorkspacePath,
+            EnableGui: input.EnableGui);
+
+        var spawn = await Workflow.ExecuteActivityAsync(
+            (DockerActivities a) => a.SpawnAsync(spawnInput),
+            ActivityProfiles.Container);
+
+        try
         {
-            var wfInput = ctx.WorkflowInput;
-            void Set(string name, params string[] keys)
+            // Stage 1 — website classification gate.
+            _pipelineStage = "classifying-website";
+
+            var classifyInput = new WebsiteClassifyInput(
+                Prompt: input.Prompt,
+                ContainerId: spawn.ContainerId,
+                AiAssistant: input.AiAssistant,
+                SessionId: input.SessionId);
+
+            var websiteClass = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.ClassifyWebsiteTaskAsync(classifyInput),
+                ActivityProfiles.Medium);
+
+            if (websiteClass.IsWebsiteTask)
             {
-                foreach (var key in keys)
-                    if (wfInput.TryGetValue(key, out var val) && val is string s && !string.IsNullOrWhiteSpace(s))
-                    { ctx.SetVariable(name, s); return; }
+                _pipelineStage = "website-audit";
+
+                var siteInput = new WebsiteAuditInput(
+                    SessionId: input.SessionId,
+                    ContainerId: spawn.ContainerId,
+                    Prompt: input.Prompt,
+                    WorkspacePath: input.WorkspacePath,
+                    AiAssistant: input.AiAssistant,
+                    Model: input.Model);
+
+                var siteResult = await Workflow.ExecuteChildWorkflowAsync(
+                    (WebsiteAuditLoopWorkflow w) => w.RunAsync(siteInput),
+                    new ChildWorkflowOptions { Id = $"{input.SessionId}-website" });
+
+                _totalCost += siteResult.CostUsd;
+                _pipelineStage = "completed";
+
+                return new FullOrchestrateOutput(
+                    PipelineUsed: "website-audit",
+                    FinalResponse: siteResult.Summary,
+                    TotalCostUsd: _totalCost);
             }
-            Set("Prompt", "Prompt");
-            Set("AiAssistant", "AiAssistant", "Agent");
-            Set("Model", "Model");
-            if (wfInput.TryGetValue("ModelPower", out var mp))
+
+            // Stage 2 — research the prompt for grounding.
+            _pipelineStage = "research-prompt";
+
+            var researchInput = new ResearchPromptInput(
+                Prompt: input.Prompt,
+                AiAssistant: input.AiAssistant,
+                ContainerId: spawn.ContainerId,
+                ModelPower: 2,
+                SessionId: input.SessionId);
+
+            var research = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.ResearchPromptAsync(researchInput),
+                ActivityProfiles.Long);
+
+            // Stage 3 — triage to decide complexity.
+            _pipelineStage = "triage";
+
+            var triageInput = new TriageInput(
+                Prompt: research.EnhancedPrompt,
+                ContainerId: spawn.ContainerId,
+                ClassificationInstructions: null,
+                AiAssistant: input.AiAssistant,
+                SessionId: input.SessionId,
+                ComplexityThreshold: input.ComplexityThreshold);
+
+            var triage = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.TriageAsync(triageInput),
+                ActivityProfiles.Medium);
+
+            // Optional HITL gate — parks the workflow until ApproveGate or
+            // RejectGate is signalled. Disabled by default; flip the input
+            // field on when an operator wants to vet the triage verdict before
+            // a (potentially expensive) complex-path run.
+            if (input.RequireTriageApproval)
             {
-                if (mp is int i) ctx.SetVariable("ModelPower", i);
-                else if (mp is long l) ctx.SetVariable("ModelPower", (int)l);
-                else if (int.TryParse(mp?.ToString(), out var pi)) ctx.SetVariable("ModelPower", pi);
-            }
-        });
-        initVars.Id = "init-vars";
-        Pos(initVars, 400, 10);
+                _pipelineStage = "awaiting-gate-approval";
 
-        Input<string> resolveContainerId() => new(ctx => ctx.Resolve("ContainerId"));
+                var timeoutHours = input.GateApprovalTimeoutHours > 0
+                    ? input.GateApprovalTimeoutHours
+                    : 24;
 
-        Input<string> resolveBestPrompt() => new(ctx =>
-        {
-            var best = ctx.GetVariable<string>("ResearchedPrompt");
-            if (!string.IsNullOrWhiteSpace(best)) return best;
-            best = ctx.GetVariable<string>("GatheredContext");
-            if (!string.IsNullOrWhiteSpace(best)) return best;
-            best = ctx.GetVariable<string>("ElaboratedPrompt");
-            if (!string.IsNullOrWhiteSpace(best)) return best;
-            best = ctx.GetVariable<string>("EnhancedPrompt");
-            if (!string.IsNullOrWhiteSpace(best)) return best;
-            return ctx.GetDispatchInput("Prompt") ?? "";
-        });
+                // Workflow.WaitConditionAsync(predicate, timeout) returns false
+                // on timeout and true when the predicate evaluated truthy. It
+                // does not throw TimeoutException. See temporal.md §ZZ.7.
+                var decided = await Workflow.WaitConditionAsync(
+                    () => _gateApproved || _gateRejectReason != null,
+                    TimeSpan.FromHours(timeoutHours));
 
-        Input<IDictionary<string, object>?> buildChildInput() => new(ctx =>
-        {
-            var resolvedAssistant = ctx.ResolveFirst("", "AiAssistant", "Agent");
-            var requestedModel = ctx.GetDispatchInput("Model");
-            var resolvedModel =
-                string.IsNullOrWhiteSpace(requestedModel) ||
-                string.Equals(requestedModel, "auto", StringComparison.OrdinalIgnoreCase)
-                    ? ctx.GetVariable<string>("RecommendedModel")
-                        ?? ctx.GetVariable<string>("Model")
-                        ?? ""
-                    : requestedModel;
-
-            var bestPrompt = ctx.GetVariable<string>("GatheredContext");
-            if (string.IsNullOrWhiteSpace(bestPrompt))
-                bestPrompt = ctx.GetVariable<string>("ElaboratedPrompt");
-            if (string.IsNullOrWhiteSpace(bestPrompt))
-                bestPrompt = ctx.GetVariable<string>("EnhancedPrompt");
-            if (string.IsNullOrWhiteSpace(bestPrompt))
-                bestPrompt = ctx.GetDispatchInput("Prompt") ?? "";
-
-            return new Dictionary<string, object>
-            {
-                ["Prompt"] = bestPrompt,
-                ["AiAssistant"] = resolvedAssistant,
-                ["Agent"] = resolvedAssistant,
-                ["Model"] = resolvedModel,
-                ["ModelPower"] = ctx.GetVariable<int>("ModelPower"),
-                ["ContainerId"] = ctx.GetVariable<string>("ContainerId") ?? "",
-                ["EnableGui"] = ctx.GetDispatchInput<bool?>("EnableGui") ?? true
-            };
-        });
-
-        var spawn = new SpawnContainerActivity
-        {
-            WorkspacePath = new Input<string>(""),
-            EnableGui = new Input<bool>(ctx => ctx.GetInput<bool?>("EnableGui") ?? true),
-            ContainerId = new Output<string>(containerId),
-            Id = "spawn-container"
-        };
-        Pos(spawn, 400, 50);
-
-        var websiteClassifier = new WebsiteTaskClassifierActivity
-        {
-            RunAsynchronously = true,
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            IsWebsiteTask = new Output<bool>(isWebsiteTask),
-            Id = "website-classifier"
-        };
-        Pos(websiteClassifier, 400, 220);
-
-        var researchPrompt = new ResearchPromptActivity
-        {
-            RunAsynchronously = true,
-            AiAssistant = new Input<string>(""),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            EnhancedPrompt = new Output<string>(researchedPrompt),
-            Id = "research-prompt"
-        };
-        Pos(researchPrompt, 400, 390);
-
-        var triage = new TriageActivity
-        {
-            RunAsynchronously = true,
-            Prompt = resolveBestPrompt(),
-            ContainerId = new Input<string>(containerId),
-            RecommendedModel = new Output<string>(recommendedModel),
-            RecommendedModelPower = new Output<int>(modelPower),
-            Id = "triage"
-        };
-        Pos(triage, 400, 560);
-
-        var simplePath = new ExecuteWorkflow
-        {
-            WorkflowDefinitionId = new Input<string>(nameof(OrchestrateSimplePathWorkflow)),
-            WaitForCompletion = new Input<bool>(true),
-            Input = buildChildInput(),
-            Id = "simple-path"
-        };
-        Pos(simplePath, 250, 720);
-
-        // Store child input in SharedBlackboard. Elsa's DispatchWorkflow/ExecuteWorkflow
-        // does NOT reliably propagate Input to the child's WorkflowInput, so every
-        // child workflow (OrchestrateComplexPath, OrchestrateSimplePath via ExecuteWorkflow,
-        // WebsiteAuditCore) reads a JSON payload from SharedBlackboard keyed by this
-        // parent's instance id. We store TWICE: once right after spawn with raw
-        // ContainerId+Prompt (for early dispatches like audit/simple that may fire
-        // before research enhancements exist), and again before the complex dispatch
-        // with the research-enhanced prompt.
-        static Elsa.Workflows.Activities.Inline BuildStoreChildInput(string id)
-        {
-            var inline = new Elsa.Workflows.Activities.Inline(ctx =>
-            {
-                var bb = ctx.GetRequiredService<MagicPAI.Core.Services.SharedBlackboard>();
-                var parentId = ctx.WorkflowExecutionContext.Id;
-
-                var bestPrompt = ctx.GetVariable<string>("ResearchedPrompt");
-                if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("GatheredContext");
-                if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("ElaboratedPrompt");
-                if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("EnhancedPrompt");
-                if (string.IsNullOrWhiteSpace(bestPrompt)) bestPrompt = ctx.GetVariable<string>("Prompt") ?? "";
-
-                var data = new Dictionary<string, object>
+                if (!decided)
                 {
-                    ["Prompt"] = bestPrompt,
-                    ["ContainerId"] = ctx.GetVariable<string>("ContainerId") ?? "",
-                    ["AiAssistant"] = ctx.GetVariable<string>("AiAssistant") ?? "",
-                    ["Model"] = ctx.GetVariable<string>("Model") ?? "",
-                    ["ModelPower"] = ctx.GetVariable<int>("ModelPower")
-                };
-                bb.SetTaskOutput($"{parentId}:child-input",
-                    System.Text.Json.JsonSerializer.Serialize(data));
-            });
-            inline.Id = id;
-            return inline;
-        }
+                    // Park-time exhausted — treat the same as an explicit reject
+                    // so the workflow takes a single, well-defined exit path.
+                    _gateRejectReason = "timeout";
+                }
 
-        var storeChildInputEarly = BuildStoreChildInput("store-child-input-early");
-        Pos(storeChildInputEarly, 400, 120);
-
-        var storeChildInput = BuildStoreChildInput("store-child-input");
-        Pos(storeChildInput, 550, 700);
-
-        var complexPath = new Elsa.Workflows.Runtime.Activities.DispatchWorkflow
-        {
-            WorkflowDefinitionId = new Input<string>(nameof(OrchestrateComplexPathWorkflow)),
-            WaitForCompletion = new Input<bool>(true),
-            Input = buildChildInput(),
-            Id = "complex-path"
-        };
-        Pos(complexPath, 550, 780);
-
-        // Requirements-coverage classifier: grades the completed work against the
-        // original user requirements. On Incomplete it sets RepairPrompt and routes
-        // to coverageRepairAgent, which re-runs Claude with the focused gap prompt
-        // (Claude's own session is resumed so it keeps context). After that, we come
-        // back to coverage to re-verify. Capped at 30 iterations.
-        var coverage = new RequirementsCoverageActivity
-        {
-            RunAsynchronously = true,
-            OriginalPrompt = new Input<string>(prompt),
-            ContainerId = resolveContainerId(),
-            MaxIterations = new Input<int>(30),
-            ModelPower = new Input<int>(2),
-            Id = "requirements-coverage"
-        };
-        Pos(coverage, 400, 970);
-
-        var coverageRepairAgent = new AiAssistantActivity
-        {
-            RunAsynchronously = true,
-            AiAssistant = new Input<string>(new Expression("JavaScript", "getVariable(\"AiAssistant\") || \"claude\"")),
-            Prompt = new Input<string>(new Expression("JavaScript", "getVariable(\"RepairPrompt\") || \"\"")),
-            ContainerId = resolveContainerId(),
-            ModelPower = new Input<int>(2),
-            Id = "coverage-repair-agent"
-        };
-        Pos(coverageRepairAgent, 600, 970);
-
-        var destroy = new DestroyContainerActivity
-        {
-            ContainerId = resolveContainerId(),
-            Id = "destroy-container"
-        };
-        Pos(destroy, 400, 1100);
-
-        var flowchart = new Flowchart
-        {
-            Id = "full-orchestrate-flow",
-            Start = initVars,
-            Activities = { initVars, spawn, storeChildInputEarly, websiteClassifier, researchPrompt, triage, simplePath, storeChildInput, complexPath, coverage, coverageRepairAgent, destroy },
-            Connections =
-            {
-                new Connection(new Endpoint(initVars), new Endpoint(spawn)),
-                // Populate SharedBlackboard right after spawn so any child dispatch
-                // (simple path via ExecuteWorkflow, website audit via ExecuteWorkflow)
-                // can read ContainerId + Prompt on first activity. The second store
-                // later (before complexPath) overwrites with research-enhanced prompt.
-                new Connection(new Endpoint(spawn, "Done"), new Endpoint(storeChildInputEarly)),
-                new Connection(new Endpoint(storeChildInputEarly), new Endpoint(websiteClassifier)),
-                new Connection(new Endpoint(spawn, "Failed"), new Endpoint(destroy)),
-
-                // Both website and non-website implementation requests go through the main
-                // execution pipeline. Website work gets an audit pass after implementation.
-                new Connection(new Endpoint(websiteClassifier, "Website"), new Endpoint(researchPrompt)),
-                new Connection(new Endpoint(websiteClassifier, "NonWebsite"), new Endpoint(researchPrompt)),
-
-                new Connection(new Endpoint(researchPrompt, "Done"), new Endpoint(triage)),
-                new Connection(new Endpoint(researchPrompt, "Failed"), new Endpoint(triage)),
-
-                new Connection(new Endpoint(triage, "Simple"), new Endpoint(simplePath)),
-                new Connection(new Endpoint(triage, "Complex"), new Endpoint(storeChildInput)),
-                new Connection(new Endpoint(storeChildInput), new Endpoint(complexPath)),
-
-                // All paths converge on the coverage classifier. Previously website tasks
-                // went through WebsiteAuditCoreWorkflow first, but that child workflow
-                // hangs on a pre-existing Elsa BackgroundActivity bookmark-release bug.
-                // Coverage instructs Claude to visually verify via Playwright MCP in its
-                // gap_prompt, so the audit pass is redundant.
-                new Connection(new Endpoint(simplePath, "Done"), new Endpoint(coverage)),
-                new Connection(new Endpoint(complexPath, "Done"), new Endpoint(coverage)),
-
-                // Coverage loop: incomplete -> run agent again with gap prompt -> re-check.
-                new Connection(new Endpoint(coverage, "AllMet"), new Endpoint(destroy)),
-                new Connection(new Endpoint(coverage, "Exceeded"), new Endpoint(destroy)),
-                new Connection(new Endpoint(coverage, "Incomplete"), new Endpoint(coverageRepairAgent)),
-                new Connection(new Endpoint(coverageRepairAgent, "Done"), new Endpoint(coverage)),
-                new Connection(new Endpoint(coverageRepairAgent, "Failed"), new Endpoint(coverage)),
+                if (_gateRejectReason != null)
+                {
+                    _pipelineStage = "rejected";
+                    return new FullOrchestrateOutput(
+                        PipelineUsed: "rejected",
+                        FinalResponse: $"Gate rejected: {_gateRejectReason}",
+                        TotalCostUsd: _totalCost);
+                }
             }
-        };
 
-        builder.Root = flowchart.WithAttachedVariables(builder);
+            // An InjectPrompt signal received at any point before now overrides
+            // the research-enhanced prompt for the downstream branch.
+            var finalPrompt = _injectedPrompt ?? research.EnhancedPrompt;
+
+            FullOrchestrateOutput result;
+            if (triage.IsComplex)
+            {
+                _pipelineStage = "complex-path";
+
+                var complexInput = new OrchestrateComplexInput(
+                    SessionId: input.SessionId,
+                    Prompt: finalPrompt,
+                    ContainerId: spawn.ContainerId,
+                    WorkspacePath: input.WorkspacePath,
+                    AiAssistant: input.AiAssistant,
+                    Model: triage.RecommendedModel,
+                    ModelPower: triage.RecommendedModelPower);
+
+                var complex = await Workflow.ExecuteChildWorkflowAsync(
+                    (OrchestrateComplexPathWorkflow w) => w.RunAsync(complexInput),
+                    new ChildWorkflowOptions { Id = $"{input.SessionId}-complex" });
+
+                _totalCost += complex.TotalCostUsd;
+
+                // Post-execution requirements-coverage loop. Unlike SimpleAgent's
+                // coverage loop (which runs inside its own child workflow), the
+                // complex path delegates subtask execution to OrchestrateComplexPath
+                // and then asks the grader whether the top-level prompt's
+                // requirements were actually met by the decomposed + reassembled
+                // output. On gaps we run ONE direct agent pass with the gap prompt
+                // per iteration — NOT a fresh OrchestrateComplexPath child,
+                // because re-architecting would re-plan from zero and the gap
+                // prompt is already a targeted closure request.
+                //
+                // Cap = input.MaxCoverageIterations (default 2 for complex;
+                // iterations are expensive here). MaxCoverageIterations=0 is
+                // honored — the for-loop body never runs and we fall through.
+                for (_coverageIteration = 1;
+                     _coverageIteration <= input.MaxCoverageIterations;
+                     _coverageIteration++)
+                {
+                    _pipelineStage = $"coverage-iteration-{_coverageIteration}";
+
+                    var coverageInput = new CoverageInput(
+                        OriginalPrompt: input.Prompt,
+                        ContainerId: spawn.ContainerId,
+                        WorkingDirectory: input.WorkspacePath,
+                        MaxIterations: input.MaxCoverageIterations,
+                        CurrentIteration: _coverageIteration,
+                        ModelPower: 2,
+                        AiAssistant: input.AiAssistant,
+                        SessionId: input.SessionId);
+
+                    var coverage = await Workflow.ExecuteActivityAsync(
+                        (AiActivities a) => a.GradeCoverageAsync(coverageInput),
+                        ActivityProfiles.Medium);
+
+                    if (coverage.AllMet)
+                        break;
+
+                    // Direct agent call — same container, using the gap prompt.
+                    var gapRunInput = new RunCliAgentInput(
+                        Prompt: coverage.GapPrompt,
+                        ContainerId: spawn.ContainerId,
+                        AiAssistant: input.AiAssistant,
+                        Model: triage.RecommendedModel,
+                        ModelPower: triage.RecommendedModelPower,
+                        WorkingDirectory: input.WorkspacePath,
+                        SessionId: input.SessionId);
+
+                    var gapRun = await Workflow.ExecuteActivityAsync(
+                        (AiActivities a) => a.RunCliAgentAsync(gapRunInput),
+                        ActivityProfiles.Long);
+
+                    _totalCost += gapRun.CostUsd;
+                }
+
+                result = new FullOrchestrateOutput(
+                    PipelineUsed: "complex",
+                    FinalResponse: $"Completed {complex.TaskCount} tasks",
+                    TotalCostUsd: _totalCost);
+            }
+            else
+            {
+                _pipelineStage = "simple-path";
+
+                // Pass this workflow's container id down so SimpleAgent reuses
+                // it instead of spawning a second container (which would
+                // collide on noVNC port 6080 and abort the run).
+                var simpleInput = new SimpleAgentInput(
+                    SessionId: input.SessionId,
+                    Prompt: finalPrompt,
+                    AiAssistant: input.AiAssistant,
+                    Model: triage.RecommendedModel,
+                    ModelPower: triage.RecommendedModelPower,
+                    WorkspacePath: input.WorkspacePath,
+                    EnableGui: input.EnableGui,
+                    ExistingContainerId: spawn.ContainerId);
+
+                var simple = await Workflow.ExecuteChildWorkflowAsync(
+                    (SimpleAgentWorkflow w) => w.RunAsync(simpleInput),
+                    new ChildWorkflowOptions { Id = $"{input.SessionId}-simple" });
+
+                _totalCost += simple.TotalCostUsd;
+                result = new FullOrchestrateOutput(
+                    PipelineUsed: "simple",
+                    FinalResponse: simple.Response,
+                    TotalCostUsd: _totalCost);
+            }
+
+            _pipelineStage = "completed";
+            return result;
+        }
+        finally
+        {
+            _pipelineStage = "cleanup";
+            var destroyInput = new DestroyInput(spawn.ContainerId);
+            await Workflow.ExecuteActivityAsync(
+                (DockerActivities a) => a.DestroyAsync(destroyInput),
+                ActivityProfiles.ContainerCleanup);
+        }
     }
 }

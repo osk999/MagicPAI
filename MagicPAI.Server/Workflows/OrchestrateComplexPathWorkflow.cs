@@ -1,268 +1,187 @@
-using Elsa.Extensions;
-using Elsa.Workflows;
-using Elsa.Workflows.Activities;
-using Elsa.Workflows.Activities.Flowchart.Activities;
-using Elsa.Workflows.Activities.Flowchart.Models;
-using Elsa.Workflows.Models;
+// MagicPAI.Server/Workflows/Temporal/OrchestrateComplexPathWorkflow.cs
+// Temporal port of the Elsa OrchestrateComplexPathWorkflow. Decomposes a prompt
+// via AiActivities.ArchitectAsync, then fans out one ComplexTaskWorkerWorkflow
+// child per task. Awaits completions with cancellation support via the
+// CancelAllTasks signal. See temporal.md §8.5.
+using Temporalio.Exceptions;
+using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
-using MagicPAI.Server.Workflows.Components;
+using MagicPAI.Activities.Contracts;
+using MagicPAI.Activities.Docker;
+using MagicPAI.Workflows;
+using MagicPAI.Workflows.Contracts;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Multi-agent decomposition path:
-/// Architect -> route by task count:
-///   Single task:  ModelRouter -> Worker -> VerifyRepair -> Merge
-///   Multi task:   BulkDispatchWorkflows(ComplexTaskWorkerWorkflow) -> Merge
+/// Orchestrates the "complex" execution path. Calls the Architect activity to
+/// decompose the prompt into independent subtasks, then starts one
+/// <see cref="ComplexTaskWorkerWorkflow"/> child per task in parallel. Awaits
+/// completions one-at-a-time via <see cref="Workflow.WhenAnyAsync"/>, updating
+/// the <see cref="TasksCompleted"/> query field as each child finishes. A
+/// <see cref="CancelAllTasksAsync"/> signal cancels all remaining children and
+/// throws <see cref="ApplicationFailureException"/> of type
+/// <c>OrchestrationCancelled</c>.
 /// </summary>
-public class OrchestrateComplexPathWorkflow : WorkflowBase
+/// <remarks>
+/// Each child is started with its own <see cref="CancellationTokenSource"/>
+/// linked to <see cref="Workflow.CancellationToken"/>. This lets us cancel
+/// individual remaining children on the cancel signal without tearing down
+/// the whole workflow. See the Temporalio SDK README — "Invoking Child
+/// Workflows" — for the token-based cancellation pattern.
+/// </remarks>
+[Workflow]
+public class OrchestrateComplexPathWorkflow
 {
-    protected override void Build(IWorkflowBuilder builder)
+    private int _tasksCompleted;
+    private int _tasksTotal;
+    private bool _cancellationRequested;
+
+    [WorkflowQuery]
+    public int TasksRemaining => _tasksTotal - _tasksCompleted;
+
+    [WorkflowQuery]
+    public int TasksCompleted => _tasksCompleted;
+
+    [WorkflowSignal]
+    public Task CancelAllTasksAsync()
     {
-        builder.Name = "Orchestrate Complex Path";
-        builder.Description =
-            "Multi-agent decomposition: architect, parallel worker dispatch, verify and repair";
+        _cancellationRequested = true;
+        return Task.CompletedTask;
+    }
 
-        var prompt = builder.WithVariable<string>("Prompt", "").WithWorkflowStorage();
-        var containerId = builder.WithVariable<string>("ContainerId", "").WithWorkflowStorage();
-        var agent = builder.WithVariable<string>("AiAssistant", "claude").WithWorkflowStorage();
-        var model = builder.WithVariable<string>("Model", "auto").WithWorkflowStorage();
-        var modelPower = builder.WithVariable<int>("ModelPower", 0).WithWorkflowStorage();
-        var selectedAgent = builder.WithVariable<string>("SelectedAgent", "claude").WithWorkflowStorage();
-        var selectedModel = builder.WithVariable<string>("SelectedModel", "sonnet").WithWorkflowStorage();
-        var taskListJson = builder.WithVariable<string[]>("TaskListJson", []).WithWorkflowStorage();
-        var taskCount = builder.WithVariable<int>("TaskCount", 0).WithWorkflowStorage();
-        var completedCount = builder.WithVariable<int>("CompletedWorkers", 0).WithWorkflowStorage();
-        var faultedCount = builder.WithVariable<int>("FaultedWorkers", 0).WithWorkflowStorage();
-
-        // ---- Step 0: Initialize variables from dispatch input ----
-        // Elsa's ExpressionExecutionContext.GetInput() is shadowed by same-named
-        // variables. WorkflowExecutionContext.Input may also be empty for child
-        // workflows dispatched via ExecuteWorkflow. The reliable fix: use an Inline
-        // activity to copy WorkflowInput to variables at startup.
-        var initVars = new Elsa.Workflows.Activities.Inline(ctx =>
+    [WorkflowRun]
+    public async Task<OrchestrateComplexOutput> RunAsync(OrchestrateComplexInput input)
+    {
+        // Container-lifecycle branching mirrors SimpleAgentWorkflow (Fix #2).
+        // Top-level HTTP dispatches send ContainerId="" — we spawn our own.
+        // Nested invocation from FullOrchestrateWorkflow provides the parent's
+        // container id so Architect + per-subtask workers share it.
+        string containerId;
+        bool ownsContainer;
+        if (!string.IsNullOrWhiteSpace(input.ContainerId))
         {
-            // Elsa child workflows (ExecuteWorkflow/DispatchWorkflow) do NOT reliably
-            // propagate parent input to child WorkflowInput. As a workaround, the parent
-            // stores child input in SharedBlackboard keyed by child instance ID.
-            var bb = ctx.GetRequiredService<MagicPAI.Core.Services.SharedBlackboard>();
-            // Parent stores input keyed by its own instance ID + ":child-input".
-            var parentId = ctx.WorkflowExecutionContext.Properties.TryGetValue("ParentInstanceId", out var pid) ? pid?.ToString() : null;
-            // Also try ParentWorkflowInstanceId
-            if (string.IsNullOrWhiteSpace(parentId))
-                parentId = ctx.WorkflowExecutionContext.ParentWorkflowInstanceId;
-            Console.WriteLine($"[CHILD-INIT-DEBUG] ParentId=\"{parentId}\" Props=[{string.Join(",", ctx.WorkflowExecutionContext.Properties.Keys)}] Input=[{string.Join(",", ctx.WorkflowInput.Keys)}]");
-            var stored = !string.IsNullOrWhiteSpace(parentId) ? bb.GetTaskOutput($"{parentId}:child-input") : null;
-            Console.WriteLine($"[CHILD-INIT-DEBUG] Stored={stored?.Substring(0, Math.Min(stored?.Length ?? 0, 100))}");
+            containerId = input.ContainerId;
+            ownsContainer = false;
+        }
+        else
+        {
+            var spawnInput = new SpawnContainerInput(
+                SessionId: input.SessionId,
+                WorkspacePath: input.WorkspacePath,
+                EnableGui: false);
 
-            if (!string.IsNullOrWhiteSpace(stored))
+            var spawn = await Workflow.ExecuteActivityAsync(
+                (DockerActivities a) => a.SpawnAsync(spawnInput),
+                ActivityProfiles.Container);
+
+            containerId = spawn.ContainerId;
+            ownsContainer = true;
+        }
+
+        try
+        {
+            // Step 1 — decompose the prompt into independent subtasks.
+            var architectInput = new ArchitectInput(
+                Prompt: input.Prompt,
+                ContainerId: containerId,
+                GapContext: input.GapContext,
+                AiAssistant: input.AiAssistant,
+                SessionId: input.SessionId);
+
+            var plan = await Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.ArchitectAsync(architectInput),
+                ActivityProfiles.Medium);
+
+            _tasksTotal = plan.TaskCount;
+
+            // Step 2 — dispatch a ComplexTaskWorkerWorkflow per task in parallel.
+            // Each child gets its own CancellationTokenSource linked to the workflow
+            // token so an individual child can be cancelled without cancelling the
+            // parent.
+            var children =
+                new List<(ChildWorkflowHandle<ComplexTaskWorkerWorkflow, ComplexTaskOutput> handle,
+                          CancellationTokenSource cts)>();
+            foreach (var task in plan.Tasks)
             {
-                var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(stored);
-                if (data is not null)
+                var childInput = new ComplexTaskInput(
+                    TaskId: task.Id,
+                    Description: task.Description,
+                    DependsOn: task.DependsOn,
+                    FilesTouched: task.FilesTouched,
+                    ContainerId: containerId,
+                    AiAssistant: input.AiAssistant,
+                    Model: input.Model,
+                    ModelPower: input.ModelPower,
+                    WorkspacePath: input.WorkspacePath,
+                    ParentSessionId: input.SessionId);
+
+                var cts = CancellationTokenSource.CreateLinkedTokenSource(
+                    Workflow.CancellationToken);
+
+                var options = new ChildWorkflowOptions
                 {
-                    void Set(string name, params string[] keys)
-                    {
-                        foreach (var key in keys)
-                            if (data.TryGetValue(key, out var el) && el.ValueKind == System.Text.Json.JsonValueKind.String)
-                            { var s = el.GetString(); if (!string.IsNullOrWhiteSpace(s)) { ctx.SetVariable(name, s); return; } }
-                    }
-                    Set("Prompt", "Prompt");
-                    Set("ContainerId", "ContainerId");
-                    Set("AiAssistant", "AiAssistant", "Agent");
-                    Set("Model", "Model");
-                    if (data.TryGetValue("ModelPower", out var mp) && mp.ValueKind == System.Text.Json.JsonValueKind.Number)
-                        ctx.SetVariable("ModelPower", mp.GetInt32());
+                    Id = $"{input.SessionId}-task-{task.Id}",
+                    ParentClosePolicy = ParentClosePolicy.Terminate,
+                    CancellationToken = cts.Token
+                };
+
+                var handle = await Workflow.StartChildWorkflowAsync(
+                    (ComplexTaskWorkerWorkflow w) => w.RunAsync(childInput),
+                    options);
+                children.Add((handle, cts));
+            }
+
+            // Step 3 — pair each handle with its in-flight Task<TResult> so we can
+            // associate a completed Task back to its (handle, cts) tuple after
+            // WhenAny. We mutate the working list as we consume completions.
+            var working = children
+                .Select(c => (handle: c.handle, cts: c.cts, task: c.handle.GetResultAsync()))
+                .ToList();
+
+            while (working.Count > 0)
+            {
+                if (_cancellationRequested)
+                {
+                    // Cancel all remaining children individually; each token is
+                    // linked to Workflow.CancellationToken but cancelled here
+                    // in isolation so the parent's CancellationToken stays uncancelled.
+                    foreach (var (_, cts, _) in working)
+                        cts.Cancel();
+
+                    throw new ApplicationFailureException(
+                        "Orchestration cancelled by signal",
+                        errorType: "OrchestrationCancelled");
                 }
-                if (parentId != null) bb.SetTaskOutput($"{parentId}:child-input", ""); // Clean up
+
+                var completed = await Workflow.WhenAnyAsync(working.Select(p => p.task));
+                // Remove the entry whose task just completed. Reference equality
+                // suffices — WhenAnyAsync returns one of the Task instances we
+                // passed in.
+                working.RemoveAll(p => ReferenceEquals(p.task, completed));
+                _tasksCompleted++;
             }
-        });
-        initVars.Id = "init-vars";
-        Pos(initVars, 400, 10);
 
-        // ---- Step 1: Architect decomposes the task ----
-        var architect = new ArchitectActivity
+            // Step 4 — collect results. All handles have completed; GetResultAsync
+            // is already-resolved on each.
+            var results = new List<ComplexTaskOutput>(children.Count);
+            foreach (var (handle, _) in children)
+                results.Add(await handle.GetResultAsync());
+
+            return new OrchestrateComplexOutput(
+                TaskCount: _tasksTotal,
+                Results: results,
+                TotalCostUsd: results.Sum(r => r.CostUsd));
+        }
+        finally
         {
-            RunAsynchronously = true,
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            TaskListJson = new Output<string[]>(taskListJson),
-            TaskCount = new Output<int>(taskCount),
-            Id = "architect-decompose"
-        };
-        Pos(architect, 400, 80);
-
-        // ---- Step 2: Route by task count ----
-        var taskCountDecision = new FlowDecision(ctx =>
-            (ctx.GetVariable<int>("TaskCount")) > 1);
-        taskCountDecision.Id = "task-count-decision";
-        Pos(taskCountDecision, 400, 220);
-
-        // ========== SINGLE-TASK PATH (TaskCount <= 1) ==========
-
-        var modelRouter = new ModelRouterActivity
-        {
-            TaskCategory = new Input<string>("code_gen"),
-            Complexity = new Input<int>(8),
-            PreferredAgent = new Input<string>(agent),
-            SelectedAgent = new Output<string>(selectedAgent),
-            SelectedModel = new Output<string>(selectedModel),
-            Id = "model-router"
-        };
-        Pos(modelRouter, 200, 390);
-
-        var singleWorker = new AiAssistantActivity
-        {
-            RunAsynchronously = true,
-            AiAssistant = new Input<string>(selectedAgent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            Model = new Input<string>(selectedModel),
-            ModelPower = new Input<int>(modelPower),
-            Id = "complex-agent"
-        };
-        Pos(singleWorker, 200, 560);
-
-        var singleLoop = VerifyAndRepairLoop.Create(
-            verifyId: "complex-verify",
-            repairId: "complex-repair",
-            repairAgentId: "repair-agent",
-            containerId: new Input<string>(containerId),
-            originalPrompt: new Input<string>(prompt),
-            assistant: new Input<string>(selectedAgent),
-            model: new Input<string>(selectedModel),
-            modelPower: new Input<int>(modelPower));
-        Pos(singleLoop.Verify, 200, 730);
-        Pos(singleLoop.Repair, 50, 900);
-        Pos(singleLoop.RepairAgent, 200, 900);
-
-        // ========== MULTI-TASK PATH (TaskCount > 1) ==========
-
-        var bulkDispatch = new Elsa.Workflows.Runtime.Activities.BulkDispatchWorkflows
-        {
-            WorkflowDefinitionId = new Input<string>(nameof(ComplexTaskWorkerWorkflow)),
-            Items = new Input<object>(ctx =>
+            if (ownsContainer)
             {
-                var tasks = ctx.GetVariable<string[]>("TaskListJson");
-                return (object)(tasks?.ToList() ?? new List<string>());
-            }),
-            Input = new Input<IDictionary<string, object>?>(ctx =>
-                new Dictionary<string, object>
-                {
-                    ["ContainerId"] = containerId.Get(ctx),
-                    ["AiAssistant"] = agent.Get(ctx),
-                    ["Model"] = model.Get(ctx),
-                    ["ModelPower"] = modelPower.Get(ctx),
-                    ["OriginalPrompt"] = prompt.Get(ctx)
-                }),
-            WaitForCompletion = new Input<bool>(true),
-            ChildCompleted = new SetVariable
-            {
-                Variable = completedCount,
-                Value = new Input<object?>(ctx => (object)(completedCount.Get(ctx) + 1))
-            },
-            ChildFaulted = new SetVariable
-            {
-                Variable = faultedCount,
-                Value = new Input<object?>(ctx => (object)(faultedCount.Get(ctx) + 1))
-            },
-            Id = "dispatch-workers"
-        };
-        Pos(bulkDispatch, 600, 390);
-
-        // ========== MERGE (shared by both paths) ==========
-
-        var merge = new AiAssistantActivity
-        {
-            RunAsynchronously = true,
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Id = "merge-results"
-        };
-        Pos(merge, 400, 1070);
-
-        // ---- Build Flowchart ----
-        var flowchart = new Flowchart
-        {
-            Id = "orchestrate-complex-path-flow",
-            Start = initVars,
-            Activities =
-            {
-                initVars,
-                architect, taskCountDecision,
-                // Single-task path
-                modelRouter, singleWorker,
-                singleLoop.Verify, singleLoop.Repair, singleLoop.RepairAgent,
-                // Multi-task path
-                bulkDispatch,
-                // Shared
-                merge
-            },
-            Connections =
-            {
-                // InitVars -> Architect
-                new Connection(new Endpoint(initVars), new Endpoint(architect)),
-
-                // Architect -> TaskCount decision
-                new Connection(
-                    new Endpoint(architect, "Done"),
-                    new Endpoint(taskCountDecision)),
-
-                // Architect failed -> workflow ends
-
-                // ---- Single-task path (False = TaskCount <= 1) ----
-                new Connection(
-                    new Endpoint(taskCountDecision, "False"),
-                    new Endpoint(modelRouter)),
-
-                new Connection(
-                    new Endpoint(modelRouter, "Done"),
-                    new Endpoint(singleWorker)),
-
-                new Connection(
-                    new Endpoint(singleWorker, "Done"),
-                    new Endpoint(singleLoop.Verify)),
-
-                // Worker failed -> merge with partial results
-                new Connection(
-                    new Endpoint(singleWorker, "Failed"),
-                    new Endpoint(merge)),
-
-                // Verify passed -> merge
-                new Connection(
-                    new Endpoint(singleLoop.Verify, "Passed"),
-                    new Endpoint(merge)),
-
-                // Verify inconclusive -> merge
-                new Connection(
-                    new Endpoint(singleLoop.Verify, "Inconclusive"),
-                    new Endpoint(merge)),
-
-                // Repair exceeded -> merge
-                new Connection(
-                    new Endpoint(singleLoop.Repair, "Exceeded"),
-                    new Endpoint(merge)),
-
-                // ---- Multi-task path (True = TaskCount > 1) ----
-                new Connection(
-                    new Endpoint(taskCountDecision, "True"),
-                    new Endpoint(bulkDispatch)),
-
-                // BulkDispatch completed -> merge
-                new Connection(
-                    new Endpoint(bulkDispatch, "Completed"),
-                    new Endpoint(merge)),
-                new Connection(
-                    new Endpoint(bulkDispatch, "Done"),
-                    new Endpoint(merge)),
+                var destroyInput = new DestroyInput(containerId);
+                await Workflow.ExecuteActivityAsync(
+                    (DockerActivities a) => a.DestroyAsync(destroyInput),
+                    ActivityProfiles.ContainerCleanup);
             }
-        };
-
-        // Add VerifyAndRepairLoop's internal connections (single-task path)
-        foreach (var conn in singleLoop.InternalConnections)
-            flowchart.Connections.Add(conn);
-
-        builder.Root = flowchart.WithAttachedVariables(builder);
+        }
     }
 }

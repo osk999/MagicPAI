@@ -1,354 +1,182 @@
-@page "/magic/sessions/{SessionId}"
-@using MagicPAI.Shared.Models
-@using MagicPAI.Studio.Services
-@using MagicPAI.Studio.Components
-@using MagicPAI.Studio.Models
+@* MagicPAI.Studio/Pages/SessionView.razor — Temporal migration §10.9. *@
+@page "/sessions/{Id}"
+@inject SessionApiClient SessionClient
 @inject SessionHubClient Hub
-@inject SessionApiClient Api
+@inject TemporalUiUrlBuilder UrlBuilder
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
 
-<PageTitle>Session @(SessionId.Length > 8 ? SessionId[..8] : SessionId)</PageTitle>
+<PageTitle>Session @(Id.Length > 8 ? Id[..8] : Id)</PageTitle>
 
-<div class="session-view">
-    <!-- Output Panel (streaming) -->
-    <div class="output-area">
-        <OutputPanel @ref="outputPanel" />
-    </div>
+<MudStack Spacing="3">
+    <MudStack Row="true" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4">Session @(Id.Length > 12 ? Id[..12] + "…" : Id)</MudText>
+        <SessionStatusBadge Status="@_status" />
+        <PipelineStageChip Stage="@_pipelineStage" />
+        <MudSpacer />
+        <MudButton OnClick="Cancel"
+                   Color="Color.Warning"
+                   Disabled="@(!_isRunning)"
+                   StartIcon="@Icons.Material.Filled.Cancel">
+            Cancel
+        </MudButton>
+        <MudButton OnClick="OpenTemporalUi"
+                   Color="Color.Default"
+                   Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.OpenInNew">
+            View in Temporal UI
+        </MudButton>
+    </MudStack>
 
-    <!-- Sidebar: Status + Verification -->
-    <div class="session-sidebar">
-        <h3>Status: <span class="status-badge @state">@state</span></h3>
-        <p class="session-liveness">@GetLivenessSummary()</p>
-
-        @if (lastActivityAt is not null || lastOutputAt is not null)
-        {
-            <div class="session-meta">
-                @if (lastActivityAt is not null)
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            <CliOutputStream Lines="_lines" IsActive="@_isRunning" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudStack Spacing="3">
+                <CostDisplay SessionId="@Id" />
+                <ContainerStatusPanel SessionId="@Id" />
+                @if (_gateAwaiting is not null)
                 {
-                    <div>Last activity: @(lastActivityName ?? "workflow") at @lastActivityAt.Value.ToLocalTime().ToString("HH:mm:ss")</div>
+                    <GateApprovalPanel SessionId="@Id"
+                                       GateName="@_gateAwaiting.GateName"
+                                       PromptForHuman="@_gateAwaiting.PromptForHuman"
+                                       OnApprove="HandleApprove"
+                                       OnReject="HandleReject" />
                 }
-                @if (lastOutputAt is not null)
-                {
-                    <div>Last output: @lastOutputAt.Value.ToLocalTime().ToString("HH:mm:ss")</div>
-                }
-            </div>
-        }
-
-        <CostTracker SessionId="@SessionId" />
-
-        <ContainerStatus ContainerId="@containerId" GuiUrl="@guiUrl" />
-
-        @if (verificationUpdate is not null)
-        {
-            <VerificationBadge GateName="@verificationUpdate.GateName"
-                               Passed="@verificationUpdate.Passed"
-                               Output="@verificationUpdate.Output"
-                               Issues="@verificationUpdate.Issues" />
-        }
-
-        <DagView Activities="@activities" />
-
-        @if (insights.Count > 0)
-        {
-            <div class="workflow-insights">
-                <h4>Workflow Insights</h4>
-                @foreach (var insight in insights.OrderByDescending(x => x.TimestampUtc))
-                {
-                    <div class="card">
-                        <strong>@insight.Title</strong>
-                        <div>@insight.Summary</div>
-                        @if (!string.IsNullOrWhiteSpace(insight.Verdict))
-                        {
-                            <div>Verdict: @insight.Verdict</div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(insight.BeforeText))
-                        {
-                            <details>
-                                <summary>Before</summary>
-                                <pre>@insight.BeforeText</pre>
-                            </details>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(insight.AfterText))
-                        {
-                            <details>
-                                <summary>After</summary>
-                                <pre>@insight.AfterText</pre>
-                            </details>
-                        }
-                    </div>
-                }
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(workflowId))
-        {
-            <div class="workflow-links">
-                <a href="/elsa/api/workflow-instances/@SessionId"
-                   target="_blank" class="btn btn-sm btn-link">
-                    View Instance (API)
-                </a>
-            </div>
-        }
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <div class="error-banner">@errorMessage</div>
-        }
-
-        @if (state == "running")
-        {
-            <button @onclick="Stop" class="btn btn-danger">Stop Session</button>
-        }
-    </div>
-</div>
-
-@implements IDisposable
+                <VerificationResultsTable SessionId="@Id" />
+            </MudStack>
+        </MudItem>
+    </MudGrid>
+</MudStack>
 
 @code {
-    [Parameter] public string SessionId { get; set; } = "";
+    [Parameter] public string Id { get; set; } = "";
 
-    private OutputPanel? outputPanel;
-    private string state = "idle";
-    private string containerId = "";
-    private string? guiUrl;
-    private string? workflowId;
-    private string? errorMessage;
-    private VerificationUpdateEvent? verificationUpdate;
-    private List<ActivityStateDto> activities = new();
-    private List<TaskInsightEvent> insights = new();
-    private string initialOutput = "";
-    private bool joinedSession;
-    private string lastOutputText = "";
-    private DateTime? lastActivityAt;
-    private string? lastActivityName;
-    private DateTime? lastOutputAt;
-    private DateTime? lastContainerLogAt;
-    private DateTime? lastUpdatedAt;
-    private CancellationTokenSource? pollingCts;
+    private readonly List<string> _lines = new();
+    private string _status = "Running";
+    private string _pipelineStage = "initializing";
+    private GateAwaitingPayload? _gateAwaiting;
+    private bool _joined;
+
+    private bool _isRunning => _status is "Running" or "Pending" or not ("Completed" or "Failed" or "Cancelled" or "Terminated");
 
     protected override async Task OnInitializedAsync()
     {
-        Hub.OnOutputChunk += OnChunk;
-        Hub.OnSessionStateChanged += OnState;
-        Hub.OnVerificationUpdate += OnVerification;
-        Hub.OnWorkflowProgress += OnProgress;
-        Hub.OnContainerSpawned += OnContainer;
-        Hub.OnContainerLog += OnContainerLog;
-        Hub.OnTaskInsight += OnTaskInsight;
-        Hub.OnError += OnError;
+        Hub.OutputChunk += OnOutputChunk;
+        Hub.StageChanged += OnStageChanged;
+        Hub.GateAwaiting += OnGateAwaiting;
+        Hub.SessionCompleted += OnSessionCompleted;
+        Hub.SessionFailed += OnSessionFailed;
+        Hub.SessionCancelled += OnSessionCancelled;
+
+        await UrlBuilder.InitializeAsync();
+
+        var desc = await SessionClient.GetAsync(Id);
+        if (desc is not null)
+        {
+            _status = NormalizeStatus(desc.Status);
+        }
 
         try
         {
-            await Hub.ConnectAsync();
-            await Hub.JoinSessionAsync(SessionId);
-            joinedSession = true;
+            await Hub.JoinSessionAsync(Id);
+            _joined = true;
         }
-        catch
+        catch (Exception ex)
         {
-            // Hub may not be available
+            Snackbar.Add($"Unable to join live stream: {ex.Message}", Severity.Warning);
         }
-
-        await RefreshSnapshotAsync();
-        StartPollingIfRunning();
     }
 
-    protected override Task OnAfterRenderAsync(bool firstRender)
+    private void OnOutputChunk(string line)
     {
-        if (firstRender && outputPanel is not null && initialOutput.Length > 0)
-            outputPanel.SetText(initialOutput);
-
-        return Task.CompletedTask;
+        _lines.Add(line);
+        _ = InvokeAsync(StateHasChanged);
     }
 
-    private void OnChunk(OutputChunkEvent e)
+    private void OnStageChanged(string stage)
     {
-        if (e.SessionId != SessionId) return;
-        lastOutputText += e.Text;
-        initialOutput = lastOutputText;
-        lastOutputAt = DateTime.UtcNow;
-        lastUpdatedAt = lastOutputAt;
-        outputPanel?.AppendText(e.Text);
-        InvokeAsync(StateHasChanged);
+        _pipelineStage = stage;
+        _ = InvokeAsync(StateHasChanged);
     }
 
-    private void OnState(SessionStateEvent e)
+    private void OnGateAwaiting(GateAwaitingPayload payload)
     {
-        if (e.SessionId != SessionId) return;
-        state = e.State;
-        StartPollingIfRunning();
-        _ = RefreshSnapshotAsync();
-        InvokeAsync(StateHasChanged);
+        if (payload.SessionId != Id) return;
+        _gateAwaiting = payload;
+        _ = InvokeAsync(StateHasChanged);
     }
 
-    private void OnVerification(VerificationUpdateEvent e)
+    private void OnSessionCompleted(SessionCompletedPayload payload)
     {
-        if (e.SessionId != SessionId) return;
-        verificationUpdate = e;
-        InvokeAsync(StateHasChanged);
+        if (payload.SessionId != Id) return;
+        _status = "Completed";
+        _ = InvokeAsync(StateHasChanged);
     }
 
-    private void OnProgress(WorkflowProgressEvent e)
+    private void OnSessionFailed(SessionFailedPayload payload)
     {
-        if (e.SessionId != SessionId) return;
-        var existing = activities.FindIndex(a => a.Name == e.ActivityName);
-        if (existing >= 0)
-            activities[existing] = new ActivityStateDto { Name = e.ActivityName, Status = e.Status };
+        if (payload.SessionId != Id) return;
+        _status = "Failed";
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSessionCancelled(SessionCancelledPayload payload)
+    {
+        if (payload.SessionId != Id) return;
+        _status = "Cancelled";
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Cancel()
+    {
+        var ok = await SessionClient.CancelAsync(Id);
+        if (ok)
+            Snackbar.Add("Cancel requested.", Severity.Info);
         else
-            activities.Add(new ActivityStateDto { Name = e.ActivityName, Status = e.Status });
-        lastActivityName = e.ActivityName;
-        lastActivityAt = DateTime.UtcNow;
-        lastUpdatedAt = lastActivityAt;
-        InvokeAsync(StateHasChanged);
+            Snackbar.Add("Cancel request failed.", Severity.Error);
     }
 
-    private void OnContainer(ContainerEvent e)
+    private void OpenTemporalUi() =>
+        Nav.NavigateTo(UrlBuilder.ForSession(Id), forceLoad: true);
+
+    private Task HandleApprove(string comment)
     {
-        if (e.SessionId != SessionId) return;
-        containerId = e.ContainerId;
-        guiUrl = e.GuiUrl;
-        lastUpdatedAt = DateTime.UtcNow;
-        InvokeAsync(StateHasChanged);
+        _gateAwaiting = null;
+        return InvokeAsync(StateHasChanged);
     }
 
-    private void OnTaskInsight(TaskInsightEvent e)
+    private Task HandleReject(string reason)
     {
-        if (e.SessionId != SessionId) return;
-
-        var existing = insights.FindIndex(x =>
-            x.Kind == e.Kind &&
-            x.Title == e.Title &&
-            x.TimestampUtc == e.TimestampUtc);
-        if (existing < 0)
-            insights.Add(e);
-        lastUpdatedAt = e.TimestampUtc;
-        InvokeAsync(StateHasChanged);
+        _gateAwaiting = null;
+        return InvokeAsync(StateHasChanged);
     }
 
-    private void OnContainerLog(ContainerLogEvent e)
-    {
-        if (e.SessionId != SessionId) return;
-        lastContainerLogAt = e.TimestampUtc;
-        lastUpdatedAt = e.TimestampUtc;
-        InvokeAsync(StateHasChanged);
-    }
-
-    private void OnError(ErrorEvent e)
-    {
-        if (e.SessionId != SessionId) return;
-        errorMessage = e.Message;
-        outputPanel?.AppendText($"\n[ERROR] {e.Message}\n");
-        InvokeAsync(StateHasChanged);
-    }
-
-    private async Task Stop() =>
-        await Hub.StopSessionAsync(SessionId);
-
-    private async Task RefreshSnapshotAsync()
-    {
-        var session = await Api.GetSessionAsync(SessionId);
-        var output = await Api.GetOutputAsync(SessionId);
-        var trackedActivities = await Api.GetActivitiesAsync(SessionId);
-        var trackedInsights = await Api.GetInsightsAsync(SessionId);
-
-        await InvokeAsync(() =>
+    private static string NormalizeStatus(string raw) =>
+        raw?.ToLowerInvariant() switch
         {
-            if (session is not null)
-            {
-                state = session.State;
-                containerId = session.ContainerId ?? "";
-                guiUrl = session.GuiUrl;
-                workflowId = session.WorkflowId;
-                lastActivityAt = session.LastActivityAt;
-                lastActivityName = session.LastActivityName;
-                lastOutputAt = session.LastOutputAt;
-                lastContainerLogAt = session.LastContainerLogAt;
-                lastUpdatedAt = session.LastUpdatedAt;
-            }
+            "running"           => "Running",
+            "completed"         => "Completed",
+            "failed"            => "Failed",
+            "canceled"          => "Cancelled",
+            "cancelled"         => "Cancelled",
+            "terminated"        => "Terminated",
+            "continuedasnew"    => "Running",
+            "timedout"          => "Failed",
+            _                   => raw ?? "Unknown"
+        };
 
-            ApplyOutput(output);
-            activities = trackedActivities;
-            insights = trackedInsights;
-            StateHasChanged();
-        });
-    }
-
-    private string GetLivenessSummary()
+    public async ValueTask DisposeAsync()
     {
-        if (!string.Equals(state, "running", StringComparison.OrdinalIgnoreCase))
-            return $"Session is {state}.";
-
-        var lastSignal = new[] { lastOutputAt, lastActivityAt, lastContainerLogAt, lastUpdatedAt }
-            .Where(x => x.HasValue)
-            .Select(x => x!.Value)
-            .DefaultIfEmpty(DateTime.UtcNow)
-            .Max();
-        var silence = DateTime.UtcNow - lastSignal;
-
-        if (silence < TimeSpan.FromSeconds(5))
-            return "Receiving recent workflow activity.";
-        if (silence < TimeSpan.FromSeconds(30))
-            return $"No new signal for {(int)silence.TotalSeconds}s. Monitoring for progress.";
-        return $"Possibly stuck: no workflow signal for {(int)silence.TotalSeconds}s.";
-    }
-
-    private void ApplyOutput(string[] chunks)
-    {
-        var text = string.Concat(chunks);
-        if (string.Equals(text, lastOutputText, StringComparison.Ordinal))
-            return;
-
-        lastOutputText = text;
-        initialOutput = text;
-
-        if (outputPanel is not null)
-            outputPanel.SetText(text);
-    }
-
-    private void StartPollingIfRunning()
-    {
-        pollingCts?.Cancel();
-        pollingCts?.Dispose();
-        pollingCts = null;
-
-        if (!string.Equals(state, "running", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        pollingCts = new CancellationTokenSource();
-        _ = PollSessionAsync(pollingCts.Token);
-    }
-
-    private async Task PollSessionAsync(CancellationToken cancellationToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
-
-        try
-        {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                await RefreshSnapshotAsync();
-
-                if (!string.Equals(state, "running", StringComparison.OrdinalIgnoreCase))
-                    break;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    public void Dispose()
-    {
-        Hub.OnOutputChunk -= OnChunk;
-        Hub.OnSessionStateChanged -= OnState;
-        Hub.OnVerificationUpdate -= OnVerification;
-        Hub.OnWorkflowProgress -= OnProgress;
-        Hub.OnContainerSpawned -= OnContainer;
-        Hub.OnContainerLog -= OnContainerLog;
-        Hub.OnTaskInsight -= OnTaskInsight;
-        Hub.OnError -= OnError;
-        pollingCts?.Cancel();
-        pollingCts?.Dispose();
-
-        if (joinedSession)
-            _ = Hub.LeaveSessionAsync(SessionId);
+        Hub.OutputChunk -= OnOutputChunk;
+        Hub.StageChanged -= OnStageChanged;
+        Hub.GateAwaiting -= OnGateAwaiting;
+        Hub.SessionCompleted -= OnSessionCompleted;
+        Hub.SessionFailed -= OnSessionFailed;
+        Hub.SessionCancelled -= OnSessionCancelled;
+        if (_joined)
+            await Hub.LeaveSessionAsync(Id);
     }
 }

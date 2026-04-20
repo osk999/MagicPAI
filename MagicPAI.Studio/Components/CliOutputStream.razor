@@ -1,0 +1,58 @@
+@* MagicPAI.Studio/Components/CliOutputStream.razor — Temporal migration §S.1. *@
+@inject IJSRuntime JS
+
+<div class="cli-output" @ref="_scrollContainer">
+    <pre>@_rendered</pre>
+    @if (IsActive)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+    }
+</div>
+
+<style>
+    .cli-output {
+        font-family: 'Consolas', 'Fira Code', 'Monaco', monospace;
+        font-size: 12px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 12px;
+        border-radius: 4px;
+        height: 500px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .cli-output pre {
+        margin: 0;
+    }
+</style>
+
+@code {
+    [Parameter] public List<string> Lines { get; set; } = new();
+    [Parameter] public bool IsActive { get; set; } = true;
+
+    private ElementReference _scrollContainer;
+    private int _lastRenderedLineCount;
+
+    private string _rendered =>
+        Lines.Count == 0
+            ? string.Empty
+            : string.Join('\n', Lines);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Lines.Count != _lastRenderedLineCount)
+        {
+            _lastRenderedLineCount = Lines.Count;
+            try
+            {
+                await JS.InvokeVoidAsync("mpai.scrollToBottom", _scrollContainer);
+            }
+            catch
+            {
+                // JS interop may not be ready during first render — safe to ignore.
+            }
+        }
+    }
+}
