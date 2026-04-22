@@ -1,0 +1,27 @@
+@* MagicPAI.Studio/Components/SessionStatusBadge.razor — Temporal migration §S.6. *@
+
+<MudChip T="string" Color="@ChipColor" Size="Size.Small" Icon="@ChipIcon">@Status</MudChip>
+
+@code {
+    [Parameter] public string Status { get; set; } = "Running";
+
+    private Color ChipColor => Status switch
+    {
+        "Completed"   => Color.Success,
+        "Failed"      => Color.Error,
+        "Cancelled"   => Color.Warning,
+        "Terminated"  => Color.Error,
+        "Running"     => Color.Info,
+        _             => Color.Default
+    };
+
+    private string ChipIcon => Status switch
+    {
+        "Completed"   => Icons.Material.Filled.CheckCircle,
+        "Failed"      => Icons.Material.Filled.Error,
+        "Cancelled"   => Icons.Material.Filled.Cancel,
+        "Terminated"  => Icons.Material.Filled.Stop,
+        "Running"     => Icons.Material.Filled.PlayCircle,
+        _             => Icons.Material.Filled.HelpOutline
+    };
+}

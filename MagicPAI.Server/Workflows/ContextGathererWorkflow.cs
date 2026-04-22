@@ -1,103 +1,140 @@
-using Elsa.Extensions;
-using Elsa.Workflows;
-using Elsa.Workflows.Activities;
-using Elsa.Workflows.Models;
+// MagicPAI.Server/Workflows/Temporal/ContextGathererWorkflow.cs
+// Temporal port of the Elsa ContextGathererWorkflow. Fans out three context
+// sources in parallel (codebase research, repo map, memory recall) and
+// concatenates them into a single "gathered context" blob with section headers
+// for downstream workflows. See temporal.md §H.3.
+using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
+using MagicPAI.Activities.Contracts;
+using MagicPAI.Activities.Docker;
+using MagicPAI.Workflows;
+using MagicPAI.Workflows.Contracts;
 
 namespace MagicPAI.Server.Workflows;
 
 /// <summary>
-/// Parallel context collection: research, repo-map analysis, and memory loading run in parallel,
-/// then merge results. Uses AiAssistantActivity with different prompts for each collection phase.
+/// Three-way parallel context gatherer. Runs codebase research (the original
+/// behaviour), a lightweight repo-map pass, and a memory-recall pass against
+/// the same container, then stitches them into a single markdown blob with
+/// H1 section headers. The default model-power for the heavy research call is
+/// 2 (balanced); the two cheap passes use power=3. Callers wanting deep
+/// research should use <see cref="ResearchPipelineWorkflow"/> instead, which
+/// uses power=1 (strongest).
 /// </summary>
-public class ContextGathererWorkflow : WorkflowBase
+/// <remarks>
+/// Container-lifecycle branching mirrors <see cref="SimpleAgentWorkflow"/> (Fix #2).
+/// When dispatched top-level (empty ContainerId), the workflow spawns a single
+/// container used by all three parallel probes and destroys it in <c>finally</c>.
+/// When invoked nested (e.g. from <see cref="PromptGroundingWorkflow"/>), it
+/// reuses the caller's container.
+/// </remarks>
+[Workflow]
+public class ContextGathererWorkflow
 {
-    protected override void Build(IWorkflowBuilder builder)
+    [WorkflowRun]
+    public async Task<ContextGathererOutput> RunAsync(ContextGathererInput input)
     {
-        builder.Name = "Context Gatherer";
-        builder.Description =
-            "Collect context in parallel: research, repo-map, and memory, then merge";
-
-        var prompt = builder.WithVariable<string>("Prompt", "");
-        var agent = builder.WithVariable<string>("AiAssistant", "claude");
-        var containerId = builder.WithVariable<string>("ContainerId", "");
-        var researchContext = builder.WithVariable<string>("ResearchContext", "");
-        var repoMapContext = builder.WithVariable<string>("RepoMapContext", "");
-        var memoryContext = builder.WithVariable<string>("MemoryContext", "");
-        var mergedContext = builder.WithVariable<string>("MergedContext", "");
-
-        // Parallel branch 1: Research
-        var research = new AiAssistantActivity
+        string containerId;
+        bool ownsContainer;
+        if (!string.IsNullOrWhiteSpace(input.ContainerId))
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(prompt),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Response = new Output<string>(researchContext),
-            Id = "research-context"
-        };
-        Pos(research, 100, 50);
-
-        // Parallel branch 2: Repo-map analysis
-        var repoMap = new AiAssistantActivity
+            containerId = input.ContainerId;
+            ownsContainer = false;
+        }
+        else
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                $"Create a repo-map style implementation context for this task:\n\n{ctx.GetVariable<string>("Prompt") ?? ""}"),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Response = new Output<string>(repoMapContext),
-            Id = "repo-map-context"
-        };
-        Pos(repoMap, 400, 50);
+            var spawnInput = new SpawnContainerInput(
+                SessionId: input.SessionId,
+                WorkspacePath: input.WorkingDirectory,
+                EnableGui: false);
 
-        // Parallel branch 3: Memory loading
-        var memoryLoad = new AiAssistantActivity
+            var spawn = await Workflow.ExecuteActivityAsync(
+                (DockerActivities a) => a.SpawnAsync(spawnInput),
+                ActivityProfiles.Container);
+
+            containerId = spawn.ContainerId;
+            ownsContainer = true;
+        }
+
+        try
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                $"Load any relevant prior constraints, conventions, or remembered context for this task:\n\n{ctx.GetVariable<string>("Prompt") ?? ""}"),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Response = new Output<string>(memoryContext),
-            Id = "memory-context"
-        };
-        Pos(memoryLoad, 700, 50);
+            // ── 1. Codebase research ──────────────────────────────────────────
+            var researchInput = new ResearchPromptInput(
+                Prompt: input.Prompt,
+                AiAssistant: input.AiAssistant,
+                ContainerId: containerId,
+                ModelPower: 2,
+                SessionId: input.SessionId);
 
-        // Merge step: combine all context
-        var mergeContext = new AiAssistantActivity
+            // CS9307: build inputs in locals before each ExecuteActivityAsync lambda
+            // so the expression-tree compiler sees a simple field read inside the
+            // lambda body, not a record-construction expression.
+            var researchTask = Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.ResearchPromptAsync(researchInput),
+                ActivityProfiles.Long);
+
+            // ── 2. Repo map (cheap, structure-only) ───────────────────────────
+            var repoMapInput = new RunCliAgentInput(
+                Prompt: "List every top-level directory and the one most important file in it, as bullet points. No code, ≤40 lines.",
+                ContainerId: containerId,
+                AiAssistant: input.AiAssistant,
+                Model: null,
+                ModelPower: 3,                     // cheapest model
+                WorkingDirectory: input.WorkingDirectory,
+                MaxTurns: 3,
+                SessionId: input.SessionId);
+
+            var repoMapTask = Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.RunCliAgentAsync(repoMapInput),
+                ActivityProfiles.Medium);
+
+            // ── 3. Memory recall (CLAUDE.md + top-level docs) ─────────────────
+            var memoryInput = new RunCliAgentInput(
+                Prompt: $"Scan CLAUDE.md and any top-level docs for conventions relevant to: {input.Prompt}. ≤30 lines. If nothing relevant, say so.",
+                ContainerId: containerId,
+                AiAssistant: input.AiAssistant,
+                Model: null,
+                ModelPower: 3,                     // cheapest model
+                WorkingDirectory: input.WorkingDirectory,
+                MaxTurns: 3,
+                SessionId: input.SessionId);
+
+            var memoryTask = Workflow.ExecuteActivityAsync(
+                (AiActivities a) => a.RunCliAgentAsync(memoryInput),
+                ActivityProfiles.Medium);
+
+            // Fan-in. All three must complete (or one fail) before we proceed.
+            await Workflow.WhenAllAsync(researchTask, repoMapTask, memoryTask);
+
+            var research = await researchTask;
+            var repoMap = await repoMapTask;
+            var memory = await memoryTask;
+
+            // Stitch with H1 section headers so downstream prompts can reason
+            // about which slice came from which probe.
+            var gathered =
+                $"# Codebase Analysis\n{research.CodebaseAnalysis}\n\n" +
+                $"# Research Context\n{research.ResearchContext}\n\n" +
+                $"# Repository Map\n{repoMap.Response}\n\n" +
+                $"# Relevant Memory\n{memory.Response}";
+
+            // ResearchPromptOutput has no cost field — only the two CLI runs report cost.
+            var totalCost = repoMap.CostUsd + memory.CostUsd;
+
+            return new ContextGathererOutput(
+                GatheredContext: gathered,
+                ReferencedFiles: Array.Empty<string>(),
+                CostUsd: totalCost);
+        }
+        finally
         {
-            AiAssistant = new Input<string>(agent),
-            Prompt = new Input<string>(ctx =>
-                $$"""
-                Combine the parallel context-gathering results into one concise execution brief.
-
-                ## Original Prompt
-                {{ctx.GetVariable<string>("Prompt") ?? ""}}
-
-                ## Research
-                {{ctx.GetVariable<string>("ResearchContext") ?? ""}}
-
-                ## Repo Map
-                {{ctx.GetVariable<string>("RepoMapContext") ?? ""}}
-
-                ## Memory
-                {{ctx.GetVariable<string>("MemoryContext") ?? ""}}
-                """),
-            ContainerId = new Input<string>(containerId),
-            ModelPower = new Input<int>(2),
-            Response = new Output<string>(mergedContext),
-            Id = "merge-context"
-        };
-        Pos(mergeContext, 400, 220);
-
-        builder.Root = new Sequence
-        {
-            Activities =
+            if (ownsContainer)
             {
-                new Elsa.Workflows.Activities.Parallel(new IActivity[] { research, repoMap, memoryLoad }),
-                mergeContext
+                var destroyInput = new DestroyInput(containerId);
+                await Workflow.ExecuteActivityAsync(
+                    (DockerActivities a) => a.DestroyAsync(destroyInput),
+                    ActivityProfiles.ContainerCleanup);
             }
-        }.WithAttachedVariables(builder);
+        }
     }
 }

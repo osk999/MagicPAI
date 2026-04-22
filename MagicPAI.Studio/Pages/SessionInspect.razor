@@ -1,0 +1,36 @@
+@* MagicPAI.Studio/Pages/SessionInspect.razor — Temporal migration §10.11. *@
+@page "/sessions/{Id}/inspect"
+@inject TemporalUiUrlBuilder UrlBuilder
+
+<PageTitle>Inspect @(Id.Length > 8 ? Id[..8] : Id)</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+    <MudText Typo="Typo.h4">Inspect session @(Id.Length > 12 ? Id[..12] + "…" : Id)</MudText>
+    <MudSpacer />
+    <MudButton Href="@_src" Target="_blank" StartIcon="@Icons.Material.Filled.OpenInNew">
+        Open full UI
+    </MudButton>
+</MudStack>
+
+@if (string.IsNullOrEmpty(_src))
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <iframe src="@_src"
+            style="width: 100%; height: calc(100vh - 200px); border: 1px solid #444; border-radius: 4px;"
+            title="Temporal UI — @Id">
+    </iframe>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+    private string _src = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UrlBuilder.InitializeAsync();
+        _src = UrlBuilder.ForSession(Id);
+    }
+}

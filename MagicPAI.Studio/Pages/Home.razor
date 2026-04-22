@@ -1,0 +1,15 @@
+@* MagicPAI.Studio/Pages/Home.razor — Temporal migration §S.8. *@
+@page "/"
+
+<PageTitle>MagicPAI</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium">
+    <MudText Typo="Typo.h3" Class="mb-4">MagicPAI</MudText>
+    <MudText Typo="Typo.body1" Class="mud-text-secondary">
+        Start a new AI session. Pick a workflow, enter a prompt, and watch it work.
+    </MudText>
+
+    <MudDivider Class="my-6" />
+
+    <SessionInputForm />
+</MudContainer>

@@ -6,21 +6,13 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Elsa Studio 3.6.0 -->
-    <PackageReference Include="Elsa.Studio" Version="3.6.0" />
-    <PackageReference Include="Elsa.Studio.Core.BlazorWasm" Version="3.6.0" />
-    <PackageReference Include="Elsa.Studio.Dashboard" Version="3.6.0" />
-    <PackageReference Include="Elsa.Studio.Login.BlazorWasm" Version="3.6.0" />
-    <PackageReference Include="Elsa.Studio.Shell" Version="3.6.0" />
-    <PackageReference Include="Elsa.Studio.Workflows" Version="3.6.0" />
-    <PackageReference Include="Elsa.Studio.Workflows.Designer" Version="3.6.0" />
-    <PackageReference Include="Elsa.Api.Client" Version="3.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.3" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="MudBlazor" Version="7.15.0" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Shared models only — no Docker/K8s/heavy server-side deps -->
+    <!-- Shared models + hub contracts -->
     <ProjectReference Include="..\MagicPAI.Shared\MagicPAI.Shared.csproj" />
   </ItemGroup>
 </Project>

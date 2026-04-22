@@ -1,12 +1,14 @@
+// MagicPAI.Studio/Services/SessionApiClient.cs
+// Temporal migration §10.8 / §X: REST client for /api/sessions.
+// Request/response shape matches MagicPAI.Server.Controllers.SessionController.
 using System.Net.Http.Json;
 using System.Text.Json;
-using MagicPAI.Shared.Models;
-using MagicPAI.Studio.Models;
 
 namespace MagicPAI.Studio.Services;
 
 /// <summary>
-/// REST API client for session management endpoints.
+/// REST API client for session management endpoints. All calls target the
+/// unified Temporal-backed /api/sessions endpoint on the server.
 /// </summary>
 public class SessionApiClient
 {
@@ -23,53 +25,37 @@ public class SessionApiClient
         _http = http;
     }
 
-    /// <summary>List all sessions.</summary>
-    public async Task<List<SessionInfo>> ListSessionsAsync()
+    /// <summary>Create a new session via Temporal dispatch.</summary>
+    public async Task<CreateSessionResponse> CreateAsync(CreateSessionRequest req, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/sessions", req, JsonOptions, ct);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<CreateSessionResponse>(JsonOptions, ct);
+        return result ?? new CreateSessionResponse("", "");
+    }
+
+    /// <summary>List recent sessions via Temporal visibility.</summary>
+    public async Task<List<SessionSummary>> ListAsync(int take = 100, CancellationToken ct = default)
     {
         try
         {
-            return await _http.GetFromJsonAsync<List<SessionInfo>>("api/sessions")
-                ?? [];
+            var url = $"api/sessions?take={take}";
+            return await _http.GetFromJsonAsync<List<SessionSummary>>(url, JsonOptions, ct)
+                ?? new List<SessionSummary>();
         }
         catch (HttpRequestException)
         {
-            return [];
+            return new List<SessionSummary>();
         }
     }
 
-    /// <summary>Create a new session via the REST API.</summary>
-    public async Task<string> CreateSessionAsync(
-        string prompt,
-        string workspacePath,
-        string aiAssistant = "claude",
-        string model = "auto",
-        int modelPower = 0,
-        string structuredOutputSchema = "",
-        string workflowName = "full-orchestrate")
-    {
-        var request = new CreateSessionRequest(
-            Prompt: prompt,
-            WorkspacePath: workspacePath,
-            AiAssistant: aiAssistant,
-            Agent: aiAssistant,
-            Model: model,
-            ModelPower: modelPower,
-            StructuredOutputSchema: structuredOutputSchema,
-            WorkflowName: workflowName);
-
-        var response = await _http.PostAsJsonAsync("api/sessions", request);
-        response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<CreateSessionResponse>();
-        return result?.SessionId ?? "";
-    }
-
-    /// <summary>Get a specific session by ID.</summary>
-    public async Task<SessionInfo?> GetSessionAsync(string id)
+    /// <summary>Describe a single session via Temporal DescribeAsync.</summary>
+    public async Task<SessionDescription?> GetAsync(string id, CancellationToken ct = default)
     {
         try
         {
-            return await _http.GetFromJsonAsync<SessionInfo>($"api/sessions/{id}");
+            return await _http.GetFromJsonAsync<SessionDescription>(
+                $"api/sessions/{id}", JsonOptions, ct);
         }
         catch (HttpRequestException)
         {
@@ -77,56 +63,12 @@ public class SessionApiClient
         }
     }
 
-    /// <summary>Get buffered output for a session.</summary>
-    public async Task<string[]> GetOutputAsync(string id)
+    /// <summary>Request graceful cancellation via workflow handle.</summary>
+    public async Task<bool> CancelAsync(string id, CancellationToken ct = default)
     {
         try
         {
-            return await _http.GetFromJsonAsync<string[]>($"api/sessions/{id}/output")
-                ?? [];
-        }
-        catch (HttpRequestException)
-        {
-            return [];
-        }
-    }
-
-    /// <summary>Get tracked activity states for a session.</summary>
-    public async Task<List<ActivityStateDto>> GetActivitiesAsync(string id)
-    {
-        try
-        {
-            return await _http.GetFromJsonAsync<List<ActivityStateDto>>(
-                $"api/sessions/{id}/activities",
-                JsonOptions) ?? [];
-        }
-        catch (Exception)
-        {
-            return [];
-        }
-    }
-
-    /// <summary>Get tracked workflow insights for a session.</summary>
-    public async Task<List<TaskInsightEvent>> GetInsightsAsync(string id)
-    {
-        try
-        {
-            return await _http.GetFromJsonAsync<List<TaskInsightEvent>>(
-                $"api/sessions/{id}/insights",
-                JsonOptions) ?? [];
-        }
-        catch (Exception)
-        {
-            return [];
-        }
-    }
-
-    /// <summary>Delete / stop a session.</summary>
-    public async Task<bool> DeleteSessionAsync(string id)
-    {
-        try
-        {
-            var response = await _http.DeleteAsync($"api/sessions/{id}");
+            var response = await _http.DeleteAsync($"api/sessions/{id}", ct);
             return response.IsSuccessStatusCode;
         }
         catch (HttpRequestException)
@@ -135,56 +77,114 @@ public class SessionApiClient
         }
     }
 
-    /// <summary>Browse directories on the server.</summary>
-    public async Task<BrowseResult> BrowseAsync(string? path = null)
+    /// <summary>Force-terminate a workflow.</summary>
+    public async Task<bool> TerminateAsync(string id, string? reason = null, CancellationToken ct = default)
     {
         try
         {
-            var url = string.IsNullOrWhiteSpace(path)
-                ? "api/browse"
-                : $"api/browse?path={Uri.EscapeDataString(path)}";
-            return await _http.GetFromJsonAsync<BrowseResult>(url)
-                ?? new BrowseResult("", []);
+            var response = await _http.PostAsJsonAsync(
+                $"api/sessions/{id}/terminate",
+                new { Reason = reason },
+                JsonOptions,
+                ct);
+            return response.IsSuccessStatusCode;
         }
         catch (HttpRequestException)
         {
-            return new BrowseResult("", []);
+            return false;
         }
     }
 
-    /// <summary>Fetch a raw HTTP response from any server path (for API explorer).</summary>
-    public async Task<(int StatusCode, string Body)> FetchRawAsync(string path)
-    {
-        var response = await _http.GetAsync(path);
-        var body = await response.Content.ReadAsStringAsync();
-        return ((int)response.StatusCode, body);
-    }
-
-    /// <summary>List available workflows.</summary>
-    public async Task<List<WorkflowOption>> ListWorkflowsAsync()
+    /// <summary>Approve a gate (signal ApproveGate to workflow).</summary>
+    public async Task<bool> ApproveGateAsync(string id, string? comment = null, CancellationToken ct = default)
     {
         try
         {
-            return await _http.GetFromJsonAsync<List<WorkflowOption>>("api/browse/workflows")
-                ?? [];
+            var response = await _http.PostAsJsonAsync(
+                $"api/sessions/{id}/approve",
+                new ApprovalRequest(true, comment),
+                JsonOptions,
+                ct);
+            return response.IsSuccessStatusCode;
         }
         catch (HttpRequestException)
         {
-            return [];
+            return false;
+        }
+    }
+
+    /// <summary>Reject a gate (signal RejectGate to workflow).</summary>
+    public async Task<bool> RejectGateAsync(string id, string? reason = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.PostAsJsonAsync(
+                $"api/sessions/{id}/approve",
+                new ApprovalRequest(false, reason),
+                JsonOptions,
+                ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException)
+        {
+            return false;
         }
     }
 }
 
-public record DirectoryEntry(string Name, string FullPath);
-public record BrowseResult(string CurrentPath, List<DirectoryEntry> Directories, string? ParentPath = null);
-public record WorkflowOption(string Id, string DisplayName, bool IsDefault = false);
+// ───────────────────────────────────────────────────────────────────────────
+// DTOs shared with MagicPAI.Server.Controllers.SessionController.
+// Mirrored here (Blazor WASM cannot reference server assembly).
+// ───────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Generic request for creating a session. Workflow-specific optional
+/// parameters are carried here so the server-side planner can project them
+/// into the appropriate typed workflow input.
+/// </summary>
 public record CreateSessionRequest(
     string Prompt,
-    string? WorkspacePath = null,
+    string WorkflowType = "FullOrchestrate",
     string? AiAssistant = null,
-    string? Agent = null,
     string? Model = null,
-    int? ModelPower = null,
-    string? StructuredOutputSchema = null,
-    string? WorkflowName = null);
-public record CreateSessionResponse(string SessionId, string? WorkflowId);
+    int ModelPower = 0,
+    string? WorkspacePath = null,
+    bool? EnableGui = null,
+
+    // Workflow-specific passthroughs ────────────────────────────────────────
+    string? SectionId = null,
+    IReadOnlyList<string>? SectionIds = null,
+    string? EvalTaskId = null,
+    string? TaskId = null,
+    IReadOnlyList<string>? DependsOn = null,
+    IReadOnlyList<string>? FilesTouched = null,
+    string? ParentSessionId = null,
+    string? ContainerId = null,
+    string? WorkerOutput = null,
+    IReadOnlyList<string>? Gates = null,
+    int? MaxRepairAttempts = null,
+    Dictionary<string, string>? CustomParams = null);
+
+public record CreateSessionResponse(string SessionId, string WorkflowType);
+
+public record ApprovalRequest(bool Approved, string? Comment = null);
+
+/// <summary>Summary row in the session list (per §10.12).</summary>
+public record SessionSummary(
+    string SessionId,
+    string WorkflowType,
+    string Status,
+    DateTime StartTime,
+    DateTime? CloseTime,
+    string AiAssistant,
+    decimal TotalCostUsd);
+
+/// <summary>Workflow describe response from Temporal.</summary>
+public record SessionDescription(
+    string SessionId,
+    string Status,
+    string WorkflowType,
+    DateTime StartTime,
+    DateTime? CloseTime,
+    string RunId,
+    string TaskQueue);

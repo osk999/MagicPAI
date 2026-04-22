@@ -1,3 +1,12 @@
-@* This file is intentionally empty. The root component is Elsa.Studio.Shell.App,
-   registered in Program.cs via builder.RootComponents.Add<App>("#app").
-   Shell.App provides routing, layout, menu, and module discovery. *@
+@* MagicPAI.Studio/App.razor — Temporal migration §10.6 minimal root. *@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MagicPAI.Studio.Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(MagicPAI.Studio.Layout.MainLayout)">
+            <MudText Typo="Typo.h4" Class="pa-6">404 — Page not found</MudText>
+        </LayoutView>
+    </NotFound>
+</Router>

@@ -1,0 +1,141 @@
+@* MagicPAI.Studio/Components/SessionInputForm.razor — Temporal migration §10.8. *@
+@inject WorkflowCatalogClient CatalogClient
+@inject SessionApiClient SessionClient
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudPaper Class="pa-4" Elevation="2">
+    <MudStack Spacing="3">
+        <MudSelect T="string" Label="Workflow" @bind-Value="_workflowType" Required="true"
+                   AnchorOrigin="Origin.BottomCenter">
+            @foreach (var entry in _catalog)
+            {
+                <MudSelectItem Value="@entry.WorkflowTypeName">
+                    @entry.DisplayName
+                    <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">
+                        @entry.Description
+                    </MudText>
+                </MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudTextField T="string" Label="Prompt" Lines="8" Variant="Variant.Outlined"
+                      @bind-Value="_prompt" Required="true" />
+
+        <MudStack Row="true" Spacing="3">
+            <MudSelect T="string" Label="AI Assistant" @bind-Value="_aiAssistant" Required="true">
+                <MudSelectItem Value="@("claude")">Claude</MudSelectItem>
+                <MudSelectItem Value="@("codex")">Codex</MudSelectItem>
+                <MudSelectItem Value="@("gemini")">Gemini</MudSelectItem>
+            </MudSelect>
+
+            <MudSelect T="string" Label="Model" @bind-Value="_model">
+                <MudSelectItem Value="@("auto")">Auto</MudSelectItem>
+                @foreach (var m in _modelsForAssistant)
+                {
+                    <MudSelectItem Value="@m">@m</MudSelectItem>
+                }
+            </MudSelect>
+        </MudStack>
+
+        <MudTextField T="string" Label="Workspace path"
+                      @bind-Value="_workspacePath"
+                      HelperText="Path on the server where the worker container will mount code" />
+
+        <MudSwitch T="bool" Color="Color.Primary" Label="Enable GUI (noVNC)" @bind-Value="_enableGui" />
+
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Disabled="_submitting"
+                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="Submit">
+            @(_submitting ? "Starting..." : "Start session")
+        </MudButton>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    private IReadOnlyList<WorkflowCatalogEntry> _catalog = Array.Empty<WorkflowCatalogEntry>();
+    private IReadOnlyList<string> _modelsForAssistant = Array.Empty<string>();
+    private string _workflowType = "SimpleAgent";
+    private string _prompt = "";
+    private string _aiAssistant = "claude";
+    private string _model = "auto";
+    private string _workspacePath = "/workspace";
+    private bool _enableGui = true;
+    private bool _submitting;
+    private string _error = "";
+
+    private static readonly string[] ClaudeModels = { "sonnet", "opus" };
+    private static readonly string[] CodexModels = { "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex" };
+    private static readonly string[] GeminiModels = { "gemini-3.1-pro-preview", "gemini-3-flash" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _catalog = await CatalogClient.GetWorkflowsAsync();
+        if (_catalog.Count > 0)
+        {
+            _workflowType = _catalog[0].WorkflowTypeName;
+        }
+        RefreshModelsForAssistant();
+    }
+
+    private void RefreshModelsForAssistant()
+    {
+        _modelsForAssistant = _aiAssistant switch
+        {
+            "claude" => ClaudeModels,
+            "codex" => CodexModels,
+            "gemini" => GeminiModels,
+            _ => Array.Empty<string>()
+        };
+    }
+
+    private async Task Submit()
+    {
+        _error = "";
+        if (string.IsNullOrWhiteSpace(_prompt))
+        {
+            _error = "Prompt is required.";
+            return;
+        }
+
+        _submitting = true;
+        try
+        {
+            RefreshModelsForAssistant();
+            var req = new CreateSessionRequest(
+                Prompt: _prompt,
+                WorkflowType: _workflowType,
+                AiAssistant: _aiAssistant,
+                Model: _model == "auto" ? null : _model,
+                ModelPower: 0,
+                WorkspacePath: _workspacePath,
+                EnableGui: _enableGui);
+
+            var result = await SessionClient.CreateAsync(req);
+            if (string.IsNullOrEmpty(result.SessionId))
+            {
+                _error = "Server returned an empty session id.";
+                return;
+            }
+
+            Snackbar.Add($"Session {result.SessionId[..Math.Min(8, result.SessionId.Length)]}… started",
+                Severity.Success);
+            Nav.NavigateTo($"/sessions/{result.SessionId}");
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = $"Failed to start session: {ex.Message}";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

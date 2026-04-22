@@ -89,6 +89,12 @@ public class DockerContainerManager : IContainerManager, IDisposable
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start docker exec process");
 
+        if (request.StdinInput is not null)
+        {
+            await process.StandardInput.WriteAsync(request.StdinInput.AsMemory(), ct);
+            process.StandardInput.Close();
+        }
+
         var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
         var stderrTask = process.StandardError.ReadToEndAsync(ct);
         await process.WaitForExitAsync(ct);
@@ -226,6 +232,16 @@ public class DockerContainerManager : IContainerManager, IDisposable
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start docker exec process");
         using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        // Pipe oversized prompts / inputs through stdin when the request asks
+        // for it (argv caps at ~32 KB on Windows, higher on Linux). Writing
+        // sync on this path is fine — payloads are bounded at a few hundred
+        // KB and we do it once before the read loop begins.
+        if (request.StdinInput is not null)
+        {
+            await process.StandardInput.WriteAsync(request.StdinInput.AsMemory(), ct);
+            process.StandardInput.Close();
+        }
 
         var stdoutTask = ReadStreamAsync(
             process.StandardOutput,
@@ -465,6 +481,14 @@ public class DockerContainerManager : IContainerManager, IDisposable
         var psi = CreateDockerCliStartInfo();
 
         psi.ArgumentList.Add("exec");
+
+        // When the caller wants to pipe data to stdin we need `docker exec -i`
+        // (keep STDIN open) AND tell .NET to redirect stdin on the host.
+        if (request.StdinInput is not null)
+        {
+            psi.ArgumentList.Add("-i");
+            psi.RedirectStandardInput = true;
+        }
 
         if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
         {

@@ -1,0 +1,58 @@
+# Pre-commit hooks for MagicPAI.
+# See temporal.md §VV.9.
+#
+# Install: pip install pre-commit && pre-commit install
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        exclude: '\.(template\.yml|dynamicconfig/.*\.yaml)$'  # Temporal dynamicconfig has unusual structure
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: trailing-whitespace
+        exclude: '\.md$'                      # preserve markdown hard breaks
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  - repo: local
+    hooks:
+      - id: dotnet-format
+        name: dotnet format
+        entry: dotnet format --verify-no-changes --include
+        language: system
+        files: '\.cs$'
+        pass_filenames: true
+
+      - id: determinism-check
+        name: Workflow determinism check
+        entry: bash deploy/check-determinism.sh
+        language: system
+        files: 'MagicPAI\.Workflows/.*\.cs$'
+        pass_filenames: false
+
+      - id: no-elsa-imports-phase3
+        name: No Elsa imports after Phase 3
+        entry: bash -c 'if grep -rlE "using Elsa\." MagicPAI.{Core,Activities,Workflows,Server,Studio,Tests} 2>/dev/null; then echo "❌ Elsa imports found; Phase 3 expects none"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        # Uncomment when Phase 3 complete:
+        # always_run: true
+
+  - repo: https://github.com/gitguardian/ggshield
+    rev: v1.25.0
+    hooks:
+      - id: ggshield
+        language_version: python3
+        stages: [commit]
+
+# Notes:
+# - Initial install: pre-commit install
+# - Run on all files: pre-commit run --all-files
+# - Skip once: SKIP=dotnet-format git commit ...
+# - Update hooks: pre-commit autoupdate

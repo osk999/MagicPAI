@@ -4,6 +4,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!--
+      Suppress analyzer errors unrelated to Phase 1 Day 1 work:
+      - CA1716: "Shared" is a reserved VB.NET keyword; we don't target VB consumers.
+      - IDE0005: "remove unnecessary usings" requires GenerateDocumentationFile=true
+        to run correctly during compile; we don't publish XML docs for this project.
+    -->
+    <NoWarn>$(NoWarn);CA1716;IDE0005</NoWarn>
   </PropertyGroup>
 
 </Project>

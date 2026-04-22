@@ -5,31 +5,17 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Core Elsa 3.6.0 packages -->
-    <PackageReference Include="Elsa" Version="3.6.0" />
-    <PackageReference Include="Elsa.Http" Version="3.6.0" />
-    <PackageReference Include="Elsa.Identity" Version="3.6.0" />
-    <PackageReference Include="Elsa.Scheduling" Version="3.6.0" />
-    <PackageReference Include="Elsa.Workflows.Api" Version="3.6.0" />
-    <!-- Sub-packages still at 3.5.3 (no 3.6.0 released yet) -->
-    <PackageReference Include="Elsa.CSharp" Version="3.5.3" />
-    <PackageReference Include="Elsa.Liquid" Version="3.5.3" />
-    <PackageReference Include="Elsa.EntityFrameworkCore.PostgreSql" Version="3.5.3" />
-    <PackageReference Include="Elsa.EntityFrameworkCore.Sqlite" Version="3.5.3" />
-    <PackageReference Include="Elsa.Labels" Version="3.6.0" />
-    <PackageReference Include="Elsa.Tenants" Version="3.6.0" />
     <PackageReference Include="DistributedLock.Postgres" Version="1.3.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.5" />
+    <!-- Temporal SDK — sole workflow runtime after Phase 3 Elsa retirement. -->
+    <PackageReference Include="Temporalio" Version="1.13.0" />
+    <PackageReference Include="Temporalio.Extensions.Hosting" Version="1.13.0" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\MagicPAI.Shared\MagicPAI.Shared.csproj" />
     <ProjectReference Include="..\MagicPAI.Core\MagicPAI.Core.csproj" />
     <ProjectReference Include="..\MagicPAI.Activities\MagicPAI.Activities.csproj" />
+    <ProjectReference Include="..\MagicPAI.Workflows\MagicPAI.Workflows.csproj" />
     <ProjectReference Include="..\MagicPAI.Studio\MagicPAI.Studio.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Update="Workflows\Templates\**\*.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
   </ItemGroup>
 </Project>

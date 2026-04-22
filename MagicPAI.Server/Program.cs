@@ -1,42 +1,30 @@
-using FastEndpoints;
-using Elsa.EntityFrameworkCore.Extensions;
-using Elsa.EntityFrameworkCore.Modules.Management;
-using Elsa.EntityFrameworkCore.Modules.Runtime;
-using Microsoft.EntityFrameworkCore;
-using Elsa.Extensions;
-using MagicPAI.Activities.AI;
+// MagicPAI.Server/Program.cs
+// Temporal-only host (Phase 3 Day 13: Elsa retired). Registers:
+//   • MagicPAI core services (container manager, verification gates, config).
+//   • SignalR hub for session telemetry.
+//   • Temporal client + hosted worker with all activity groups and workflows.
+//   • Blazor WASM middleware for the MagicPAI Studio frontend.
+// See temporal.md §M.1 for the canonical shape.
 using MagicPAI.Core.Config;
 using MagicPAI.Core.Services;
 using MagicPAI.Core.Services.Gates;
-using Elsa.Workflows;
-using Elsa.Tenants.Extensions;
+using MagicPAI.Activities.AI;
+using MagicPAI.Activities.Docker;
+using MagicPAI.Activities.Git;
+using MagicPAI.Activities.Infrastructure;
+using MagicPAI.Activities.Verification;
 using MagicPAI.Server.Bridge;
 using MagicPAI.Server.Hubs;
-using MagicPAI.Server.Providers;
 using MagicPAI.Server.Services;
 using MagicPAI.Server.Workflows;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Temporalio.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // UseStaticWebAssets() discovers _framework/ files from the MagicPAI.Studio WASM project.
 // Required for both Development and Production when using `dotnet run`.
 builder.WebHost.UseStaticWebAssets();
-
-// Disable Elsa API security in Development (per Elsa docs)
-if (builder.Environment.IsDevelopment())
-{
-    // Try both old and new type locations
-    var secType = Type.GetType("Elsa.Api.Common.Options.EndpointSecurityOptions, Elsa.Api.Common")
-        ?? AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(a => { try { return a.GetTypes(); } catch { return []; } })
-            .FirstOrDefault(t => t.Name == "EndpointSecurityOptions");
-    secType?.GetMethod("DisableSecurity", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.Invoke(null, null);
-    if (secType is not null)
-        Console.WriteLine($"Elsa security disabled via {secType.FullName}");
-    else
-        Console.WriteLine("WARNING: Could not find EndpointSecurityOptions to disable Elsa API security");
-}
 
 // --- Configuration ---
 var config = builder.Configuration.GetSection("MagicPAI").Get<MagicPaiConfig>() ?? new MagicPaiConfig();
@@ -46,14 +34,8 @@ if (configErrors.Count > 0)
         "Invalid MagicPAI configuration:" + Environment.NewLine + string.Join(Environment.NewLine, configErrors.Select(x => $"- {x}")));
 builder.Services.AddSingleton(config);
 
-
 var pgConn = builder.Configuration.GetConnectionString("MagicPai");
 var useKubernetesBackend = string.Equals(config.ExecutionBackend, "kubernetes", StringComparison.OrdinalIgnoreCase);
-var useSqlite = !string.IsNullOrWhiteSpace(pgConn) && pgConn.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
-
-if (string.IsNullOrWhiteSpace(pgConn))
-    throw new InvalidOperationException(
-        "ConnectionStrings:MagicPai is required. Use PostgreSQL or SQLite (Data Source=magicpai.db).");
 
 // --- Core Services ---
 builder.Services.AddSingleton<SharedBlackboard>();
@@ -82,113 +64,67 @@ builder.Services.AddSingleton<VerificationPipeline>();
 builder.Services.AddSignalR();
 builder.Services.AddHealthChecks();
 
-// --- Event Bridge Services ---
+// --- Session stream sink (SignalR-backed side channel for Temporal activity output) ---
+builder.Services.AddSingleton<ISessionStreamSink, SignalRSessionStreamSink>();
+
+// --- Temporal client + hosted worker ---
+{
+    var temporalHost = builder.Configuration["Temporal:Host"] ?? "localhost:7233";
+    var temporalNamespace = builder.Configuration["Temporal:Namespace"] ?? "magicpai";
+    var temporalTaskQueue = builder.Configuration["Temporal:TaskQueue"] ?? "magicpai-main";
+
+    // Singleton ITemporalClient for use by controllers, hubs, hosted services.
+    builder.Services.AddTemporalClient(opts =>
+    {
+        opts.TargetHost = temporalHost;
+        opts.Namespace = temporalNamespace;
+    });
+
+    // Hosted worker — hosts activity executions against the task queue.
+    builder.Services
+        .AddHostedTemporalWorker(
+            clientTargetHost: temporalHost,
+            clientNamespace: temporalNamespace,
+            taskQueue: temporalTaskQueue)
+        .AddScopedActivities<DockerActivities>()
+        .AddScopedActivities<AiActivities>()
+        .AddScopedActivities<GitActivities>()
+        .AddScopedActivities<VerifyActivities>()
+        .AddScopedActivities<BlackboardActivities>()
+        .AddWorkflow<SimpleAgentWorkflow>()
+        .AddWorkflow<VerifyAndRepairWorkflow>()
+        .AddWorkflow<PromptEnhancerWorkflow>()
+        .AddWorkflow<ContextGathererWorkflow>()
+        .AddWorkflow<PromptGroundingWorkflow>()
+        .AddWorkflow<OrchestrateSimplePathWorkflow>()
+        .AddWorkflow<ComplexTaskWorkerWorkflow>()
+        .AddWorkflow<OrchestrateComplexPathWorkflow>()
+        .AddWorkflow<PostExecutionPipelineWorkflow>()
+        .AddWorkflow<ResearchPipelineWorkflow>()
+        .AddWorkflow<StandardOrchestrateWorkflow>()
+        .AddWorkflow<ClawEvalAgentWorkflow>()
+        .AddWorkflow<WebsiteAuditCoreWorkflow>()
+        .AddWorkflow<WebsiteAuditLoopWorkflow>()
+        .AddWorkflow<FullOrchestrateWorkflow>()
+        .AddWorkflow<DeepResearchOrchestrateWorkflow>()
+        .AddWorkflow<IterativeLoopWorkflow>();
+}
+
+// --- Session / workflow catalog services ---
 builder.Services.AddSingleton<SessionTracker>();
 builder.Services.AddSingleton<ISessionContainerRegistry>(sp => sp.GetRequiredService<SessionTracker>());
+builder.Services.AddSingleton<WorkflowCatalog>();
 builder.Services.AddSingleton<SessionHistoryReader>();
 builder.Services.AddSingleton<IGuiPortAllocator, GuiPortAllocator>();
 builder.Services.AddSingleton<SessionContainerLogStreamer>();
 builder.Services.AddSingleton<ISessionContainerLogStreamer>(sp => sp.GetRequiredService<SessionContainerLogStreamer>());
 builder.Services.AddSingleton<SessionLaunchPlanner>();
 
-builder.Services.AddElsa(elsa =>
-{
-    // Workflow Management — PostgreSQL or SQLite
-    elsa.UseWorkflowManagement(management =>
-    {
-        management.UseEntityFrameworkCore(ef =>
-        {
-            if (useSqlite) { ef.UseSqlite(pgConn); ef.RunMigrations = false; }
-            else ef.UsePostgreSql(pgConn);
-        });
-    });
-
-    // Workflow Runtime — PostgreSQL or SQLite
-    elsa.UseWorkflowRuntime(runtime =>
-    {
-        runtime.UseEntityFrameworkCore(ef =>
-        {
-            if (useSqlite) { ef.UseSqlite(pgConn); ef.RunMigrations = false; }
-            else ef.UsePostgreSql(pgConn);
-        });
-
-        if (useKubernetesBackend)
-        {
-            runtime.DistributedLockProvider = _ => PostgresDistributedLockFactory.Create(pgConn!);
-            runtime.DistributedLockingOptions = options =>
-            {
-                options.LockAcquisitionTimeout = TimeSpan.FromSeconds(30);
-            };
-        }
-
-        // These workflows still rely on delegate-built child input/prompt expressions
-        // that are not preserved correctly by the current JSON template exporter.
-        runtime.AddWorkflow<FullOrchestrateWorkflow>();
-        runtime.AddWorkflow<WebsiteAuditLoopWorkflow>();
-        runtime.AddWorkflow<ComplexTaskWorkerWorkflow>();
-        runtime.AddWorkflow<DeepResearchOrchestrateWorkflow>();
-
-    });
-
-    // Identity
-    elsa.UseIdentity(identity =>
-    {
-        identity.TokenOptions = tokenOptions =>
-        {
-            tokenOptions.SigningKey = builder.Configuration["Elsa:Identity:SigningKey"]
-                ?? "sufficiently-long-secret-key-for-development-only-replace-in-production";
-            tokenOptions.AccessTokenLifetime = TimeSpan.FromDays(1);
-        };
-        identity.UseAdminUserProvider();
-    });
-
-    // Default Authentication
-    elsa.UseDefaultAuthentication(auth => auth.UseAdminApiKey());
-
-    // HTTP activities.
-    // BasePath moved off "/workflows" (Elsa's default) so it doesn't 404-intercept
-    // Studio's client-side routes at /workflows/definitions and /workflows/instances.
-    elsa.UseHttp(http => http.ConfigureHttpOptions = options =>
-    {
-        var baseUrl = builder.Configuration["Elsa:Http:BaseUrl"] ?? "https://localhost:5001";
-        options.BaseUrl = new Uri(baseUrl);
-        options.BasePath = "/webhooks";
-    });
-
-    // Scheduling (timers, delays, cron)
-    elsa.UseScheduling();
-
-    // Expression languages
-    elsa.UseJavaScript(options => options.AllowClrAccess = true);
-    elsa.UseCSharp();
-    elsa.UseLiquid((Elsa.Liquid.Features.LiquidFeature liquid) => { });
-
-    // Workflows API (handles FastEndpoints + serialization internally)
-    elsa.UseWorkflowsApi();
-    elsa.UseRealTimeWorkflows();
-
-    // Multi-tenancy + Labels (required by Elsa 3.5+ even for single-tenant)
-    elsa.UseTenants(tenants => tenants.UseTenantManagement());
-    elsa.UseLabels(labels => { });
-
-    // Register all custom activities from MagicPAI.Activities assembly
-    elsa.AddActivitiesFrom<RunCliAgentActivity>();
-});
-
-// --- Notification handlers ---
-builder.Services.AddNotificationHandler<ElsaEventBridge>();
-builder.Services.AddNotificationHandler<WorkflowProgressTracker>();
-builder.Services.AddNotificationHandler<WorkflowCompletionHandler>();
-
-// --- Activity descriptor customization (icons/colors in Studio) ---
-builder.Services.AddSingleton<IActivityDescriptorModifier, MagicPaiActivityDescriptorModifier>();
-
-// --- FastEndpoints (required for Elsa API in 3.6) ---
-builder.Services.AddFastEndpoints();
-
-// --- Workflow publisher (imports JSON workflow templates into Elsa stores) ---
-builder.Services.AddSingleton<WorkflowPublisher>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkflowPublisher>());
+// --- Temporal-side infrastructure ---
+builder.Services.AddSingleton<MagicPaiMetrics>();
+builder.Services.AddSingleton<IStartupValidator, DockerEnforcementValidator>();
+builder.Services.AddHostedService<SearchAttributesInitializer>();
+builder.Services.AddHostedService<WorkflowCompletionMonitor>();
 
 // --- Worker pod/container garbage collector ---
 builder.Services.AddHostedService<WorkerPodGarbageCollector>();
@@ -211,55 +147,12 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// SQLite schema fixup: EnsureCreated doesn't work with multiple DbContexts sharing one DB.
-// We use raw SQL to create any tables the Elsa 3.5.x migrations missed.
-if (useSqlite)
-{
-    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SQLiteSchemaSetup");
-    using var scope = app.Services.CreateScope();
+// --- Startup validation ---
+// Runs before the Temporal worker processes anything so a misconfigured backend
+// fails fast instead of silently falling back to local mode.
+app.Services.GetRequiredService<IStartupValidator>().Validate();
 
-    // Get each DbContext, generate its SQL model, and apply missing tables
-    foreach (var contextType in new[] {
-        typeof(Elsa.EntityFrameworkCore.Modules.Management.ManagementElsaDbContext),
-        typeof(Elsa.EntityFrameworkCore.Modules.Runtime.RuntimeElsaDbContext) })
-    {
-        try
-        {
-            var factoryType = typeof(Microsoft.EntityFrameworkCore.IDbContextFactory<>).MakeGenericType(contextType);
-            var factory = scope.ServiceProvider.GetService(factoryType);
-            if (factory is null) continue;
-            var createMethod = factoryType.GetMethod("CreateDbContext");
-            if (createMethod is null) continue;
-            using var db = (Microsoft.EntityFrameworkCore.DbContext)createMethod.Invoke(factory, null)!;
-            var script = db.Database.GenerateCreateScript();
-            // Execute each CREATE TABLE IF NOT EXISTS statement
-            using var conn = new Microsoft.Data.Sqlite.SqliteConnection(pgConn);
-            conn.Open();
-            foreach (var statement in script.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                if (string.IsNullOrWhiteSpace(statement)) continue;
-                var sql = statement.Replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", StringComparison.OrdinalIgnoreCase);
-                try
-                {
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = sql;
-                    cmd.ExecuteNonQuery();
-                }
-                catch (Exception ex)
-                {
-                    logger.LogDebug(ex, "SQLite schema statement skipped: {Sql}", sql[..Math.Min(sql.Length, 80)]);
-                }
-            }
-            logger.LogInformation("Schema setup completed for {ContextType}", contextType.Name);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Schema setup failed for {ContextType}", contextType.Name);
-        }
-    }
-}
-
-// --- Middleware (order follows official Elsa reference app) ---
+// --- Middleware ---
 if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
 
@@ -281,17 +174,6 @@ app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = provider });
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
-
-// Elsa API via FastEndpoints. Use Elsa's middleware so /elsa/api/* is actually mapped
-// instead of falling through to the Blazor fallback shell.
-app.UseWorkflowsApi("elsa/api");
-
-// JSON error handler
-app.UseJsonSerializationErrorHandler();
-
-// Elsa HTTP workflow endpoint activities
-app.UseWorkflows();
-app.UseWorkflowsSignalRHubs();
 
 // Custom endpoints
 app.MapHealthChecks("/health", new HealthCheckOptions());

@@ -1,234 +1,81 @@
-@page "/magic/dashboard"
-@using MagicPAI.Shared.Models
-@using MagicPAI.Studio.Services
-@using MagicPAI.Studio.Components
-@inject SessionHubClient Hub
-@inject SessionApiClient Api
-@inject NavigationManager Navigation
+@* MagicPAI.Studio/Pages/Dashboard.razor — rewritten for Temporal. *@
+@page "/dashboard"
+@inject SessionApiClient SessionClient
+@inject NavigationManager Nav
 
-<PageTitle>MagicPAI Dashboard</PageTitle>
+<PageTitle>Dashboard</PageTitle>
 
-<div class="dashboard">
-    <h2>MagicPAI Dashboard</h2>
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
 
-    <div class="quick-start card">
-        <h3>Start a New Session</h3>
-        <textarea @bind="prompt" @bind:event="oninput" placeholder="Describe your task..." rows="3" class="form-input" />
+<MudGrid>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Total sessions (7d)</MudText>
+            <MudText Typo="Typo.h4">@_sessions.Count</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Running</MudText>
+            <MudText Typo="Typo.h4">@_running</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Completed</MudText>
+            <MudText Typo="Typo.h4">@_completed</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Total spend</MudText>
+            <MudText Typo="Typo.h4">@($"${_totalCost:F2}")</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
 
-        <div class="form-group">
-            <label>Workspace Path</label>
-            <div class="path-browser">
-                <input @bind="workspacePath" @bind:event="oninput" placeholder="/path/to/project" class="form-input path-input" />
-                <button @onclick="ToggleBrowser" class="btn btn-secondary" type="button" title="Browse folders">
-                    @(showBrowser ? "Close" : "Browse...")
-                </button>
-            </div>
-            @if (showBrowser)
-            {
-                <div class="browser-panel">
-                    <div class="browser-header">
-                        <span class="browser-path" title="@browserCurrentPath">@(string.IsNullOrEmpty(browserCurrentPath) ? "Drives" : browserCurrentPath)</span>
-                        @if (!string.IsNullOrEmpty(browserParentPath))
-                        {
-                            <button @onclick="NavigateUp" class="btn btn-sm" type="button">..</button>
-                        }
-                        @if (!string.IsNullOrEmpty(browserCurrentPath))
-                        {
-                            <button @onclick="SelectCurrentPath" class="btn btn-primary btn-sm" type="button">Select this folder</button>
-                        }
-                    </div>
-                    @if (browserLoading)
-                    {
-                        <p class="browser-loading">Loading...</p>
-                    }
-                    else if (browserDirs.Count == 0)
-                    {
-                        <p class="browser-empty">No subdirectories</p>
-                    }
-                    else
-                    {
-                        <div class="browser-list">
-                            @foreach (var dir in browserDirs)
-                            {
-                                <div class="browser-item" @onclick="() => NavigateInto(dir.FullPath)">
-                                    <span class="folder-icon">&#128193;</span> @dir.Name
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            }
-        </div>
+<MudPaper Class="pa-4 mt-6" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudText Typo="Typo.h5">Recent sessions</MudText>
+        <MudSpacer />
+        <MudButton Href="/sessions" Variant="Variant.Outlined">View all</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Href="/">New session</MudButton>
+    </MudStack>
 
-        <div class="controls">
-            <AgentSelector @bind-Value="selectedAgent" />
-            <div class="form-group workflow-group">
-                <label>Workflow</label>
-                <select @bind="selectedWorkflow" class="form-input workflow-selector">
-                    @foreach (var wf in workflows)
-                    {
-                        <option value="@wf.Id">@wf.DisplayName</option>
-                    }
-                </select>
-            </div>
-            <button @onclick="StartSession" disabled="@isStarting" class="btn btn-primary">
-                @(isStarting ? "Starting..." : "Start Session")
-            </button>
-        </div>
-        @if (!string.IsNullOrWhiteSpace(errorMessage))
-        {
-            <p class="error-text">@errorMessage</p>
-        }
-    </div>
-
-    <div class="session-list">
-        <h3>Active Sessions</h3>
-        @if (sessions.Count == 0)
-        {
-            <p class="empty-state">No sessions yet. Start one above.</p>
-        }
-        else
-        {
-            @foreach (var session in sessions)
-            {
-                <div class="session-card @session.State.ToLowerInvariant()"
-                     @onclick="() => NavigateToSession(session.Id)">
-                    <span class="status-badge">@session.State</span>
-                    <span class="session-id">@(session.Id.Length > 8 ? session.Id[..8] : session.Id)...</span>
-                    <span class="session-agent">@session.Agent</span>
-                    <span class="session-cost">$@session.TotalCostUsd.ToString("F4")</span>
-                    <span class="session-time">@session.CreatedAt.ToString("HH:mm:ss")</span>
-                </div>
-            }
-        }
-    </div>
-</div>
-
-@implements IDisposable
+    <MudTable Items="@_sessions.Take(10)" Loading="@_loading" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Id</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Started</MudTh>
+            <MudTh>Cost</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><MudLink Href="@($"/sessions/{context.SessionId}")">@(context.SessionId.Length > 12 ? context.SessionId[..12] + "…" : context.SessionId)</MudLink></MudTd>
+            <MudTd>@context.WorkflowType</MudTd>
+            <MudTd><SessionStatusBadge Status="@context.Status" /></MudTd>
+            <MudTd>@context.StartTime.ToLocalTime().ToString("g")</MudTd>
+            <MudTd>@($"${context.TotalCostUsd:F4}")</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No sessions in the last 7 days.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
 
 @code {
-    private string prompt = "";
-    private string selectedAgent = "claude";
-    private string selectedWorkflow = "full-orchestrate";
-    private string workspacePath = "";
-    private bool isStarting;
-    private string errorMessage = "";
-    private List<SessionInfo> sessions = new();
-    private List<WorkflowOption> workflows = new();
-
-    // Browser state
-    private bool showBrowser;
-    private bool browserLoading;
-    private string browserCurrentPath = "";
-    private string? browserParentPath;
-    private List<DirectoryEntry> browserDirs = new();
+    private List<SessionSummary> _sessions = new();
+    private bool _loading = true;
+    private int _running;
+    private int _completed;
+    private decimal _totalCost;
 
     protected override async Task OnInitializedAsync()
     {
-        Hub.OnSessionStateChanged += OnStateChanged;
-        try
-        {
-            await Hub.ConnectAsync();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = ex.Message;
-        }
-
-        var sessionsTask = Api.ListSessionsAsync();
-        var workflowsTask = Api.ListWorkflowsAsync();
-        await Task.WhenAll(sessionsTask, workflowsTask);
-
-        sessions = sessionsTask.Result;
-        workflows = workflowsTask.Result;
-
-        if (workflows.Count == 0)
-        {
-            // Fallback if server hasn't loaded yet
-            workflows = [new WorkflowOption("full-orchestrate", "Full Orchestrator", true)];
-        }
-    }
-
-    private async Task ToggleBrowser()
-    {
-        showBrowser = !showBrowser;
-        if (showBrowser)
-        {
-            // Start browsing from the current workspace path, or from root
-            var startPath = string.IsNullOrWhiteSpace(workspacePath) ? null : workspacePath;
-            await LoadDirectory(startPath);
-        }
-    }
-
-    private async Task LoadDirectory(string? path)
-    {
-        browserLoading = true;
-        StateHasChanged();
-
-        var result = await Api.BrowseAsync(path);
-        browserCurrentPath = result.CurrentPath;
-        browserParentPath = result.ParentPath;
-        browserDirs = result.Directories;
-
-        browserLoading = false;
-        StateHasChanged();
-    }
-
-    private async Task NavigateInto(string fullPath) => await LoadDirectory(fullPath);
-
-    private async Task NavigateUp()
-    {
-        if (!string.IsNullOrEmpty(browserParentPath))
-            await LoadDirectory(browserParentPath);
-        else
-            await LoadDirectory(null);
-    }
-
-    private void SelectCurrentPath()
-    {
-        workspacePath = browserCurrentPath;
-        showBrowser = false;
-    }
-
-    private async Task StartSession()
-    {
-        if (string.IsNullOrWhiteSpace(prompt))
-            return;
-
-        isStarting = true;
-        errorMessage = "";
-        try
-        {
-            await Hub.ConnectAsync();
-            var sessionId = await Api.CreateSessionAsync(
-                prompt, workspacePath, selectedAgent,
-                workflowName: selectedWorkflow);
-            NavigateToSession(sessionId);
-        }
-        catch (Exception ex)
-        {
-            errorMessage = ex.Message;
-        }
-        finally
-        {
-            isStarting = false;
-        }
-    }
-
-    private void OnStateChanged(SessionStateEvent e)
-    {
-        var session = sessions.FirstOrDefault(s => s.Id == e.SessionId);
-        if (session is not null)
-            session.State = e.State;
-
-        InvokeAsync(StateHasChanged);
-    }
-
-    private void NavigateToSession(string id) =>
-        Navigation.NavigateTo($"magic/sessions/{id}");
-
-    public void Dispose()
-    {
-        Hub.OnSessionStateChanged -= OnStateChanged;
+        _sessions = await SessionClient.ListAsync(take: 100);
+        _running = _sessions.Count(s => string.Equals(s.Status, "Running", StringComparison.OrdinalIgnoreCase));
+        _completed = _sessions.Count(s => string.Equals(s.Status, "Completed", StringComparison.OrdinalIgnoreCase));
+        _totalCost = _sessions.Sum(s => s.TotalCostUsd);
+        _loading = false;
     }
 }

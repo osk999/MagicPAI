@@ -1,0 +1,47 @@
+@* MagicPAI.Studio/Components/CostDisplay.razor — Temporal migration §S.2. *@
+@implements IDisposable
+@inject SessionHubClient Hub
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.subtitle1">Cost</MudText>
+    <MudText Typo="Typo.h5">@($"${_totalUsd:F4}")</MudText>
+    @if (_lastEntry is not null)
+    {
+        <MudText Typo="Typo.caption">
+            Last: @($"${_lastEntry.IncrementUsd:F4}") —
+            @_lastEntry.Agent/@_lastEntry.Model
+        </MudText>
+        <MudText Typo="Typo.caption" Class="d-block">
+            Tokens: @_totalInput in / @_totalOutput out
+        </MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = "";
+
+    private decimal _totalUsd;
+    private long _totalInput;
+    private long _totalOutput;
+    private CostEntry? _lastEntry;
+
+    protected override void OnInitialized()
+    {
+        Hub.CostUpdate += OnCostUpdate;
+    }
+
+    private void OnCostUpdate(CostEntry c)
+    {
+        if (c.SessionId != SessionId) return;
+        _totalUsd = c.TotalUsd;
+        _totalInput += c.InputTokens;
+        _totalOutput += c.OutputTokens;
+        _lastEntry = c;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Hub.CostUpdate -= OnCostUpdate;
+    }
+}

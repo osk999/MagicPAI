@@ -1,0 +1,262 @@
+@* MagicPAI.Studio/Components/CliOutputStream.razor — Temporal migration §S.1.
+   Renders the Claude CLI JSONL event stream as concatenated assistant text
+   with compact markers for tool calls and results. Raw JSON is suppressed. *@
+@using System.Text
+@using System.Text.Json
+@inject IJSRuntime JS
+
+<div class="cli-output" @ref="_scrollContainer">
+    <pre data-rendered-by="filtered-v2">@Rendered</pre>
+    @if (IsActive)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+    }
+</div>
+
+<style>
+    .cli-output {
+        font-family: 'Consolas', 'Fira Code', 'Monaco', monospace;
+        font-size: 13px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 12px;
+        border-radius: 4px;
+        height: 500px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .cli-output pre {
+        margin: 0;
+    }
+</style>
+
+@code {
+    [Parameter] public List<string> Lines { get; set; } = new();
+    [Parameter] public bool IsActive { get; set; } = true;
+
+    private ElementReference _scrollContainer;
+    private int _lastRenderedLineCount;
+
+    // Always re-render on parent render. Lines is a shared List reference,
+    // so the default parameter-change check doesn't pick up Add() mutations.
+    protected override bool ShouldRender() => true;
+
+    // Derived text — advanced incrementally each render (Blazor re-evaluates
+    // `@Rendered` on every StateHasChanged, which is what SessionView fires
+    // when it mutates the underlying List<string>). We track the number of
+    // lines already consumed so we never re-parse the same event twice.
+    private readonly StringBuilder _text = new();
+    private int _lastProcessedLine;
+
+    private string Rendered
+    {
+        get
+        {
+            if (Lines.Count < _lastProcessedLine)
+            {
+                // Session reset or list cleared externally — start over.
+                _text.Clear();
+                _lastProcessedLine = 0;
+            }
+
+            for (var i = _lastProcessedLine; i < Lines.Count; i++)
+            {
+                AppendEvent(Lines[i]);
+            }
+            _lastProcessedLine = Lines.Count;
+            return _text.ToString();
+        }
+    }
+
+    private void AppendEvent(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return;
+
+        var trimmed = raw.TrimStart();
+        if (trimmed.Length == 0) return;
+
+        if (trimmed[0] != '{')
+        {
+            // If it smells like a JSON fragment (has a quoted-key `":` or
+            // trailing `"}`), it's almost certainly a mid-object piece from
+            // the upstream line-splitter getting surprised by a real newline
+            // inside a string value — drop it silently.
+            if (LooksLikeJsonFragment(raw))
+                return;
+
+            // Otherwise, treat it as plain-text workflow output.
+            _text.Append(raw);
+            if (!raw.EndsWith('\n')) _text.Append('\n');
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("type", out var typeProp)) return;
+            var type = typeProp.GetString();
+
+            switch (type)
+            {
+                case "stream_event":
+                    HandleStreamEvent(root);
+                    break;
+                case "user":
+                    HandleUserEvent(root);
+                    break;
+                case "result":
+                    HandleResult(root);
+                    break;
+                // "assistant", "system", "rate_limit_event" — the visible parts
+                // already came through as stream_event deltas, so we suppress
+                // them to avoid double-printing.
+                default:
+                    break;
+            }
+        }
+        catch (JsonException)
+        {
+            // Malformed JSON event fragment (happens when the activity's
+            // line splitter sees a literal \n inside a string value). Silently
+            // drop it — the user asked for clean text, not raw wire noise.
+        }
+    }
+
+    private static bool LooksLikeJsonFragment(string s)
+    {
+        // A line that is NOT a full JSON object but looks like a broken piece
+        // of the upstream JSONL stream. Drop it. Patterns covered:
+        //  - JSON key/value separators   "":\"" ":[" ":{" ":null" etc.
+        //  - Trailing JSON punctuation   "}"  "]"  ","  "\""
+        //  - Long "no-space" blobs       — base64 signature fragments (these
+        //    show up when thinking-block signatures have embedded newlines in
+        //    the base64 payload that the activity's line-splitter breaks on).
+        var trimmed = s.TrimEnd();
+        if (trimmed.EndsWith("\"}")
+            || trimmed.EndsWith("\"]")
+            || trimmed.EndsWith(",")
+            || trimmed.EndsWith("\""))
+            return true;
+
+        if (s.Contains("\":\"", StringComparison.Ordinal)
+            || s.Contains("\":[", StringComparison.Ordinal)
+            || s.Contains("\":{", StringComparison.Ordinal)
+            || s.Contains("\":null", StringComparison.Ordinal)
+            || s.Contains("\":true", StringComparison.Ordinal)
+            || s.Contains("\":false", StringComparison.Ordinal)
+            || System.Text.RegularExpressions.Regex.IsMatch(s, @"""\s*:\s*-?\d"))
+            return true;
+
+        // Long, space-less blobs of alphanumerics + base64 punctuation are
+        // almost certainly signature fragments from thinking blocks.
+        var body = s.Trim();
+        if (body.Length >= 40
+            && !body.Contains(' ')
+            && System.Text.RegularExpressions.Regex.IsMatch(body,
+                @"^[A-Za-z0-9+/=_\-]+$"))
+            return true;
+
+        return false;
+    }
+
+    private void HandleStreamEvent(JsonElement root)
+    {
+        if (!root.TryGetProperty("event", out var ev)) return;
+        if (!ev.TryGetProperty("type", out var evType)) return;
+
+        switch (evType.GetString())
+        {
+            case "content_block_start":
+                if (ev.TryGetProperty("content_block", out var block) &&
+                    block.TryGetProperty("type", out var blockType))
+                {
+                    switch (blockType.GetString())
+                    {
+                        case "tool_use":
+                            var toolName = block.TryGetProperty("name", out var n)
+                                ? n.GetString() : "tool";
+                            _text.Append("\n\n[🔧 ").Append(toolName).Append("] ");
+                            break;
+                        case "thinking":
+                            // Suppress thinking blocks entirely — only signatures
+                            // come through, and users asked for visible text only.
+                            break;
+                        case "text":
+                            // New assistant text block — ensure we're on a fresh line.
+                            if (_text.Length > 0 &&
+                                _text[_text.Length - 1] != '\n')
+                                _text.Append('\n');
+                            break;
+                    }
+                }
+                break;
+
+            case "content_block_delta":
+                if (ev.TryGetProperty("delta", out var delta) &&
+                    delta.TryGetProperty("type", out var deltaType))
+                {
+                    switch (deltaType.GetString())
+                    {
+                        case "text_delta":
+                            if (delta.TryGetProperty("text", out var t))
+                                _text.Append(t.GetString());
+                            break;
+                        // input_json_delta / signature_delta are internal
+                        // wire format — suppress.
+                    }
+                }
+                break;
+        }
+    }
+
+    private void HandleUserEvent(JsonElement root)
+    {
+        // User messages with tool_result payloads — emit a compact marker so
+        // the reader can see the tool actually came back without dumping raw
+        // result content (which can be huge).
+        if (!root.TryGetProperty("message", out var msg)) return;
+        if (!msg.TryGetProperty("content", out var contentArr) ||
+            contentArr.ValueKind != JsonValueKind.Array) return;
+
+        foreach (var item in contentArr.EnumerateArray())
+        {
+            if (item.TryGetProperty("type", out var itType) &&
+                itType.GetString() == "tool_result")
+            {
+                var isError = item.TryGetProperty("is_error", out var err) && err.GetBoolean();
+                _text.Append(isError ? "\n  ↳ ✗ error\n" : "\n  ↳ ✓\n");
+            }
+        }
+    }
+
+    private void HandleResult(JsonElement root)
+    {
+        // Final CLI summary — show cost + duration on a single trailing line.
+        var cost = root.TryGetProperty("total_cost_usd", out var c) ? c.GetDecimal() : 0m;
+        var ms = root.TryGetProperty("duration_ms", out var d) ? d.GetInt64() : 0L;
+        _text.Append("\n\n— run complete — cost $")
+             .Append(cost.ToString("0.0000"))
+             .Append(", ")
+             .Append(ms / 1000)
+             .Append("s\n");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Lines.Count != _lastRenderedLineCount)
+        {
+            _lastRenderedLineCount = Lines.Count;
+            try
+            {
+                await JS.InvokeVoidAsync("mpai.scrollToBottom", _scrollContainer);
+            }
+            catch
+            {
+                // JS interop may not be ready during first render — safe to ignore.
+            }
+        }
+    }
+}

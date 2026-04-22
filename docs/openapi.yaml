@@ -1,0 +1,321 @@
+openapi: 3.1.0
+info:
+  title: MagicPAI API
+  version: 2.0.0-phase0
+  description: |
+    MagicPAI REST API for session management.
+    All session operations start/inspect/cancel Temporal workflows.
+
+    This spec will be auto-generated from the server's Swashbuckle configuration once
+    Phase 1 of the Elsa→Temporal migration is complete. This starter version
+    documents the post-migration contract.
+  contact:
+    name: MagicPAI Team
+    email: magicpai@example.com
+  license:
+    name: Internal
+servers:
+  - url: https://mpai.example.com
+    description: Production
+  - url: https://mpai-staging.example.com
+    description: Staging
+  - url: http://localhost:5000
+    description: Local dev
+
+tags:
+  - name: Sessions
+    description: Create, list, inspect, cancel sessions
+  - name: Workflows
+    description: Workflow catalog and metadata
+  - name: Config
+    description: Runtime configuration readable by UI
+  - name: System
+    description: Health, metrics
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      operationId: health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "Healthy" }
+
+  /api/sessions:
+    post:
+      tags: [Sessions]
+      summary: Create a new session
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSessionRequest' }
+      responses:
+        '202':
+          description: Session accepted and started
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateSessionResponse' }
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded
+        '503':
+          description: Temporal unavailable
+
+    get:
+      tags: [Sessions]
+      summary: List recent sessions
+      operationId: listSessions
+      parameters:
+        - in: query
+          name: take
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+      responses:
+        '200':
+          description: List of sessions (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SessionSummary' }
+
+  /api/sessions/{id}:
+    get:
+      tags: [Sessions]
+      summary: Get session status
+      operationId: getSession
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^mpai-[a-f0-9]{32}$' }
+      responses:
+        '200':
+          description: Session details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionDetail' }
+        '404':
+          description: Session not found
+
+    delete:
+      tags: [Sessions]
+      summary: Cancel session (graceful)
+      operationId: cancelSession
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Cancelled
+        '404':
+          description: Not found
+
+  /api/sessions/{id}/terminate:
+    post:
+      tags: [Sessions]
+      summary: Terminate session (forceful, no cleanup)
+      operationId: terminateSession
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TerminateRequest' }
+      responses:
+        '204':
+          description: Terminated
+
+  /api/workflows:
+    get:
+      tags: [Workflows]
+      summary: Workflow catalog
+      operationId: listWorkflowTypes
+      responses:
+        '200':
+          description: Available workflow types
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WorkflowCatalogEntry' }
+
+  /api/workflows/{id}/ui-url:
+    get:
+      tags: [Workflows]
+      summary: Deep-link URL to Temporal Web UI
+      operationId: getUiUrl
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { url: { type: string, format: uri } }
+
+  /api/config/temporal:
+    get:
+      tags: [Config]
+      summary: Get Temporal config for UI
+      operationId: getTemporalConfig
+      responses:
+        '200':
+          description: Config snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TemporalConfig' }
+
+  /metrics:
+    get:
+      tags: [System]
+      summary: Prometheus metrics scrape endpoint
+      responses:
+        '200':
+          description: Metrics in Prometheus text format
+          content:
+            text/plain:
+              schema: { type: string }
+
+components:
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required: [prompt, workflowType, aiAssistant, workspacePath]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 100000
+        workflowType:
+          type: string
+          enum:
+            - SimpleAgent
+            - FullOrchestrate
+            - DeepResearchOrchestrate
+            - OrchestrateSimplePath
+            - OrchestrateComplexPath
+            - PromptEnhancer
+            - ContextGatherer
+            - PromptGrounding
+            - ResearchPipeline
+            - PostExecutionPipeline
+            - StandardOrchestrate
+            - ClawEvalAgent
+            - WebsiteAuditCore
+            - WebsiteAuditLoop
+            - VerifyAndRepair
+        aiAssistant:
+          type: string
+          enum: [claude, codex, gemini]
+        model:
+          type: string
+          nullable: true
+        modelPower:
+          type: integer
+          enum: [0, 1, 2, 3]
+          default: 0
+          description: 0=auto, 1=strongest, 2=balanced, 3=fastest
+        workspacePath:
+          type: string
+        enableGui:
+          type: boolean
+          default: true
+        customParams:
+          type: object
+          additionalProperties: { type: string }
+
+    CreateSessionResponse:
+      type: object
+      properties:
+        sessionId: { type: string, pattern: '^mpai-[a-f0-9]{32}$' }
+
+    SessionSummary:
+      type: object
+      properties:
+        sessionId: { type: string }
+        workflowType: { type: string }
+        status:
+          type: string
+          enum: [Running, Completed, Failed, Cancelled, Terminated, ContinuedAsNew]
+        startTime: { type: string, format: date-time }
+        closeTime: { type: string, format: date-time, nullable: true }
+        aiAssistant: { type: string }
+        totalCostUsd: { type: number, format: double }
+
+    SessionDetail:
+      type: object
+      properties:
+        sessionId: { type: string }
+        status: { type: string }
+        startTime: { type: string, format: date-time }
+        closeTime: { type: string, format: date-time, nullable: true }
+        pendingActivityCount: { type: integer }
+        pendingActivities:
+          type: array
+          items: { $ref: '#/components/schemas/PendingActivity' }
+
+    PendingActivity:
+      type: object
+      properties:
+        activityType: { type: string }
+        attempt: { type: integer }
+        message: { type: string, nullable: true }
+
+    WorkflowCatalogEntry:
+      type: object
+      properties:
+        displayName: { type: string }
+        workflowTypeName: { type: string }
+        taskQueue: { type: string }
+        description: { type: string }
+        requiresAiAssistant: { type: boolean }
+        supportedModels:
+          type: array
+          items: { type: string }
+        category: { type: string }
+        sortOrder: { type: integer }
+
+    TerminateRequest:
+      type: object
+      properties:
+        reason: { type: string, nullable: true }
+
+    TemporalConfig:
+      type: object
+      properties:
+        uiBaseUrl: { type: string, format: uri }
+        namespace: { type: string }
+
+    ErrorResponse:
+      type: object
+      required: [errorType, message]
+      properties:
+        errorType: { type: string }
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: true

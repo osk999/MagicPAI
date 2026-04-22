@@ -5,12 +5,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using Elsa.Common.Services;
-using Elsa.Tenants;
-using Elsa.Labels.Contracts;
-using Elsa.Labels.Entities;
-using Elsa.Labels.Services;
-using MagicPAI.Server.Bridge;
 using MagicPAI.Server.Services;
 using Testcontainers.PostgreSql;
 
@@ -20,6 +14,7 @@ namespace MagicPAI.Tests.Integration.Fixtures;
 /// Custom WebApplicationFactory that configures MagicPAI.Server for testing.
 /// Spins up a disposable PostgreSQL container via Testcontainers and
 /// replaces external services (container manager, CLI agents) with stubs.
+/// Temporal-only after Phase 3 — no Elsa services to override.
 /// </summary>
 public class MagicPaiWebApplicationFactory : WebApplicationFactory<Program>
 {
@@ -29,8 +24,7 @@ public class MagicPaiWebApplicationFactory : WebApplicationFactory<Program>
 
     public MagicPaiWebApplicationFactory()
     {
-        _postgres = new PostgreSqlBuilder()
-            .WithImage("postgres:17-alpine")
+        _postgres = new PostgreSqlBuilder("postgres:17-alpine")
             .WithDatabase("magicpai_test")
             .WithUsername("test")
             .WithPassword("test")
@@ -49,10 +43,12 @@ public class MagicPaiWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting("MagicPAI:EnableContainerPool", "false");
         builder.UseSetting("MagicPAI:EnableWorktreeIsolation", "false");
 
-        // PostgreSQL from Testcontainer
+        // PostgreSQL from Testcontainer (Temporal persists its own state; the app's
+        // connection string is kept for completeness even though Elsa is retired).
         builder.UseSetting("ConnectionStrings:MagicPai", _postgres.GetConnectionString());
 
-        // Disable service validation so unregistered Elsa FastEndpoint dependencies don't crash startup
+        // Skip service validation so partially-configured Temporal worker services
+        // don't crash startup when the real broker isn't reachable in unit suites.
         builder.UseDefaultServiceProvider(options => options.ValidateOnBuild = false);
 
         builder.ConfigureServices(services =>
@@ -65,16 +61,7 @@ public class MagicPaiWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<ICliAgentFactory>();
             services.AddSingleton<ICliAgentFactory>(CliAgentFactory);
 
-            services.RemoveAll<ITenantStore>();
-            services.AddSingleton<ITenantStore, InMemoryTenantStore>();
-
-            services.RemoveAll<ILabelStore>();
-            services.RemoveAll<MemoryStore<Label>>();
-            services.AddSingleton<MemoryStore<Label>>();
-            services.AddSingleton<ILabelStore, InMemoryLabelStore>();
-
-            // Keep WorkflowPublisher so real workflow definitions exist during integration tests.
-            // Remove only the worker cleanup service, which is irrelevant here.
+            // Drop the long-running cleanup service so tests shut down cleanly.
             var hostedServiceDescriptors = services
                 .Where(d => d.ServiceType == typeof(IHostedService) &&
                             d.ImplementationType == typeof(WorkerPodGarbageCollector))

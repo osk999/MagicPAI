@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using MagicPAI.Core.Models;
 
@@ -107,29 +108,73 @@ public class ClaudeRunner : ICliAgentRunner
             arguments.Add(request.SessionId);
         }
 
-        arguments.Add("-p");
-        arguments.Add(request.Prompt ?? "");
+        // Pre-flight argv size. Windows CreateProcess caps the combined
+        // command line at ~32 KB; the Linux MAX_ARG_STRLEN is higher but still
+        // finite. When the prompt would push us past the cap we drop it from
+        // argv and pipe it through the Claude CLI's stdin instead (`-p` with
+        // no prompt argument reads from stdin).
+        var baseArgBytes = 0;
+        foreach (var a in arguments) baseArgBytes += System.Text.Encoding.UTF8.GetByteCount(a) + 1;
+        var promptBytes = System.Text.Encoding.UTF8.GetByteCount(request.Prompt ?? "");
+        // +3 for "-p " and its separator byte
+        var argvWithPrompt = baseArgBytes + 3 + promptBytes;
+
+        string? stdinPayload = null;
+        if (argvWithPrompt > MaxArgvBytes)
+        {
+            // Over the cap → stdin mode. `-p` without a value tells the
+            // Claude CLI to read the prompt from standard input.
+            arguments.Add("-p");
+            stdinPayload = request.Prompt ?? "";
+        }
+        else
+        {
+            arguments.Add("-p");
+            arguments.Add(request.Prompt ?? "");
+        }
 
         return new CliAgentExecutionPlan(
             new ContainerExecRequest(
                 FileName: "claude",
                 Arguments: arguments,
-                WorkingDirectory: request.WorkDir ?? "/workspace"));
+                WorkingDirectory: request.WorkDir ?? "/workspace",
+                StdinInput: stdinPayload));
     }
+
+    // Conservative cross-platform ceiling: Windows CreateProcess caps the
+    // combined command line at 32,767 chars (minus ~200 for "docker exec … bash -c"
+    // wrapping). 28 KB leaves comfortable headroom.
+    private const int MaxArgvBytes = 28 * 1024;
 
     public CliAgentResponse ParseResponse(string rawOutput)
     {
-        var lines = rawOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var lastResult = lines
-            .Select(TryParseJson)
-            .Where(j => j is not null
-                        && j.Value.ValueKind == JsonValueKind.Object
-                        && j.Value.TryGetProperty("type", out var t)
-                        && t.GetString() == "result")
-            .LastOrDefault();
+        // Claude emits one JSON object per line in stream-json mode, but on Windows
+        // `docker exec` wraps stdout through a PTY that injects spurious \r\n inside
+        // JSON string literals at ~256-char boundaries. A naive Split('\n') yields
+        // broken "half lines" that TryParse rejects, so we fall back to a
+        // balanced-brace scanner that reconstitutes each top-level JSON object
+        // regardless of where newlines landed in the wire stream.
+        var objects = SplitBalancedJsonObjects(rawOutput);
+
+        JsonElement? lastResult = null;
+        foreach (var obj in objects)
+        {
+            var parsed = TryParseJson(obj);
+            if (parsed is null) continue;
+            if (parsed.Value.ValueKind != JsonValueKind.Object) continue;
+            if (!parsed.Value.TryGetProperty("type", out var t)) continue;
+            if (t.GetString() == "result")
+                lastResult = parsed;
+        }
 
         if (lastResult is null)
-            return new(false, rawOutput, 0, [], 0, 0, null);
+        {
+            // No `type:result` envelope found — return the cleaned buffer so the
+            // caller can inspect it, but flag Success=false so downstream does
+            // not treat a garbled stream as an authoritative answer.
+            var cleaned = CleanPtyArtifacts(rawOutput);
+            return new(false, cleaned, 0, [], 0, 0, null);
+        }
 
         var r = lastResult.Value;
 
@@ -165,7 +210,137 @@ public class ClaudeRunner : ICliAgentRunner
     private static JsonElement? TryParseJson(string line)
     {
         try { return JsonDocument.Parse(line).RootElement.Clone(); }
-        catch { return null; }
+        catch
+        {
+            // If parse failed, try again after stripping PTY-injected control chars
+            // that may have landed inside JSON string literals.
+            try { return JsonDocument.Parse(CleanPtyArtifacts(line)).RootElement.Clone(); }
+            catch { return null; }
+        }
+    }
+
+    /// <summary>
+    /// Scan a raw Claude stream-json buffer and yield each top-level JSON object
+    /// as a substring, regardless of embedded \r\n / \n wrap artifacts. Tracks
+    /// brace depth with string-literal / escape awareness so that newlines that
+    /// got injected inside a string value are not treated as object boundaries.
+    /// </summary>
+    internal static IEnumerable<string> SplitBalancedJsonObjects(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) yield break;
+
+        var sb = new StringBuilder();
+        var depth = 0;
+        var inString = false;
+        var escape = false;
+        var started = false;
+
+        foreach (var ch in raw)
+        {
+            if (!started)
+            {
+                // Skip leading whitespace / preamble (e.g. shell banners) until
+                // we hit the start of a JSON object.
+                if (ch == '{')
+                {
+                    started = true;
+                    sb.Append(ch);
+                    depth = 1;
+                }
+                continue;
+            }
+
+            // Inside an object: drop PTY-injected control chars that aren't
+            // legal in JSON. Valid JSON allows only \t, \n inside strings — and
+            // Claude's stream-json does not use literal newlines inside strings,
+            // so any \r or bare \n we encounter while inString is an artifact.
+            if (inString && (ch == '\r' || ch == '\n'))
+                continue;
+
+            sb.Append(ch);
+
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (ch == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (ch == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+            if (inString) continue;
+
+            if (ch == '{')
+            {
+                depth++;
+            }
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    yield return sb.ToString();
+                    sb.Clear();
+                    started = false;
+                    inString = false;
+                    escape = false;
+                }
+            }
+        }
+
+        // Tail: if a final object is balanced but we never saw more chars, emit it.
+        if (sb.Length > 0 && depth == 0)
+        {
+            var tail = sb.ToString().TrimStart();
+            if (tail.StartsWith('{'))
+                yield return tail;
+        }
+    }
+
+    /// <summary>
+    /// Drop PTY-injected \r and bare \n bytes that appear inside JSON string
+    /// literals. Preserves newlines between top-level objects so downstream
+    /// readers can still split by lines if they want to.
+    /// </summary>
+    internal static string CleanPtyArtifacts(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw;
+
+        var sb = new StringBuilder(raw.Length);
+        var inString = false;
+        var escape = false;
+
+        foreach (var ch in raw)
+        {
+            if (escape)
+            {
+                escape = false;
+                sb.Append(ch);
+                continue;
+            }
+            if (ch == '\\')
+            {
+                escape = true;
+                sb.Append(ch);
+                continue;
+            }
+            if (ch == '"')
+            {
+                inString = !inString;
+                sb.Append(ch);
+                continue;
+            }
+            if (inString && (ch == '\r' || ch == '\n'))
+                continue;
+            sb.Append(ch);
+        }
+        return sb.ToString();
     }
 
     private static decimal ExtractCost(JsonElement r)

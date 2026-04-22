@@ -1,0 +1,53 @@
+@* MagicPAI.Studio/Components/ContainerStatusPanel.razor — Temporal migration §S.4. *@
+@inject SessionHubClient Hub
+@implements IDisposable
+
+@if (_containerId is not null)
+{
+    <MudPaper Class="pa-3 d-flex align-center">
+        <MudIcon Icon="@Icons.Material.Filled.Dns" Color="@(_alive ? Color.Success : Color.Error)" />
+        <div class="ml-2 flex-grow-1">
+            <MudText Typo="Typo.body2">@_containerId[..Math.Min(12, _containerId.Length)]</MudText>
+            @if (!string.IsNullOrWhiteSpace(_guiUrl))
+            {
+                <MudLink Href="@_guiUrl" Target="_blank" Typo="Typo.caption">Open noVNC</MudLink>
+            }
+        </div>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string SessionId { get; set; } = "";
+
+    private string? _containerId;
+    private string? _guiUrl;
+    private bool _alive = true;
+
+    protected override void OnInitialized()
+    {
+        Hub.ContainerSpawned += OnSpawned;
+        Hub.ContainerDestroyed += OnDestroyed;
+    }
+
+    private void OnSpawned(ContainerSpawnedPayload p)
+    {
+        if (p.SessionId != SessionId) return;
+        _containerId = p.ContainerId;
+        _guiUrl = p.GuiUrl;
+        _alive = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnDestroyed(ContainerDestroyedPayload p)
+    {
+        if (p.SessionId != SessionId) return;
+        _alive = false;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Hub.ContainerSpawned -= OnSpawned;
+        Hub.ContainerDestroyed -= OnDestroyed;
+    }
+}

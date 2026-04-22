@@ -1,0 +1,54 @@
+@* MagicPAI.Studio/Components/VerificationResultsTable.razor — Temporal migration §S.5. *@
+@inject SessionHubClient Hub
+@implements IDisposable
+
+<MudTable Items="_results" Hover="true" Dense="true">
+    <HeaderContent>
+        <MudTh>Gate</MudTh>
+        <MudTh>Result</MudTh>
+        <MudTh>Duration</MudTh>
+        <MudTh>Summary</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.GateName</MudTd>
+        <MudTd>
+            @if (context.Passed)
+            {
+                <MudChip T="string" Color="Color.Success" Size="Size.Small">Passed</MudChip>
+            }
+            else
+            {
+                <MudChip T="string"
+                         Color="@(context.Blocking ? Color.Error : Color.Warning)"
+                         Size="Size.Small">
+                    @(context.Blocking ? "Blocked" : "Warning")
+                </MudChip>
+            }
+        </MudTd>
+        <MudTd>@context.DurationMs ms</MudTd>
+        <MudTd>
+            <MudText Typo="Typo.caption">@context.Summary</MudText>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = "";
+    private readonly List<VerifyGateResult> _results = new();
+
+    protected override void OnInitialized()
+    {
+        Hub.VerificationResult += OnVerify;
+    }
+
+    private void OnVerify(VerifyGateResult result)
+    {
+        _results.Add(result);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Hub.VerificationResult -= OnVerify;
+    }
+}

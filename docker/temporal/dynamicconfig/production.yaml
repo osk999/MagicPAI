@@ -1,0 +1,38 @@
+# Temporal dynamic config — production. See temporal.md §13.5.
+# Tighter limits, no dev warnings.
+
+limit.maxIDLength:
+  - value: 255
+
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: false
+
+limit.blobSize.warn:
+  - value: 1048576          # 1 MiB
+limit.blobSize.error:
+  - value: 4194304          # 4 MiB
+
+history.historySizeLimitError:
+  - value: 52428800         # 50 MiB
+history.historyCountLimitError:
+  - value: 51200
+
+# Production rate limit
+frontend.namespaceRPS:
+  - value: 1200
+
+# Archival disabled by default; enable separately once S3/GCS configured
+archival.history.enabled:
+  - value: false
+archival.visibility.enabled:
+  - value: false
+
+# Task queue partitioning (default: 4)
+matching.numTaskqueueReadPartitions:
+  - value: 4
+    constraints:
+      taskQueueName: "magicpai-main"
+matching.numTaskqueueWritePartitions:
+  - value: 4
+    constraints:
+      taskQueueName: "magicpai-main"
