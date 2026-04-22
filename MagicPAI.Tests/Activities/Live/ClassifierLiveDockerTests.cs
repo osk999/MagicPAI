@@ -208,14 +208,17 @@ public class ClassifierLiveDockerTests : IAsyncLifetime
     }
 
     [SkippableFact]
-    public async Task ClassifyWebsiteTaskAsync_Live_DelegatesToClassifyAndReturnsWebsiteFlag()
+    public async Task ClassifyWebsiteTaskAsync_Live_AuditPrompt_ReturnsTrue()
     {
         Skip.IfNot(HostHasClaudeCredentials(), "Host Claude credentials not present; skipping live E2E.");
         Skip.If(_containerId is null, "Container did not spawn; skipping.");
 
+        // The website-audit branch is narrowly scoped to AUDITING existing
+        // sites. An audit-style prompt must return IsWebsiteTask=true.
         var input = new WebsiteClassifyInput(
-            Prompt: "Build a responsive landing page with a hero section, pricing cards, and a " +
-                    "sticky navigation bar in React and Tailwind",
+            Prompt: "Audit the existing landing page at example.com for usability, "
+                  + "accessibility, and performance issues. Review the navigation, "
+                  + "forms, and checkout flow.",
             ContainerId: _containerId!,
             AiAssistant: "claude");
 
@@ -225,15 +228,46 @@ public class ClassifierLiveDockerTests : IAsyncLifetime
         sw.Stop();
 
         _output.WriteLine(
-            $"ClassifyWebsiteTask ({sw.Elapsed.TotalSeconds:F1}s) => isWebsite={output.IsWebsiteTask} " +
+            $"ClassifyWebsiteTask AUDIT ({sw.Elapsed.TotalSeconds:F1}s) => isWebsite={output.IsWebsiteTask} " +
             $"confidence={output.Confidence} rationale={Truncate(output.Rationale, 200)}");
 
         output.Rationale.Should().NotBe("parse-failure",
             "delegated Classify returned the parse-failure fallback — structured output missing");
         output.Rationale.Should().NotBeNullOrWhiteSpace();
         output.IsWebsiteTask.Should().BeTrue(
-            "the prompt explicitly builds a web page with React/Tailwind — a website classification");
+            "the prompt explicitly asks to AUDIT an existing website — should route to the audit branch");
         output.Confidence.Should().BeGreaterThan(0m);
+    }
+
+    [SkippableFact]
+    public async Task ClassifyWebsiteTaskAsync_Live_BuildPrompt_ReturnsFalse()
+    {
+        Skip.IfNot(HostHasClaudeCredentials(), "Host Claude credentials not present; skipping live E2E.");
+        Skip.If(_containerId is null, "Container did not spawn; skipping.");
+
+        // Regression: "build a new browser game" is NOT a website-audit task
+        // even though it runs in a browser. The classifier must return false
+        // so FullOrchestrate routes it down simple/complex path, not
+        // website-audit. (See rocket-league misroute regression, §MagicPAI.)
+        var input = new WebsiteClassifyInput(
+            Prompt: "Build a responsive landing page with a hero section, pricing cards, "
+                  + "and a sticky navigation bar in React and Tailwind",
+            ContainerId: _containerId!,
+            AiAssistant: "claude");
+
+        var env = new ActivityEnvironment();
+        var sw = Stopwatch.StartNew();
+        var output = await env.RunAsync(() => _sut.ClassifyWebsiteTaskAsync(input));
+        sw.Stop();
+
+        _output.WriteLine(
+            $"ClassifyWebsiteTask BUILD ({sw.Elapsed.TotalSeconds:F1}s) => isWebsite={output.IsWebsiteTask} " +
+            $"confidence={output.Confidence} rationale={Truncate(output.Rationale, 200)}");
+
+        output.Rationale.Should().NotBe("parse-failure");
+        output.Rationale.Should().NotBeNullOrWhiteSpace();
+        output.IsWebsiteTask.Should().BeFalse(
+            "building a NEW web page is not a website AUDIT task — should route to simple/complex path");
     }
 
     [Fact]

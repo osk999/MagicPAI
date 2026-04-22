@@ -155,6 +155,25 @@ public class AiActivities
             }
         }
 
+        // Background heartbeat ticker — pings Temporal every 30 s regardless of
+        // whether the CLI is emitting output. LLMs can legitimately go quiet
+        // for minutes during thinking blocks, long file writes, or WebFetch
+        // tool loops; without this ticker the per-line `ctx.Heartbeat` alone
+        // can trip the HeartbeatTimeout (5 min) on deeply quiet stretches.
+        using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var heartbeatTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (!heartbeatCts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), heartbeatCts.Token);
+                    ctx.Heartbeat(lineCount);
+                }
+            }
+            catch (OperationCanceledException) { /* expected on teardown */ }
+        }, heartbeatCts.Token);
+
         ExecResult result;
         try
         {
@@ -169,6 +188,11 @@ public class AiActivities
         {
             _log.LogInformation("RunCliAgent cancelled at line {Line}", lineCount);
             throw;
+        }
+        finally
+        {
+            heartbeatCts.Cancel();
+            try { await heartbeatTask; } catch { /* ignore shutdown noise */ }
         }
 
         var raw = captured.ToString();
@@ -681,6 +705,20 @@ public class AiActivities
             ? parsedResp.StructuredOutputJson!
             : parsedResp.Output ?? result.Output ?? "";
         var tasks = ParseTasks(body);
+
+        // Surface zero-task results loudly. The Architect's silent-empty
+        // fallback exists to protect the workflow from parse crashes, but a
+        // zero-task plan is almost always a bug (misrouted response, markdown
+        // wrapping, truncated output) — log enough context to diagnose it.
+        if (tasks.Count == 0)
+        {
+            _log.LogWarning(
+                "Architect returned zero tasks. Exit={ExitCode}, Output head='{Head}', Error head='{ErrHead}'",
+                result.ExitCode,
+                Truncate(parsedResp.Output ?? result.Output ?? "", 400),
+                Truncate(result.Error ?? "", 200));
+        }
+
         // TaskListJson is a serialized echo of Tasks; cap it so pathological
         // architect outputs (30+ tasks with long descriptions) don't balloon
         // the parent's Temporal history. The structured `Tasks` list is the
@@ -690,6 +728,7 @@ public class AiActivities
             TaskCount: tasks.Count,
             Tasks: tasks);
     }
+
 
     /// <summary>
     /// Day 5 — long-running research activity. Streams CLI output with periodic
@@ -791,6 +830,21 @@ public class AiActivities
             }
         }
 
+        // Background keep-alive heartbeat — see RunCliAgentAsync for rationale.
+        using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var heartbeatTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (!heartbeatCts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), heartbeatCts.Token);
+                    ctx.Heartbeat(lineCount);
+                }
+            }
+            catch (OperationCanceledException) { /* expected on teardown */ }
+        }, heartbeatCts.Token);
+
         ExecResult result;
         try
         {
@@ -805,6 +859,11 @@ public class AiActivities
         {
             _log.LogInformation("ResearchPrompt cancelled at line {Line}", lineCount);
             throw;
+        }
+        finally
+        {
+            heartbeatCts.Cancel();
+            try { await heartbeatTask; } catch { /* ignore shutdown noise */ }
         }
 
         // Prefer the raw ExecResult.Output buffer over the line-split `captured`
@@ -877,9 +936,22 @@ public class AiActivities
     [Activity]
     public async Task<WebsiteClassifyOutput> ClassifyWebsiteTaskAsync(WebsiteClassifyInput input)
     {
+        // The website-audit branch is ONLY for auditing an EXISTING website
+        // (checking usability / accessibility / performance of pages, navigation,
+        // forms, checkout, footer). It is NOT for building new web applications,
+        // games, SPAs, or frontend code from scratch. Make the classifier
+        // question match that narrow scope so prompts like "build a browser
+        // game" aren't mis-routed into the audit pipeline.
         var classify = await ClassifyAsync(new ClassifierInput(
             Prompt: input.Prompt,
-            ClassificationQuestion: "Is this task about a website, web application, UI/UX, or frontend?",
+            ClassificationQuestion:
+                "Is the user asking to AUDIT or ANALYZE an EXISTING website "
+                + "(pages, navigation, forms, usability, accessibility, "
+                + "performance)? Return true ONLY for audit/review/analysis "
+                + "tasks against a website that already exists. Return false "
+                + "for building, creating, developing, or implementing any "
+                + "new web app, game, SPA, frontend, or any new code — even "
+                + "when the deliverable runs in a browser.",
             ContainerId: input.ContainerId,
             ModelPower: 3,
             AiAssistant: input.AiAssistant,
@@ -1096,9 +1168,97 @@ public class AiActivities
         if (string.IsNullOrWhiteSpace(output))
             return new List<TaskPlanEntry>();
 
+        // Try a series of extraction strategies in order, each passing its
+        // candidate text through a single safe JsonDocument.Parse path. This
+        // covers the three ways Claude actually ships structured JSON:
+        //   1. pure JSON body (best case — architect prompt demands it)
+        //   2. ```json … ``` or ``` … ``` fenced block embedded in prose
+        //   3. raw {…} or […] object sitting inside surrounding narrative
+        foreach (var candidate in EnumerateJsonCandidates(output))
+        {
+            var parsed = TryParseTaskArray(candidate);
+            if (parsed is not null && parsed.Count > 0)
+                return parsed;
+        }
+        return new List<TaskPlanEntry>();
+    }
+
+    private static IEnumerable<string> EnumerateJsonCandidates(string output)
+    {
+        // Strategy 1: the whole output, trimmed.
+        var trimmed = output.Trim();
+        if (trimmed.Length > 0) yield return trimmed;
+
+        // Strategy 2: content inside a ```json ... ``` fence (or bare ``` ... ```
+        // fence whose body starts with { or [). We do this with span indexing
+        // rather than regex so the parser stays allocation-light and safe.
+        var searchStart = 0;
+        while (searchStart < output.Length)
+        {
+            var fenceStart = output.IndexOf("```", searchStart, StringComparison.Ordinal);
+            if (fenceStart < 0) break;
+
+            // Skip past the language hint (if any) up to the next newline.
+            var bodyStart = output.IndexOf('\n', fenceStart + 3);
+            if (bodyStart < 0) break;
+            bodyStart++;
+
+            var fenceEnd = output.IndexOf("```", bodyStart, StringComparison.Ordinal);
+            if (fenceEnd < 0) break;
+
+            var inner = output[bodyStart..fenceEnd].Trim();
+            if (inner.Length > 0 && (inner[0] == '{' || inner[0] == '['))
+                yield return inner;
+
+            searchStart = fenceEnd + 3;
+        }
+
+        // Strategy 3: the first balanced {...} block in the raw output.
+        var objectSpan = ExtractFirstBalancedBlock(output, '{', '}');
+        if (objectSpan is not null) yield return objectSpan;
+
+        // Strategy 4: the first balanced [...] block in the raw output.
+        var arraySpan = ExtractFirstBalancedBlock(output, '[', ']');
+        if (arraySpan is not null) yield return arraySpan;
+    }
+
+    // Simple brace scanner — safe (bounded string scan, no regex, no string
+    // concat). Returns the substring for the first balanced block at the top
+    // level, honoring string literals so braces inside "..." don't confuse
+    // the count.
+    private static string? ExtractFirstBalancedBlock(string s, char open, char close)
+    {
+        var start = s.IndexOf(open);
+        if (start < 0) return null;
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var i = start; i < s.Length; i++)
+        {
+            var ch = s[i];
+            if (inString)
+            {
+                if (escaped) { escaped = false; continue; }
+                if (ch == '\\') { escaped = true; continue; }
+                if (ch == '"') inString = false;
+                continue;
+            }
+            if (ch == '"') { inString = true; continue; }
+            if (ch == open) depth++;
+            else if (ch == close)
+            {
+                depth--;
+                if (depth == 0) return s.Substring(start, i - start + 1);
+            }
+        }
+        return null;
+    }
+
+    private static List<TaskPlanEntry>? TryParseTaskArray(string json)
+    {
         try
         {
-            using var doc = JsonDocument.Parse(output);
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             // Support both { "tasks": [...] } and a bare array at the root.
@@ -1115,7 +1275,7 @@ public class AiActivities
             }
             else
             {
-                return new List<TaskPlanEntry>();
+                return null;
             }
 
             var list = new List<TaskPlanEntry>();
@@ -1134,9 +1294,9 @@ public class AiActivities
             }
             return list;
         }
-        catch
+        catch (JsonException)
         {
-            return new List<TaskPlanEntry>();
+            return null;
         }
     }
 

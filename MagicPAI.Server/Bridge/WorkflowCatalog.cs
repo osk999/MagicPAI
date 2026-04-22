@@ -113,6 +113,11 @@ public class WorkflowCatalog
                 typeof(ComplexTaskInput),
                 "Child workflow: executes one decomposed task.", true, AllModels, "Internal", 900),
 
+            new("Iterative Loop", "IterativeLoop", DefaultTaskQueue,
+                typeof(IterativeLoopInput),
+                "Reusable iteration component: runs a prompt until a structured completion protocol fires or MaxIterations is hit. Any workflow can dispatch it as a child.",
+                true, AllModels, "Utilities", 110),
+
         }.OrderBy(e => e.SortOrder).ToList();
     }
 

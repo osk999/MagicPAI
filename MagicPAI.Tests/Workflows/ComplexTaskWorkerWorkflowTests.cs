@@ -145,6 +145,69 @@ public class ComplexTaskWorkerWorkflowTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Regression guard for the lock-race silent-dropout fix. Before the fix,
+    /// ComplexTaskWorker retried claiming a file exactly ONCE and then dropped
+    /// the task without running the agent — any sibling holding the file for
+    /// longer than 30 s would cause the task to silently no-op. The fix
+    /// changes this to a bounded-budget exponential-backoff wait (up to
+    /// 30 minutes). This test simulates a sibling that releases the file
+    /// only on the 5th attempt and asserts the task:
+    /// 1) eventually acquires the lock,
+    /// 2) actually runs RunCliAgent,
+    /// 3) reports Success.
+    /// </summary>
+    [Fact]
+    public async Task RetriesClaim_ManyTimes_ThenSucceeds()
+    {
+        var claimCalls = new Dictionary<string, int>();
+        var stubs = new ComplexTaskStubs
+        {
+            ClaimResponder = i =>
+            {
+                claimCalls.TryGetValue(i.FilePath, out var n);
+                claimCalls[i.FilePath] = n + 1;
+                // b.cs fails the first 4 attempts, wins on the 5th.
+                if (i.FilePath == "b.cs" && n < 4)
+                    return new ClaimFileOutput(Claimed: false, CurrentOwner: "busy-sibling");
+                return new ClaimFileOutput(Claimed: true, CurrentOwner: null);
+            }
+        };
+
+        using var worker = new TemporalWorker(
+            _env.Client,
+            new TemporalWorkerOptions($"test-ctw-manyretry-{Guid.NewGuid():N}")
+                .AddAllActivities(stubs)
+                .AddWorkflow<ComplexTaskWorkerWorkflow>());
+
+        await worker.ExecuteAsync(async () =>
+        {
+            var input = new ComplexTaskInput(
+                TaskId: "task-many",
+                Description: "edit b",
+                DependsOn: Array.Empty<string>(),
+                FilesTouched: new[] { "a.cs", "b.cs" },
+                ContainerId: "cid-1",
+                AiAssistant: "claude",
+                Model: null,
+                ModelPower: 2,
+                WorkspacePath: "/workspace",
+                ParentSessionId: "parent-many");
+
+            var handle = await _env.Client.StartWorkflowAsync(
+                (ComplexTaskWorkerWorkflow wf) => wf.RunAsync(input),
+                new(id: $"ctw-many-{Guid.NewGuid():N}",
+                    taskQueue: worker.Options.TaskQueue!));
+
+            var result = await handle.GetResultAsync();
+
+            result.Success.Should().BeTrue("worker should keep retrying until the sibling releases");
+            stubs.RunCliAgentCallCount.Should().Be(1, "agent must run after the lock is finally acquired — this is the whole point of the fix");
+            claimCalls["b.cs"].Should().Be(5, "4 failures + 1 winning attempt");
+            stubs.ReleasedFiles.Should().BeEquivalentTo(new[] { "a.cs", "b.cs" });
+        });
+    }
+
+    /// <summary>
     /// Conflict-permanent path — claim fails on first and second attempts.
     /// Workflow returns without running the agent, Success=false, and still
     /// releases any files it had claimed earlier.
@@ -192,6 +255,8 @@ public class ComplexTaskWorkerWorkflowTests : IAsyncLifetime
             result.TaskId.Should().Be("task-3");
             result.CostUsd.Should().Be(0m);
             result.Response.Should().Contain("b.cs").And.Contain("task-other");
+            // New-behaviour message includes the budget-exhausted reason.
+            result.Response.Should().Contain("giving up");
             result.FilesModified.Should().BeEmpty();
             // Claim-conflict exits BEFORE agent run → verification never happens.
             // Default ComplexTaskOutput.VerificationPassed is true.

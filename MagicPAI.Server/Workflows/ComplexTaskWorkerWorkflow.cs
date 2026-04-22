@@ -39,15 +39,22 @@ public class ComplexTaskWorkerWorkflow
     private static readonly IReadOnlyList<string> SubtaskGates =
         new[] { "compile", "test" };
 
+    // File-lock wait budget. Each sibling subtask typically takes 1–5 min; we
+    // wait up to this many minutes for a sibling to release a file before
+    // giving up, instead of the old behaviour (1 retry and drop). Dropping
+    // silently produced "completed" tasks that did zero work, leaving gaps
+    // in the output. Each retry doubles the backoff (30 s, 60 s, 120 s, …)
+    // capped at 5 min between attempts.
+    private static readonly TimeSpan FileLockMaxWait = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan FileLockInitialBackoff = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan FileLockMaxBackoff = TimeSpan.FromMinutes(5);
+
     [WorkflowRun]
     public async Task<ComplexTaskOutput> RunAsync(ComplexTaskInput input)
     {
-        // Claim each file up front — if any file is held by a sibling, wait
-        // 30 s and retry once. On the second failure, return without running
-        // the agent. Claim-failures before the try/finally mean we cannot own
-        // any partial claim at release time, so we simply release the listed
-        // FilesTouched in the finally; ReleaseFile is ownership-checked so
-        // releasing an unowned file is a no-op.
+        // Claim each file up front. If a sibling holds it, wait with
+        // exponential backoff (30 s → 60 s → 120 s → … capped at 5 min)
+        // until either we get the lock or we exhaust FileLockMaxWait.
         foreach (var file in input.FilesTouched)
         {
             var claimInput = new ClaimFileInput(
@@ -55,30 +62,38 @@ public class ComplexTaskWorkerWorkflow
                 TaskId: input.TaskId,
                 SessionId: input.ParentSessionId);
 
-            var claim = await Workflow.ExecuteActivityAsync(
-                (BlackboardActivities a) => a.ClaimFileAsync(claimInput),
-                ActivityProfiles.Short);
+            ClaimFileOutput claim;
+            var totalWaited = TimeSpan.Zero;
+            var backoff = FileLockInitialBackoff;
 
-            if (!claim.Claimed)
+            while (true)
             {
-                // File is owned by another sibling task; wait 30 s and try once more.
-                await Workflow.DelayAsync(TimeSpan.FromSeconds(30));
-
                 claim = await Workflow.ExecuteActivityAsync(
                     (BlackboardActivities a) => a.ClaimFileAsync(claimInput),
                     ActivityProfiles.Short);
 
-                if (!claim.Claimed)
+                if (claim.Claimed) break;
+
+                if (totalWaited >= FileLockMaxWait)
                 {
-                    // Release any previously-claimed files so siblings aren't blocked.
+                    // Budget exhausted — release any claims we already hold so
+                    // siblings aren't blocked, then return unsuccessful. This
+                    // is the failure mode of last resort; in practice the
+                    // 30-min budget covers any legitimately-sized sibling run.
                     await ReleaseAllAsync(input);
                     return new ComplexTaskOutput(
                         TaskId: input.TaskId,
                         Success: false,
-                        Response: $"File {file} claimed by {claim.CurrentOwner}",
+                        Response:
+                            $"File {file} still claimed by {claim.CurrentOwner} "
+                            + $"after {FileLockMaxWait.TotalMinutes:F0} min; giving up.",
                         CostUsd: 0m,
                         FilesModified: Array.Empty<string>());
                 }
+
+                await Workflow.DelayAsync(backoff);
+                totalWaited += backoff;
+                backoff = TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, FileLockMaxBackoff.Ticks));
             }
         }
 

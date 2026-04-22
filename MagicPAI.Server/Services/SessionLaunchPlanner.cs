@@ -90,7 +90,7 @@ public class SessionLaunchPlanner
         "FullOrchestrate" or "DeepResearchOrchestrate" or "StandardOrchestrate" => "full",
         "OrchestrateComplexPath" or "ComplexTaskWorker" => "complex",
         "WebsiteAuditCore" or "WebsiteAuditLoop" => "website",
-        "VerifyAndRepair" or "PostExecutionPipeline" => "utility",
+        "VerifyAndRepair" or "PostExecutionPipeline" or "IterativeLoop" => "utility",
         "PromptEnhancer" or "ContextGatherer" or "PromptGrounding" or "ResearchPipeline" => "prompt-tooling",
         "ClawEvalAgent" => "evaluation",
         _ => "unknown"
@@ -123,7 +123,7 @@ public class SessionLaunchPlanner
             EnableGui: plan.EnableGui,
             RequireTriageApproval: plan.OriginalRequest.RequireTriageApproval ?? false,
             GateApprovalTimeoutHours: plan.OriginalRequest.GateApprovalTimeoutHours ?? 24,
-            ComplexityThreshold: plan.OriginalRequest.ComplexityThreshold ?? 7);
+            ComplexityThreshold: plan.OriginalRequest.ComplexityThreshold ?? 3);
 
     public OrchestrateSimpleInput AsOrchestrateSimplePathInput(SessionLaunchPlan plan, string workflowId) =>
         new(
@@ -263,4 +263,33 @@ public class SessionLaunchPlanner
             ModelPower: plan.ModelPower,
             WorkspacePath: plan.WorkspacePath,
             ParentSessionId: plan.OriginalRequest.ParentSessionId ?? workflowId);
+
+    public IterativeLoopInput AsIterativeLoopInput(SessionLaunchPlan plan, string workflowId)
+    {
+        var req = plan.OriginalRequest;
+        return new IterativeLoopInput(
+            SessionId: workflowId,
+            Prompt: req.Prompt,
+            AiAssistant: plan.AiAssistant,
+            Model: plan.Model,
+            ModelPower: plan.ModelPower,
+            MinIterations: req.MinIterations ?? 1,
+            MaxIterations: req.MaxIterations ?? 10,
+            CompletionStrategy: ParseStrategy(req.CompletionStrategy),
+            CompletionMarker: string.IsNullOrWhiteSpace(req.CompletionMarker) ? "[DONE]" : req.CompletionMarker!,
+            CompletionInstructions: req.CompletionInstructions,
+            WorkspacePath: plan.WorkspacePath,
+            ExistingContainerId: req.ContainerId,
+            EnableGui: plan.EnableGui,
+            MaxBudgetUsd: req.MaxBudgetUsd ?? 0m);
+    }
+
+    private static CompletionStrategy ParseStrategy(string? s) =>
+        s?.ToLowerInvariant() switch
+        {
+            "marker" => CompletionStrategy.Marker,
+            "classifier" => CompletionStrategy.Classifier,
+            "structured" or "structuredprogress" or null or "" => CompletionStrategy.StructuredProgress,
+            _ => CompletionStrategy.StructuredProgress,
+        };
 }

@@ -316,6 +316,9 @@ public class SessionController : ControllerBase
             "ComplexTaskWorker" => await _temporal.StartWorkflowAsync(
                 (ComplexTaskWorkerWorkflow wf) => wf.RunAsync(_planner.AsComplexTaskWorkerInput(plan, workflowId)),
                 opts),
+            "IterativeLoop" => await _temporal.StartWorkflowAsync(
+                (IterativeLoopWorkflow wf) => wf.RunAsync(_planner.AsIterativeLoopInput(plan, workflowId)),
+                opts),
             _ => throw new ArgumentException($"Unknown workflow type: {plan.WorkflowType}")
         };
 
@@ -362,6 +365,13 @@ public record CreateSessionRequest(
     // SimpleAgent coverage-fast-path — skip GradeCoverage call when all gates
     // pass on first verify. Saves ~5-10s per successful run.
     bool? SkipCoverageWhenGatesPass = null,
+    // IterativeLoop passthroughs
+    int? MinIterations = null,
+    int? MaxIterations = null,
+    string? CompletionStrategy = null,     // "marker" | "classifier" | "structured"
+    string? CompletionMarker = null,       // default "[DONE]"
+    string? CompletionInstructions = null, // classifier-strategy hint
+    decimal? MaxBudgetUsd = null,
     Dictionary<string, string>? CustomParams = null);
 
 public record CreateSessionResponse(string SessionId, string WorkflowType);

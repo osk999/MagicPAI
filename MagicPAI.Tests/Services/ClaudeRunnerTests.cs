@@ -232,18 +232,38 @@ public class ClaudeRunnerTests
     }
 
     [Fact]
-    public void BuildExecutionPlan_OversizePrompt_Throws_ClearError()
+    public void BuildExecutionPlan_OversizePrompt_RoutesThroughStdin()
     {
+        // When the prompt would overflow the Windows ~32 KB argv limit, the
+        // runner must drop the prompt from argv, keep `-p` (which makes the
+        // Claude CLI read the prompt from stdin), and stash the prompt on
+        // ContainerExecRequest.StdinInput for the runner to pipe in.
         var oversize = new string('x', 40_000);
-        var ex = Assert.Throws<ArgumentException>(() =>
-            _runner.BuildExecutionPlan(new AgentRequest
-            {
-                Prompt = oversize,
-                Model = "claude-sonnet-4-6",
-                WorkDir = "/workspace",
-            }));
+        var plan = _runner.BuildExecutionPlan(new AgentRequest
+        {
+            Prompt = oversize,
+            Model = "claude-sonnet-4-6",
+            WorkDir = "/workspace",
+        });
 
-        Assert.Contains("argv", ex.Message);
+        Assert.Contains("-p", plan.MainRequest.Arguments);
+        Assert.DoesNotContain(oversize, plan.MainRequest.Arguments);
+        Assert.Equal(oversize, plan.MainRequest.StdinInput);
+    }
+
+    [Fact]
+    public void BuildExecutionPlan_NormalPrompt_StdinInputIsNull()
+    {
+        var plan = _runner.BuildExecutionPlan(new AgentRequest
+        {
+            Prompt = "short prompt",
+            Model = "claude-sonnet-4-6",
+            WorkDir = "/workspace",
+        });
+
+        Assert.Null(plan.MainRequest.StdinInput);
+        Assert.Contains("-p", plan.MainRequest.Arguments);
+        Assert.Contains("short prompt", plan.MainRequest.Arguments);
     }
 
     [Fact]

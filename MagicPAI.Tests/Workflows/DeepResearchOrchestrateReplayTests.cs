@@ -31,6 +31,7 @@ public class DeepResearchOrchestrateReplayTests
             new WorkflowReplayerOptions()
                 .AddWorkflow<DeepResearchOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
+                .AddWorkflow<IterativeLoopWorkflow>()
                 .AddWorkflow<StandardOrchestrateWorkflow>()
                 .AddWorkflow<VerifyAndRepairWorkflow>());
 

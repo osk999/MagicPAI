@@ -108,32 +108,37 @@ public class ClaudeRunner : ICliAgentRunner
             arguments.Add(request.SessionId);
         }
 
-        arguments.Add("-p");
-        arguments.Add(request.Prompt ?? "");
+        // Pre-flight argv size. Windows CreateProcess caps the combined
+        // command line at ~32 KB; the Linux MAX_ARG_STRLEN is higher but still
+        // finite. When the prompt would push us past the cap we drop it from
+        // argv and pipe it through the Claude CLI's stdin instead (`-p` with
+        // no prompt argument reads from stdin).
+        var baseArgBytes = 0;
+        foreach (var a in arguments) baseArgBytes += System.Text.Encoding.UTF8.GetByteCount(a) + 1;
+        var promptBytes = System.Text.Encoding.UTF8.GetByteCount(request.Prompt ?? "");
+        // +3 for "-p " and its separator byte
+        var argvWithPrompt = baseArgBytes + 3 + promptBytes;
 
-        // Windows CreateProcess has a ~32 KB combined argv limit; on Linux
-        // hosts the limit is higher but still finite (MAX_ARG_STRLEN = 128 KB).
-        // Guard against oversize prompts by pre-flighting the sum of argument
-        // lengths and failing fast with a clear error before the shell truncates
-        // silently. The ContainerExecRequest assembly is where we know the full
-        // size; activities surface the exception as a ConfigError that won't
-        // retry (retrying with the same oversize prompt would just fail again).
-        var totalArgBytes = 0;
-        foreach (var a in arguments) totalArgBytes += System.Text.Encoding.UTF8.GetByteCount(a) + 1;
-        if (totalArgBytes > MaxArgvBytes)
+        string? stdinPayload = null;
+        if (argvWithPrompt > MaxArgvBytes)
         {
-            throw new ArgumentException(
-                $"Claude argv exceeds {MaxArgvBytes:N0} bytes ({totalArgBytes:N0} built). " +
-                $"Shrink the prompt, or route it through a stdin/file-based invocation. " +
-                $"Prompt length: {(request.Prompt?.Length ?? 0):N0} chars.",
-                nameof(request));
+            // Over the cap → stdin mode. `-p` without a value tells the
+            // Claude CLI to read the prompt from standard input.
+            arguments.Add("-p");
+            stdinPayload = request.Prompt ?? "";
+        }
+        else
+        {
+            arguments.Add("-p");
+            arguments.Add(request.Prompt ?? "");
         }
 
         return new CliAgentExecutionPlan(
             new ContainerExecRequest(
                 FileName: "claude",
                 Arguments: arguments,
-                WorkingDirectory: request.WorkDir ?? "/workspace"));
+                WorkingDirectory: request.WorkDir ?? "/workspace",
+                StdinInput: stdinPayload));
     }
 
     // Conservative cross-platform ceiling: Windows CreateProcess caps the

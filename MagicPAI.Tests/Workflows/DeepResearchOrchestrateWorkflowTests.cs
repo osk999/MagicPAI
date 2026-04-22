@@ -10,9 +10,11 @@ namespace MagicPAI.Tests.Workflows;
 
 /// <summary>
 /// Integration tests for the Temporal <see cref="DeepResearchOrchestrateWorkflow"/>.
-/// Registers the two child workflows (<see cref="ResearchPipelineWorkflow"/>
-/// and <see cref="StandardOrchestrateWorkflow"/>) with the VerifyAndRepair
-/// grandchild so the whole chain executes against stubbed activities.
+/// Registers the full child chain —
+/// <see cref="ResearchPipelineWorkflow"/> (now iterative) →
+/// <see cref="IterativeLoopWorkflow"/> (research loop) →
+/// <see cref="StandardOrchestrateWorkflow"/> → <see cref="VerifyAndRepairWorkflow"/> —
+/// so the whole cascade runs against stubbed activities.
 /// See temporal.md §H.13.
 /// </summary>
 [Trait("Category", "Integration")]
@@ -20,35 +22,51 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
 {
     private WorkflowEnvironment _env = null!;
 
-    public async Task InitializeAsync()
-    {
+    public async Task InitializeAsync() =>
         _env = await WorkflowEnvironment.StartTimeSkippingAsync();
-    }
 
     public async Task DisposeAsync()
     {
-        if (_env is not null)
-            await _env.ShutdownAsync();
+        if (_env is not null) await _env.ShutdownAsync();
     }
 
     /// <summary>
-    /// Fix #143 regression guard: when ResearchPipeline returns an empty
-    /// <see cref="ResearchPromptOutput.EnhancedPrompt"/> (legitimate when
-    /// no research is actually warranted), DeepResearchOrchestrate must
-    /// fall back to the original user prompt when dispatching
-    /// StandardOrchestrate — NOT pass an empty string that breaks the
-    /// Claude CLI.
+    /// Fix #143 regression guard: when the research pipeline's output contains
+    /// no salvageable text, DeepResearchOrchestrate must fall back to the
+    /// original user prompt when dispatching StandardOrchestrate — NOT pass an
+    /// empty string that breaks the Claude CLI.
     /// </summary>
     [Fact]
-    public async Task Fix143_EmptyResearchPrompt_FallsBackToInputPrompt()
+    public async Task Fix143_EmptyResearchResult_FallsBackToInputPrompt()
     {
-        var stubs = new DeepResearchStubs
+        var stubs = new DeepResearchStubs();
+
+        // First RunCliAgent call = research loop (return an empty response +
+        // valid done coda so the loop exits immediately with no content).
+        // Second RunCliAgent call = StandardOrchestrate's main run.
+        var runIndex = 0;
+        string? observedOrchestrateRunPrompt = null;
+        stubs.RunResponder = i =>
         {
-            ResearchResponder = i => new ResearchPromptOutput(
-                EnhancedPrompt: "",                  // <— empty
-                CodebaseAnalysis: "",
-                ResearchContext: "no research needed",
-                Rationale: "trivial"),
+            runIndex++;
+            if (runIndex == 1)
+            {
+                // Empty FinalResponse after trim — fallback should kick in.
+                return new RunCliAgentOutput(
+                    Response: "\n### Task Status\n- [x] done\n\n### Completion\nCompletion: true\n\n[DONE]",
+                    StructuredOutputJson: null, Success: true,
+                    CostUsd: 0.01m, InputTokens: 1, OutputTokens: 1,
+                    FilesModified: Array.Empty<string>(), ExitCode: 0,
+                    AssistantSessionId: "stub");
+            }
+
+            // StandardOrchestrate main run.
+            observedOrchestrateRunPrompt = i.Prompt;
+            return new RunCliAgentOutput(
+                Response: "ok", StructuredOutputJson: null, Success: true,
+                CostUsd: 0.02m, InputTokens: 1, OutputTokens: 1,
+                FilesModified: Array.Empty<string>(), ExitCode: 0,
+                AssistantSessionId: "stub");
         };
 
         using var worker = new TemporalWorker(
@@ -57,21 +75,9 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
                 .AddAllActivities(stubs)
                 .AddWorkflow<DeepResearchOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
+                .AddWorkflow<IterativeLoopWorkflow>()
                 .AddWorkflow<StandardOrchestrateWorkflow>()
                 .AddWorkflow<VerifyAndRepairWorkflow>());
-
-        // Capture the prompt that StandardOrchestrate receives — it should
-        // be the original input prompt, not the empty string.
-        string? observedRunPrompt = null;
-        stubs.RunResponder = i =>
-        {
-            observedRunPrompt = i.Prompt;
-            return new RunCliAgentOutput(
-                Response: "ok", StructuredOutputJson: null, Success: true,
-                CostUsd: 0.01m, InputTokens: 1, OutputTokens: 1,
-                FilesModified: Array.Empty<string>(), ExitCode: 0,
-                AssistantSessionId: "stub");
-        };
 
         await worker.ExecuteAsync(async () =>
         {
@@ -89,20 +95,77 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
                 new(id: $"dro-empty-{Guid.NewGuid():N}",
                     taskQueue: worker.Options.TaskQueue!));
 
-            var result = await handle.GetResultAsync();
-            result.Should().NotBeNull();
+            await handle.GetResultAsync();
 
-            // The crucial assertion — StandardOrchestrate received the
-            // original prompt, not empty string, because of Fix #143.
-            observedRunPrompt.Should().NotBeNullOrEmpty();
-            observedRunPrompt.Should().Contain("ORIGINAL_PROMPT");
+            // StandardOrchestrate received the original prompt (Fix #143).
+            observedOrchestrateRunPrompt.Should().NotBeNullOrEmpty();
+            observedOrchestrateRunPrompt.Should().Contain("ORIGINAL_PROMPT");
         });
     }
 
     [Fact]
-    public async Task Chains_ResearchPipeline_ThenStandardOrchestrate()
+    public async Task Chains_ResearchLoop_ThenStandardOrchestrate()
     {
         var stubs = new DeepResearchStubs();
+
+        // Differentiate the research-loop runs from the final StandardOrchestrate
+        // run by prompt-content sniffing. The loop prompt contains the research
+        // scaffold; the implementation run gets the rewritten prompt.
+        var researchResponse = """
+            ## Rewritten Task
+            Refactored & grounded scope for the caching layer.
+
+            ## Codebase Analysis
+            ICacheStore, IMemoryProvider identified.
+
+            ## Research Context
+            Found AuthService, TokenStore.
+
+            ## Rationale
+            All files inspected.
+
+            ### Task Status
+            - [x] A1 Survey
+            - [x] A2 Scope
+            - [x] A3 Questions
+            - [x] B1 Candidates
+            - [x] B2 Recommend
+            - [x] B3 Refs
+            - [x] C1 Milestones
+            - [x] C2 Failures
+            - [x] C3 Verification
+            - [x] C4 Risks
+            - [x] D1 Sections
+            - [x] D2 research.md
+
+            ### Completion
+            Completion: true
+
+            [DONE]
+            """;
+
+        stubs.RunResponder = i =>
+        {
+            // Distinguish research-loop iterations (first N calls) from the
+            // StandardOrchestrate main implementation run (which uses the
+            // "enhanced:" prompt produced by EnhancePromptAsync).
+            var isOrchestrateRun = i.Prompt.StartsWith("enhanced:");
+            if (!isOrchestrateRun)
+            {
+                return new RunCliAgentOutput(
+                    Response: researchResponse,
+                    StructuredOutputJson: null, Success: true,
+                    CostUsd: 0.05m, InputTokens: 1, OutputTokens: 1,
+                    FilesModified: Array.Empty<string>(), ExitCode: 0,
+                    AssistantSessionId: "s-research");
+            }
+            return new RunCliAgentOutput(
+                Response: "stub-run-output",
+                StructuredOutputJson: null, Success: true,
+                CostUsd: 0.25m, InputTokens: 50, OutputTokens: 80,
+                FilesModified: Array.Empty<string>(), ExitCode: 0,
+                AssistantSessionId: "s-impl");
+        };
 
         using var worker = new TemporalWorker(
             _env.Client,
@@ -110,6 +173,7 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
                 .AddAllActivities(stubs)
                 .AddWorkflow<DeepResearchOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
+                .AddWorkflow<IterativeLoopWorkflow>()
                 .AddWorkflow<StandardOrchestrateWorkflow>()
                 .AddWorkflow<VerifyAndRepairWorkflow>());
 
@@ -131,22 +195,23 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
 
             var result = await handle.GetResultAsync();
 
-            // StandardOrchestrate's implementation run response surfaces here.
+            // StandardOrchestrate's main run response surfaces here.
             result.Response.Should().Be("stub-run-output");
             result.VerificationPassed.Should().BeTrue();
-            // ResearchContext string from the pipeline child.
-            result.ResearchSummary.Should().Be("Found AuthService, TokenStore.");
+            // ResearchContext comes from the parsed ## Research Context H2.
+            result.ResearchSummary.Should().Contain("Found AuthService, TokenStore");
             result.TotalCostUsd.Should().BeGreaterThan(0m);
 
-            // Two containers spawned: parent (this workflow) + child
-            // StandardOrchestrate. Both are destroyed.
+            // Two containers spawned: parent (DeepResearchOrchestrate) + child
+            // StandardOrchestrate. ResearchPipeline reuses parent's container.
             stubs.SpawnCallCount.Should().Be(2);
             stubs.DestroyedContainerIds.Should().HaveCount(2);
 
-            stubs.ResearchCallCount.Should().Be(1);
+            // RunCliAgent fires MinIterations (3) times inside the research
+            // loop + once for StandardOrchestrate's main run.
+            stubs.RunCliAgentCallCount.Should().Be(4);
             stubs.EnhanceCallCount.Should().Be(1);  // StandardOrchestrate step
-            stubs.RunCliAgentCallCount.Should().Be(1);  // StandardOrchestrate main run
-            stubs.VerifyCallCount.Should().Be(1);   // VerifyAndRepair first attempt passes
+            stubs.VerifyCallCount.Should().Be(1);
 
             await ReplayFixtureHelper.CaptureIfMissingAsync(
                 handle, "deep-research-orchestrate", "happy-path-v1.json");
@@ -158,13 +223,6 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
         public Func<SpawnContainerInput, SpawnContainerOutput> SpawnResponder { get; set; } =
             i => new SpawnContainerOutput($"stub-container-{i.SessionId}", null);
 
-        public Func<ResearchPromptInput, ResearchPromptOutput> ResearchResponder { get; set; } =
-            i => new ResearchPromptOutput(
-                EnhancedPrompt: $"researched: {i.Prompt}",
-                CodebaseAnalysis: "AuthService, TokenStore",
-                ResearchContext: "Found AuthService, TokenStore.",
-                Rationale: "grounded");
-
         public Func<EnhancePromptInput, EnhancePromptOutput> EnhanceResponder { get; set; } =
             i => new EnhancePromptOutput(
                 EnhancedPrompt: $"enhanced: {i.OriginalPrompt}",
@@ -174,13 +232,9 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
         public Func<RunCliAgentInput, RunCliAgentOutput> RunResponder { get; set; } =
             _ => new RunCliAgentOutput(
                 Response: "stub-run-output",
-                StructuredOutputJson: null,
-                Success: true,
-                CostUsd: 0.25m,
-                InputTokens: 50,
-                OutputTokens: 80,
-                FilesModified: Array.Empty<string>(),
-                ExitCode: 0,
+                StructuredOutputJson: null, Success: true,
+                CostUsd: 0.25m, InputTokens: 50, OutputTokens: 80,
+                FilesModified: Array.Empty<string>(), ExitCode: 0,
                 AssistantSessionId: "stub");
 
         public Func<VerifyInput, VerifyOutput> VerifyResponder { get; set; } =
@@ -195,13 +249,11 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
         public List<string> DestroyedContainerIds { get; } = new();
 
         private int _spawnCalls;
-        private int _researchCalls;
         private int _enhanceCalls;
         private int _runCliAgentCalls;
         private int _verifyCalls;
 
         public int SpawnCallCount => _spawnCalls;
-        public int ResearchCallCount => _researchCalls;
         public int EnhanceCallCount => _enhanceCalls;
         public int RunCliAgentCallCount => _runCliAgentCalls;
         public int VerifyCallCount => _verifyCalls;
@@ -220,12 +272,14 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
             return Task.CompletedTask;
         }
 
+        // ResearchPipeline falls back to `cat /workspace/research.md` when the
+        // loop's FinalResponse has no H2 sections. Default stub: no file.
+        public Func<ExecInput, ExecOutput> ExecResponder { get; set; } =
+            _ => new ExecOutput(ExitCode: 1, Output: "", Error: "no such file");
+
         [Activity]
-        public Task<ResearchPromptOutput> ResearchPromptAsync(ResearchPromptInput i)
-        {
-            Interlocked.Increment(ref _researchCalls);
-            return Task.FromResult(ResearchResponder(i));
-        }
+        public Task<ExecOutput> ExecAsync(ExecInput i) =>
+            Task.FromResult(ExecResponder(i));
 
         [Activity]
         public Task<EnhancePromptOutput> EnhancePromptAsync(EnhancePromptInput i)

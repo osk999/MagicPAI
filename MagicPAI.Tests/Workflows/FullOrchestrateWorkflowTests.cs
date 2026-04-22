@@ -74,6 +74,8 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             new TemporalWorkerOptions($"test-fo-thresh-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
                 .AddWorkflow<FullOrchestrateWorkflow>()
+                .AddWorkflow<ResearchPipelineWorkflow>()
+                .AddWorkflow<IterativeLoopWorkflow>()
                 .AddWorkflow<SimpleAgentWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -124,6 +126,8 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             new TemporalWorkerOptions($"test-fo-simple-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
                 .AddWorkflow<FullOrchestrateWorkflow>()
+                .AddWorkflow<ResearchPipelineWorkflow>()
+                .AddWorkflow<IterativeLoopWorkflow>()
                 .AddWorkflow<SimpleAgentWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -150,7 +154,11 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             result.TotalCostUsd.Should().BeGreaterThan(0m);
 
             stubs.ClassifyCallCount.Should().Be(1);
-            stubs.ResearchCallCount.Should().Be(1);
+            // Research is now an IterativeLoop child (not a single
+            // ResearchPromptAsync activity). The old ResearchPromptAsync stub
+            // is no longer invoked; research is driven through RunCliAgentAsync
+            // inside IterativeLoopWorkflow instead.
+            stubs.ResearchCallCount.Should().Be(0);
             stubs.TriageCallCount.Should().Be(1);
             // Only the parent container is spawned + destroyed. The SimpleAgent
             // child reuses the parent's container via ExistingContainerId to
@@ -185,6 +193,8 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             new TemporalWorkerOptions($"test-fo-web-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
                 .AddWorkflow<FullOrchestrateWorkflow>()
+                .AddWorkflow<ResearchPipelineWorkflow>()
+                .AddWorkflow<IterativeLoopWorkflow>()
                 .AddWorkflow<WebsiteAuditLoopWorkflow>()
                 .AddWorkflow<WebsiteAuditCoreWorkflow>());
 
@@ -265,7 +275,9 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             {
                 result.PipelineUsed.Should().Be("rejected");
                 result.FinalResponse.Should().Contain("not safe");
-                result.TotalCostUsd.Should().Be(0m);
+                // Research ran BEFORE the HITL gate so cost accumulates even
+                // on rejection. Just verify it isn't negative / corrupt.
+                result.TotalCostUsd.Should().BeGreaterThanOrEqualTo(0m);
             });
 
         // ── Path 3: timeout ──────────────────────────────────────────────
@@ -307,6 +319,8 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             new TemporalWorkerOptions($"test-fo-gate-{scenarioName}-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
                 .AddWorkflow<FullOrchestrateWorkflow>()
+                .AddWorkflow<ResearchPipelineWorkflow>()
+                .AddWorkflow<IterativeLoopWorkflow>()
                 .AddWorkflow<SimpleAgentWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -394,6 +408,23 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
         public Func<RunCliAgentInput, RunCliAgentOutput> RunResponder { get; set; } =
             i =>
             {
+                // Research-loop iterations carry the multi-pass research prompt;
+                // return a complete structured-progress report so the inner
+                // IterativeLoopWorkflow exits on its first valid pass (subject
+                // to MinIterations, which is 3 for research).
+                if (i.Prompt.Contains("MULTI-PASS deep research"))
+                {
+                    return new RunCliAgentOutput(
+                        Response: StubResearchResponse,
+                        StructuredOutputJson: null,
+                        Success: true,
+                        CostUsd: 0.05m,
+                        InputTokens: 1, OutputTokens: 1,
+                        FilesModified: Array.Empty<string>(),
+                        ExitCode: 0,
+                        AssistantSessionId: "stub-research");
+                }
+
                 // Website-audit child supplies a structured output schema; emit a
                 // matching JSON payload so the core workflow's parser succeeds.
                 string? structured = null;
@@ -415,6 +446,39 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
                     ExitCode: 0,
                     AssistantSessionId: "stub");
             };
+
+        private const string StubResearchResponse = """
+            ## Rewritten Task
+            stub rewritten task body.
+
+            ## Codebase Analysis
+            stub codebase analysis.
+
+            ## Research Context
+            stub research context.
+
+            ## Rationale
+            stub rationale.
+
+            ### Task Status
+            - [x] A1
+            - [x] A2
+            - [x] A3
+            - [x] B1
+            - [x] B2
+            - [x] B3
+            - [x] C1
+            - [x] C2
+            - [x] C3
+            - [x] C4
+            - [x] D1
+            - [x] D2
+
+            ### Completion
+            Completion: true
+
+            [DONE]
+            """;
 
         public Func<VerifyInput, VerifyOutput> VerifyResponder { get; set; } =
             _ => new VerifyOutput(
@@ -453,6 +517,14 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             lock (DestroyedContainerIds) { DestroyedContainerIds.Add(i.ContainerId); }
             return Task.CompletedTask;
         }
+
+        // ResearchPipeline's fallback `cat /workspace/research.md` path.
+        public Func<ExecInput, ExecOutput> ExecResponder { get; set; } =
+            _ => new ExecOutput(ExitCode: 1, Output: "", Error: "no such file");
+
+        [Activity]
+        public Task<ExecOutput> ExecAsync(ExecInput i) =>
+            Task.FromResult(ExecResponder(i));
 
         [Activity]
         public Task<ClassifierOutput> ClassifyAsync(ClassifierInput i)

@@ -27,7 +27,8 @@ public class ResearchPipelineReplayTests
 
         var replayer = new WorkflowReplayer(
             new WorkflowReplayerOptions()
-                .AddWorkflow<ResearchPipelineWorkflow>());
+                .AddWorkflow<ResearchPipelineWorkflow>()
+                .AddWorkflow<IterativeLoopWorkflow>());
 
         var result = await replayer.ReplayWorkflowAsync(history);
 

@@ -27,11 +27,14 @@ public static class ActivityProfiles
     /// <summary>
     /// Medium AI work (triage, classify, route, prompt enhance, website classify, coverage).
     /// One full CLI invocation per activity; 15 minutes enough in practice.
+    /// HeartbeatTimeout = 10 min: LLMs with tools (Claude Code / MCP /
+    /// WebFetch) can legitimately go quiet for minutes during deep tool
+    /// loops or long file writes; shorter values false-positive the activity.
     /// </summary>
     public static readonly ActivityOptions Medium = new()
     {
         StartToCloseTimeout = TimeSpan.FromMinutes(15),
-        HeartbeatTimeout = TimeSpan.FromSeconds(60),
+        HeartbeatTimeout = TimeSpan.FromMinutes(10),
         RetryPolicy = new RetryPolicy
         {
             MaximumAttempts = 3,
@@ -44,11 +47,14 @@ public static class ActivityProfiles
     /// <summary>
     /// Long AI work (RunCliAgent, ResearchPrompt, Architect). Up to 2 hours.
     /// Cancellation waits for clean container teardown.
+    /// HeartbeatTimeout = 10 min (see Medium profile) + activity body must
+    /// heartbeat on a timer, not only on output lines, so quiet thinking /
+    /// long file writes don't trip the timeout.
     /// </summary>
     public static readonly ActivityOptions Long = new()
     {
         StartToCloseTimeout = TimeSpan.FromHours(2),
-        HeartbeatTimeout = TimeSpan.FromSeconds(60),
+        HeartbeatTimeout = TimeSpan.FromMinutes(10),
         CancellationType = ActivityCancellationType.WaitCancellationCompleted,
         RetryPolicy = new RetryPolicy
         {
@@ -99,7 +105,7 @@ public static class ActivityProfiles
     public static readonly ActivityOptions Verify = new()
     {
         StartToCloseTimeout = TimeSpan.FromMinutes(30),
-        HeartbeatTimeout = TimeSpan.FromSeconds(60),
+        HeartbeatTimeout = TimeSpan.FromMinutes(10),
         RetryPolicy = new RetryPolicy
         {
             MaximumAttempts = 2,

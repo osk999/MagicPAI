@@ -413,6 +413,59 @@ public class AiActivitiesTests
     }
 
     [Fact]
+    public async Task ArchitectAsync_ParsesTaskList_WhenJsonIsInsideMarkdownFence()
+    {
+        // Claude often wraps JSON in a ```json ... ``` block. The parser
+        // must unwrap the fence and still extract the tasks.
+        var fenced = """
+            Here is the plan:
+
+            ```json
+            {
+              "tasks": [
+                { "id": "task-1", "description": "stub", "dependsOn": [], "filesTouched": ["a.cs"] },
+                { "id": "task-2", "description": "stub2", "dependsOn": ["task-1"], "filesTouched": ["b.cs"] }
+              ]
+            }
+            ```
+
+            Let me know if you want tweaks.
+            """;
+        var docker = new Mock<IContainerManager>(MockBehavior.Strict);
+        docker.Setup(d => d.ExecAsync(It.IsAny<string>(), It.IsAny<ContainerExecRequest>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(new ExecResult(0, fenced, ""));
+
+        var sut = BuildSut(docker: docker);
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.ArchitectAsync(new ArchitectInput(
+            Prompt: "do stuff", ContainerId: "ctr-1", GapContext: null, AiAssistant: "claude")));
+
+        output.TaskCount.Should().Be(2);
+        output.Tasks[0].Id.Should().Be("task-1");
+        output.Tasks[1].DependsOn.Should().Contain("task-1");
+    }
+
+    [Fact]
+    public async Task ArchitectAsync_ParsesTaskList_WhenJsonIsInsidePlainProse()
+    {
+        // No fence — just prose with a JSON object embedded in the middle.
+        var prose = "I'll split this into two tasks:\n\n" +
+                    "{ \"tasks\": [ { \"id\": \"task-1\", \"description\": \"x\" } ] }\n\n" +
+                    "Happy to adjust if needed.";
+        var docker = new Mock<IContainerManager>(MockBehavior.Strict);
+        docker.Setup(d => d.ExecAsync(It.IsAny<string>(), It.IsAny<ContainerExecRequest>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(new ExecResult(0, prose, ""));
+
+        var sut = BuildSut(docker: docker);
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.ArchitectAsync(new ArchitectInput(
+            Prompt: "whatever", ContainerId: "ctr-1", GapContext: null, AiAssistant: "claude")));
+
+        output.TaskCount.Should().Be(1);
+        output.Tasks[0].Id.Should().Be("task-1");
+    }
+
+    [Fact]
     public async Task ArchitectAsync_ReturnsEmptyPlan_WhenParseFails()
     {
         var docker = new Mock<IContainerManager>(MockBehavior.Strict);

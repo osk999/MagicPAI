@@ -27,11 +27,13 @@ public record FullOrchestrateInput(
     int GateApprovalTimeoutHours = 24,
     // Triage complexity threshold (1–10). When the triage activity rates
     // the prompt at or above this value, FullOrchestrate routes to the
-    // complex-path branch (decomposition + per-subtask workers). Default 7
-    // matches the pre-migration Elsa behavior. Lower values force more
-    // prompts down the complex path — useful for demos/POC. Higher values
-    // route more work through the simple-agent path.
-    int ComplexityThreshold = 7);
+    // complex-path branch (decomposition + per-subtask workers).
+    // **Default 3** — calibrated for Haiku-class triage, which
+    // consistently rates multi-file asks 3–4. Single-file prompts
+    // get rated 1–2 and stay on simple-path. Raise to 5/7 for
+    // Sonnet/Opus-class triage where "complexity" means something
+    // more substantial.
+    int ComplexityThreshold = 3);
 
 public record FullOrchestrateOutput(
     string PipelineUsed,            // "website-audit" | "simple" | "complex"

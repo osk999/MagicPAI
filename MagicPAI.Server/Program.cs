@@ -106,7 +106,8 @@ builder.Services.AddSingleton<ISessionStreamSink, SignalRSessionStreamSink>();
         .AddWorkflow<WebsiteAuditCoreWorkflow>()
         .AddWorkflow<WebsiteAuditLoopWorkflow>()
         .AddWorkflow<FullOrchestrateWorkflow>()
-        .AddWorkflow<DeepResearchOrchestrateWorkflow>();
+        .AddWorkflow<DeepResearchOrchestrateWorkflow>()
+        .AddWorkflow<IterativeLoopWorkflow>();
 }
 
 // --- Session / workflow catalog services ---

@@ -37,7 +37,7 @@ public record TriageInput(
     string ContainerId,
     string? ClassificationInstructions,
     string AiAssistant,
-    int ComplexityThreshold = 7,
+    int ComplexityThreshold = 3,
     string? SessionId = null);
 
 public record TriageOutput(

@@ -153,24 +153,39 @@ public class FullOrchestrateWorkflow
             }
 
             // Stage 2 — research the prompt for grounding.
+            // Dispatches the iterative ResearchPipeline child workflow so
+            // Claude runs the full multi-pass research protocol (A: framing,
+            // B: options & trade-offs, C: plan/risks/verification) instead of
+            // a single shallow ResearchPromptAsync call. The research loop
+            // reuses this workflow's container (MinIterations=3, MaxIter=20)
+            // and writes research.md into the workspace as a side-effect.
             _pipelineStage = "research-prompt";
 
-            var researchInput = new ResearchPromptInput(
+            var researchInput = new ResearchPipelineInput(
+                SessionId: input.SessionId,
                 Prompt: input.Prompt,
-                AiAssistant: input.AiAssistant,
                 ContainerId: spawn.ContainerId,
-                ModelPower: 2,
-                SessionId: input.SessionId);
+                WorkingDirectory: input.WorkspacePath,
+                AiAssistant: input.AiAssistant);
 
-            var research = await Workflow.ExecuteActivityAsync(
-                (AiActivities a) => a.ResearchPromptAsync(researchInput),
-                ActivityProfiles.Long);
+            var research = await Workflow.ExecuteChildWorkflowAsync(
+                (ResearchPipelineWorkflow w) => w.RunAsync(researchInput),
+                new ChildWorkflowOptions { Id = $"{input.SessionId}-research" });
+
+            _totalCost += research.CostUsd;
+
+            // If the research loop produced no useable rewrite (e.g. max
+            // iterations fired early), fall back to the original user prompt
+            // so downstream triage has something concrete to chew on.
+            var groundedPrompt = string.IsNullOrWhiteSpace(research.ResearchedPrompt)
+                ? input.Prompt
+                : research.ResearchedPrompt;
 
             // Stage 3 — triage to decide complexity.
             _pipelineStage = "triage";
 
             var triageInput = new TriageInput(
-                Prompt: research.EnhancedPrompt,
+                Prompt: groundedPrompt,
                 ContainerId: spawn.ContainerId,
                 ClassificationInstructions: null,
                 AiAssistant: input.AiAssistant,
@@ -218,8 +233,8 @@ public class FullOrchestrateWorkflow
             }
 
             // An InjectPrompt signal received at any point before now overrides
-            // the research-enhanced prompt for the downstream branch.
-            var finalPrompt = _injectedPrompt ?? research.EnhancedPrompt;
+            // the research-grounded prompt for the downstream branch.
+            var finalPrompt = _injectedPrompt ?? groundedPrompt;
 
             FullOrchestrateOutput result;
             if (triage.IsComplex)
