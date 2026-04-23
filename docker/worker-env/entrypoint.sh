@@ -27,6 +27,12 @@ export HEADED=1
 
 mkdir -p "$HOME/.config" "$HOME/.codex" "$HOME/.claude"
 
+# Trust bind-mounted /workspace. Host UID rarely matches the worker UID, so git
+# refuses ops with "dubious ownership" otherwise — breaking every verify/commit
+# activity that shells out to git inside the container.
+git config --global --add safe.directory /workspace
+git config --global --add safe.directory '*'
+
 # Symlink pre-installed browsers to user cache (fallback for npx)
 if [ -d "/ms-playwright" ] && [ ! -e "$HOME/.cache/ms-playwright" ]; then
     mkdir -p "$HOME/.cache"

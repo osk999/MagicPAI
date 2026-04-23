@@ -184,6 +184,32 @@ source of truth.
   fix those in the MagicPAI codebase, then restart the workflow.
 - Use browser automation (Playwright/Chrome MCP) to visually verify results.
 
+## Task Creation Protocol (CRITICAL)
+- When the user says **"create task"** (or "run task", "start task", etc.), it means
+  **create the task via MagicPAI** — not write code directly, not call an API yourself.
+- **Default workflow is `FullOrchestrate`** unless the user explicitly names a different one.
+- Create the session by `POST /api/sessions` with the user's prompt and the chosen workflow.
+- **Observe the entire process end-to-end**:
+  1. Watch MagicPAI Studio UI (SignalR stream, stage chips, logs)
+  2. Watch Temporal UI event history (http://localhost:8233)
+  3. Watch MagicPAI server logs (JSON structured, SessionId-filterable)
+  4. Watch the container shell output / activity heartbeats
+- **Real agents, real money.** Always use real `claude` / `codex` CLI calls
+  against real credentials — never mock, stub, or skip the paid call path when
+  testing, fixing, or verifying. Token cost is acceptable; false-positive
+  "fixes" from mocked tests are not.
+- **If MagicPAI bugs or errors surface during observation:**
+  1. Do NOT guess the cause. Read the actual stack trace, workflow history,
+     activity input/output, and the relevant source files.
+  2. Verify the root cause by reading code + reference docs in
+     `document_refernce_opensource/` (see Verify Against Reference section).
+  3. Fix in the MagicPAI codebase (not in the task prompt).
+  4. Rebuild, restart workers, re-run the task from scratch with a real agent call.
+  5. Repeat until the workflow completes cleanly in both Studio UI and Temporal UI.
+- **Do not declare the task done until**: the workflow instance is in
+  `Completed` state, the container was destroyed cleanly, and the visual
+  verification in both UIs passes.
+
 ## E2E Workflow Verification via UI (CRITICAL)
 - **Always run and verify workflows through the MagicPAI Studio UI**, not just via API.
 - Use Playwright MCP, Chrome DevTools MCP, or Chrome CDP to interact with

@@ -30,7 +30,10 @@ public static class AiAssistantResolver
             {
                 [1] = "opus",
                 [2] = "sonnet",
-                [3] = "haiku"
+                // Power 3 collapses to sonnet: operator preference is no Haiku for any
+                // task (triage/classify/route default to power=3). Haiku also exhibits
+                // long hangs on structured-output prompts observed in live sessions.
+                [3] = "sonnet"
             },
             ["codex"] = new()
             {
