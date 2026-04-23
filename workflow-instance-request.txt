@@ -1,9 +1,0 @@
-[GET] http://127.0.0.1:5000/workflow-instances/7464b1e91dd74232bdc7a213c1e3d4eb => [200] OK
-  Request headers:
-    sec-ch-ua-platform: "Windows"
-    authorization: ApiKey 00000000-0000-0000-0000-000000000000
-    referer: http://127.0.0.1:5000/workflows/instances/7464b1e91dd74232bdc7a213c1e3d4eb/view
-    user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
-    accept: application/json
-    sec-ch-ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"
-    sec-ch-ua-mobile: ?0
