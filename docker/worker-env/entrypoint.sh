@@ -55,6 +55,7 @@ cat > "$HOME/.playwright-mcp.json" <<'PWCFG_EOF'
 {
   "browser": {
     "browserName": "chromium",
+    "headless": false,
     "launchOptions": {
       "args": ["--no-sandbox", "--start-maximized", "--window-size=1280,720", "--window-position=0,0", "--disable-dev-shm-usage"]
     }
@@ -108,7 +109,7 @@ chmod 644 "$HOME/.claude.json"
   "mcpServers": {
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@latest", "--no-sandbox", "--output-dir", "/workspace/screenshots", "--viewport-size", "1280x720"],
+      "args": ["@playwright/mcp@latest", "--config", "/home/worker/.playwright-mcp.json", "--no-sandbox", "--output-dir", "/workspace/screenshots", "--viewport-size", "1280x720"],
       "env": {
         "DISPLAY": ":99",
         "PLAYWRIGHT_MCP_HEADLESS": "false",

@@ -27,6 +27,11 @@ dotnet build MagicPAI.Core/MagicPAI.Core.csproj --no-restore   # fast single-pro
 (architecture, activity definitions, workflow shapes, Docker setup, appendices).
 `SCORECARD.md` tracks per-phase progress. `PATCHES.md` tracks workflow patches.
 
+For the **SmartImprove** workflow specifically (self-terminating autonomous
+improvement loop with anti-reward-hacking guards), read `newplan.md` for the
+full design and `docs/smart-improve/RUNBOOK.md` for operator usage. Live
+verified end-to-end with two real LLM runs — see SCORECARD.md.
+
 ## Open Source Reference Policy
 - For Temporal-related questions, bugs, behavior, APIs, worker/client wiring,
   activities, workflow determinism, signals/queries, and debugging, check

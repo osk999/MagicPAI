@@ -107,6 +107,79 @@ public class SessionLaunchPlannerTests
     }
 
     [Fact]
+    public void Plan_SmartImprove_HasSmartImproveKind()
+    {
+        var planner = BuildPlanner();
+        var req = new CreateSessionRequest(
+            Prompt: "Improve the project end-to-end.",
+            WorkflowType: "SmartImprove",
+            AiAssistant: "claude",
+            WorkspacePath: "C:/tmp/work");
+
+        var plan = planner.Plan(req);
+
+        Assert.Equal("SmartImprove", plan.WorkflowType);
+        Assert.Equal("smart-improve", plan.SessionKind);
+        Assert.Equal("C:/tmp/work", plan.WorkspacePath);
+    }
+
+    [Fact]
+    public void AsSmartImproveInput_PassesThroughOverrides()
+    {
+        var planner = BuildPlanner();
+        var req = new CreateSessionRequest(
+            Prompt: "Improve.",
+            WorkflowType: "SmartImprove",
+            AiAssistant: "claude",
+            WorkspacePath: "C:/tmp/work",
+            BurstSchedule: new[] { 4, 4, 2 },
+            SteadyStateBurstSize: 2,
+            MaxTotalIterations: 50,
+            MaxTotalBudgetUsd: 5m,
+            MaxBursts: 6,
+            RequiredCleanVerifies: 1,
+            SilenceCountdownIterations: 3);
+        var plan = planner.Plan(req);
+
+        var input = planner.AsSmartImproveInput(plan, "wf-smart-1");
+
+        Assert.Equal("wf-smart-1", input.SessionId);
+        Assert.Equal("Improve.", input.Prompt);
+        Assert.Equal("claude", input.AiAssistant);
+        Assert.Equal("C:/tmp/work", input.WorkspacePath);
+        Assert.Equal(new[] { 4, 4, 2 }, input.BurstSchedule);
+        Assert.Equal(2, input.SteadyStateBurstSize);
+        Assert.Equal(50, input.MaxTotalIterations);
+        Assert.Equal(5m, input.MaxTotalBudgetUsd);
+        Assert.Equal(6, input.MaxBursts);
+        Assert.Equal(1, input.RequiredCleanVerifies);
+        Assert.Equal(3, input.SilenceCountdownIterations);
+    }
+
+    [Fact]
+    public void AsSmartImproveInput_AppliesDefaultsWhenOmitted()
+    {
+        var planner = BuildPlanner();
+        var req = new CreateSessionRequest(
+            Prompt: "Improve.",
+            WorkflowType: "SmartImprove",
+            AiAssistant: "claude");
+        var plan = planner.Plan(req);
+
+        var input = planner.AsSmartImproveInput(plan, "wf-defaults");
+
+        // Defaults from newplan.md §2.3 — keep these aligned with the workflow
+        // Input record's default values.
+        Assert.Equal(5, input.SteadyStateBurstSize);
+        Assert.Equal(200, input.MaxTotalIterations);
+        Assert.Equal(50m, input.MaxTotalBudgetUsd);
+        Assert.Equal(30, input.MaxBursts);
+        Assert.Equal(2, input.RequiredCleanVerifies);
+        Assert.Equal(2, input.SilenceCountdownIterations);
+        Assert.Null(input.BurstSchedule); // null → workflow uses [8,8,5,5,...]
+    }
+
+    [Fact]
     public void Plan_PromptEnhancer_UtilityKind()
     {
         var planner = BuildPlanner();

@@ -118,6 +118,22 @@ public class WorkflowCatalog
                 "Reusable iteration component: runs a prompt until a structured completion protocol fires or MaxIterations is hit. Any workflow can dispatch it as a child.",
                 true, AllModels, "Utilities", 110),
 
+            new(
+                DisplayName: "Smart Improve",
+                WorkflowTypeName: "SmartImprove",
+                TaskQueue: DefaultTaskQueue,
+                InputType: typeof(SmartImproveInput),
+                Description: "Self-terminating autonomous improvement loop. Profiles the project, generates a verification rubric + harness, then alternates short fix bursts with external verification. Terminates only when the harness reports clean twice in a row OR a hard cap fires.",
+                RequiresAiAssistant: true,
+                SupportedModels: AllModels,
+                Category: "Core",
+                SortOrder: 25),
+
+            new("Smart Iterative Loop", "SmartIterativeLoop", DefaultTaskQueue,
+                typeof(SmartIterativeLoopInput),
+                "Per-burst child workflow used by Smart Improve: silence countdown + multi-signal no-progress + tests/ tripwire + question guard layered on top of the basic iterate-until-done pattern.",
+                true, AllModels, "Internal", 905),
+
         }.OrderBy(e => e.SortOrder).ToList();
     }
 

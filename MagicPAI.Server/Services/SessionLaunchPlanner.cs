@@ -93,6 +93,8 @@ public class SessionLaunchPlanner
         "VerifyAndRepair" or "PostExecutionPipeline" or "IterativeLoop" => "utility",
         "PromptEnhancer" or "ContextGatherer" or "PromptGrounding" or "ResearchPipeline" => "prompt-tooling",
         "ClawEvalAgent" => "evaluation",
+        "SmartImprove" => "smart-improve",
+        "SmartIterativeLoop" => "utility",
         _ => "unknown"
     };
 
@@ -263,6 +265,24 @@ public class SessionLaunchPlanner
             ModelPower: plan.ModelPower,
             WorkspacePath: plan.WorkspacePath,
             ParentSessionId: plan.OriginalRequest.ParentSessionId ?? workflowId);
+
+    public SmartImproveInput AsSmartImproveInput(SessionLaunchPlan plan, string workflowId)
+    {
+        var req = plan.OriginalRequest;
+        return new SmartImproveInput(
+            SessionId: workflowId,
+            Prompt: req.Prompt,
+            AiAssistant: plan.AiAssistant,
+            WorkspacePath: plan.WorkspacePath,
+            BurstSchedule: req.BurstSchedule,
+            SteadyStateBurstSize: req.SteadyStateBurstSize ?? 5,
+            MaxTotalIterations: req.MaxTotalIterations ?? 200,
+            MaxTotalBudgetUsd: req.MaxTotalBudgetUsd ?? 50m,
+            MaxBursts: req.MaxBursts ?? 30,
+            RequiredCleanVerifies: req.RequiredCleanVerifies ?? 2,
+            SilenceCountdownIterations: req.SilenceCountdownIterations ?? 2,
+            EnableGui: plan.EnableGui);
+    }
 
     public IterativeLoopInput AsIterativeLoopInput(SessionLaunchPlan plan, string workflowId)
     {

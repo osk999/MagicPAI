@@ -101,16 +101,40 @@ public class FullOrchestrateWorkflow
     [WorkflowRun]
     public async Task<FullOrchestrateOutput> RunAsync(FullOrchestrateInput input)
     {
-        _pipelineStage = "spawning-container";
+        // Container-lifecycle branching. SmartImproveWorkflow (and any future
+        // orchestrator that wants to share container state across multiple
+        // FullOrchestrate runs) hands its container in via ExistingContainerId.
+        // When null, the original spawn-and-destroy lifecycle applies.
+        //
+        // Wrapped in Workflow.Patched so old workflow histories — which always
+        // emitted a SpawnAsync activity at this point — replay deterministically
+        // even on workers that have the new branch compiled in. See PATCHES.md
+        // and CLAUDE.md §"Workflow versioning".
+        string containerId;
+        bool ownsContainer;
+        var canHandoff = Workflow.Patched("full-orchestrate-container-handoff-v1");
+        if (canHandoff && !string.IsNullOrWhiteSpace(input.ExistingContainerId))
+        {
+            _pipelineStage = "container-handoff";
+            containerId = input.ExistingContainerId;
+            ownsContainer = false;
+        }
+        else
+        {
+            _pipelineStage = "spawning-container";
 
-        var spawnInput = new SpawnContainerInput(
-            SessionId: input.SessionId,
-            WorkspacePath: input.WorkspacePath,
-            EnableGui: input.EnableGui);
+            var spawnInput = new SpawnContainerInput(
+                SessionId: input.SessionId,
+                WorkspacePath: input.WorkspacePath,
+                EnableGui: input.EnableGui);
 
-        var spawn = await Workflow.ExecuteActivityAsync(
-            (DockerActivities a) => a.SpawnAsync(spawnInput),
-            ActivityProfiles.Container);
+            var spawn = await Workflow.ExecuteActivityAsync(
+                (DockerActivities a) => a.SpawnAsync(spawnInput),
+                ActivityProfiles.Container);
+
+            containerId = spawn.ContainerId;
+            ownsContainer = true;
+        }
 
         try
         {
@@ -119,7 +143,7 @@ public class FullOrchestrateWorkflow
 
             var classifyInput = new WebsiteClassifyInput(
                 Prompt: input.Prompt,
-                ContainerId: spawn.ContainerId,
+                ContainerId: containerId,
                 AiAssistant: input.AiAssistant,
                 SessionId: input.SessionId);
 
@@ -133,7 +157,7 @@ public class FullOrchestrateWorkflow
 
                 var siteInput = new WebsiteAuditInput(
                     SessionId: input.SessionId,
-                    ContainerId: spawn.ContainerId,
+                    ContainerId: containerId,
                     Prompt: input.Prompt,
                     WorkspacePath: input.WorkspacePath,
                     AiAssistant: input.AiAssistant,
@@ -164,7 +188,7 @@ public class FullOrchestrateWorkflow
             var researchInput = new ResearchPipelineInput(
                 SessionId: input.SessionId,
                 Prompt: input.Prompt,
-                ContainerId: spawn.ContainerId,
+                ContainerId: containerId,
                 WorkingDirectory: input.WorkspacePath,
                 AiAssistant: input.AiAssistant);
 
@@ -186,7 +210,7 @@ public class FullOrchestrateWorkflow
 
             var triageInput = new TriageInput(
                 Prompt: groundedPrompt,
-                ContainerId: spawn.ContainerId,
+                ContainerId: containerId,
                 ClassificationInstructions: null,
                 AiAssistant: input.AiAssistant,
                 SessionId: input.SessionId,
@@ -244,7 +268,7 @@ public class FullOrchestrateWorkflow
                 var complexInput = new OrchestrateComplexInput(
                     SessionId: input.SessionId,
                     Prompt: finalPrompt,
-                    ContainerId: spawn.ContainerId,
+                    ContainerId: containerId,
                     WorkspacePath: input.WorkspacePath,
                     AiAssistant: input.AiAssistant,
                     Model: triage.RecommendedModel,
@@ -277,7 +301,7 @@ public class FullOrchestrateWorkflow
 
                     var coverageInput = new CoverageInput(
                         OriginalPrompt: input.Prompt,
-                        ContainerId: spawn.ContainerId,
+                        ContainerId: containerId,
                         WorkingDirectory: input.WorkspacePath,
                         MaxIterations: input.MaxCoverageIterations,
                         CurrentIteration: _coverageIteration,
@@ -295,7 +319,7 @@ public class FullOrchestrateWorkflow
                     // Direct agent call — same container, using the gap prompt.
                     var gapRunInput = new RunCliAgentInput(
                         Prompt: coverage.GapPrompt,
-                        ContainerId: spawn.ContainerId,
+                        ContainerId: containerId,
                         AiAssistant: input.AiAssistant,
                         Model: triage.RecommendedModel,
                         ModelPower: triage.RecommendedModelPower,
@@ -329,7 +353,7 @@ public class FullOrchestrateWorkflow
                     ModelPower: triage.RecommendedModelPower,
                     WorkspacePath: input.WorkspacePath,
                     EnableGui: input.EnableGui,
-                    ExistingContainerId: spawn.ContainerId);
+                    ExistingContainerId: containerId);
 
                 var simple = await Workflow.ExecuteChildWorkflowAsync(
                     (SimpleAgentWorkflow w) => w.RunAsync(simpleInput),
@@ -347,11 +371,23 @@ public class FullOrchestrateWorkflow
         }
         finally
         {
-            _pipelineStage = "cleanup";
-            var destroyInput = new DestroyInput(spawn.ContainerId);
-            await Workflow.ExecuteActivityAsync(
-                (DockerActivities a) => a.DestroyAsync(destroyInput),
-                ActivityProfiles.ContainerCleanup);
+            // Only destroy what we spawned. When the container was handed in by
+            // a parent (SmartImprove, etc.), the parent owns teardown. The
+            // ownsContainer field captures that lifecycle decision once at
+            // workflow entry and is read here — no second Patched() call needed
+            // because the value is already deterministic per execution.
+            if (ownsContainer)
+            {
+                _pipelineStage = "cleanup";
+                var destroyInput = new DestroyInput(containerId);
+                await Workflow.ExecuteActivityAsync(
+                    (DockerActivities a) => a.DestroyAsync(destroyInput),
+                    ActivityProfiles.ContainerCleanup);
+            }
+            else
+            {
+                _pipelineStage = "completed-handoff";
+            }
         }
     }
 }

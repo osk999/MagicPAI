@@ -142,3 +142,159 @@ public record CoverageOutput(
     string GapPrompt,
     string CoverageReportJson,
     int Iteration);
+
+// ── SmartImprove activities ────────────────────────────────────────────
+// See newplan.md §2.2 (activities), §3 (verification harness),
+// §4 (anti-reward-hacking).
+
+public record GenerateRubricInput(
+    string SessionId,
+    string ContainerId,
+    string WorkspacePath,
+    /// <summary>The PROJECT_PROFILE.md content from ContextGatherer.</summary>
+    string ProjectProfile,
+    /// <summary>Original user prompt — anchors the rubric to user intent, not pure repo state.</summary>
+    string OriginalPrompt,
+    string AiAssistant,
+    int ModelPower = 2);
+
+public record GenerateRubricOutput(
+    /// <summary>Detected project type — informs harness templates downstream.</summary>
+    string ProjectType,
+    string Rationale,
+    /// <summary>JSON-serialized DoneRubric for cross-project transport.</summary>
+    string RubricJson,
+    int RubricItemCount,
+    decimal CostUsd);
+
+public record PlanVerificationHarnessInput(
+    string SessionId,
+    string ContainerId,
+    string WorkspacePath,
+    string ProjectType,
+    /// <summary>JSON-serialized DoneRubric.</summary>
+    string RubricJson,
+    string AiAssistant,
+    int ModelPower = 2);
+
+public record PlanVerificationHarnessOutput(
+    /// <summary>Bash-runnable harness script saved to /workspace/.smartimprove/harness.sh</summary>
+    string HarnessScriptPath,
+    /// <summary>Per-rubric-item command map. Key = rubric item id, value = command.</summary>
+    IReadOnlyDictionary<string, string> CommandsByRubricId,
+    decimal CostUsd);
+
+public record PickNextImprovementInput(
+    string SessionId,
+    string ContainerId,
+    string WorkspacePath,
+    /// <summary>JSON-serialized current backlog (IMPROVEMENTS.md state).</summary>
+    string BacklogJson,
+    /// <summary>Most recent verifier failures — drives prioritization.</summary>
+    string LatestFailuresJson,
+    string AiAssistant,
+    int ModelPower = 3);
+
+public record PickNextImprovementOutput(
+    /// <summary>True when no actionable item remains. SmartImprove treats this as a termination hint.</summary>
+    bool BacklogEmpty,
+    string? PickedItemId,
+    string? Priority,
+    /// <summary>Concrete prompt to feed into FullOrchestrate for this iteration.</summary>
+    string? ImprovementPrompt,
+    decimal CostUsd);
+
+public record UpdateBacklogInput(
+    string SessionId,
+    string ContainerId,
+    string WorkspacePath,
+    string CurrentBacklogJson,
+    string LatestVerifierOutputJson,
+    /// <summary>What was just attempted, so we can mark items resolved or stuck.</summary>
+    string? LastAttemptedItemId,
+    string AiAssistant,
+    int ModelPower = 3);
+
+public record UpdateBacklogOutput(
+    string UpdatedBacklogJson,
+    int P0Count,
+    int P1Count,
+    int P2Count,
+    int P3Count,
+    int ResolvedThisRound,
+    int NewlyDiscovered,
+    decimal CostUsd);
+
+public record VerifyHarnessInput(
+    string SessionId,
+    string ContainerId,
+    string WorkspacePath,
+    string HarnessScriptPath,
+    /// <summary>JSON-serialized DoneRubric — needed for priority lookup per failed item.</summary>
+    string RubricJson,
+    /// <summary>True for the "second separated run" — triggers full clean rebuild + different seed.</summary>
+    bool CleanRebuild = false,
+    /// <summary>Random seed forwarded to harness for any tests that consume it.</summary>
+    int Seed = 0,
+    int TimeoutSeconds = 1800);
+
+public record ClassifyFailuresInput(
+    string SessionId,
+    string ContainerId,
+    string WorkspacePath,
+    /// <summary>Raw harness output (stdout+stderr).</summary>
+    string HarnessOutput,
+    /// <summary>JSON-serialized failure list before classification.</summary>
+    string FailuresJson,
+    string AiAssistant,
+    int ModelPower = 3);
+
+public record ClassifyFailuresOutput(
+    /// <summary>JSON-serialized list of <c>RubricFailure</c> with Classification populated.</summary>
+    string ClassifiedFailuresJson,
+    int RealCount,
+    int StructuralCount,
+    int EnvironmentalCount,
+    decimal CostUsd);
+
+public record SnapshotFilesystemInput(
+    string ContainerId,
+    string WorkspacePath,
+    /// <summary>Glob patterns to exclude (in addition to .gitignore). Defaults: bin/, obj/, node_modules/, .git/.</summary>
+    IReadOnlyList<string>? ExcludeGlobs = null,
+    /// <summary>Hard cap on file count to keep snapshots fast on large repos.</summary>
+    int MaxFiles = 50000);
+
+public record SnapshotFilesystemOutput(
+    /// <summary>Path → SHA-256 of contents (mtime/ctime ignored — content-only).</summary>
+    IReadOnlyDictionary<string, string> FileHashes,
+    long CapturedAtUnixSeconds,
+    int FileCount,
+    bool TruncatedByMaxFiles);
+
+public record ComputeAstHashInput(
+    string ContainerId,
+    string WorkspacePath,
+    /// <summary>Files to hash. If empty, every .cs under workspace.</summary>
+    IReadOnlyList<string>? Files = null);
+
+public record ComputeAstHashOutput(
+    /// <summary>SHA-256 of the concatenated normalized AST hashes.</summary>
+    string AstHash,
+    int FilesHashed,
+    /// <summary>True when no .cs files were found (workflow should fall back to git-only signal).</summary>
+    bool NoCSharpFiles);
+
+public record GetGitStateInput(
+    string ContainerId,
+    string WorkspacePath = "/workspace");
+
+public record GetGitStateOutput(
+    /// <summary>Current HEAD SHA, or empty if the workspace is not a git repo.</summary>
+    string HeadSha,
+    /// <summary>Number of changed entries reported by <c>git status --porcelain</c> (additions + modifications + deletions).</summary>
+    int DirtyCount,
+    /// <summary>True when <c>git status</c> reports nothing (clean working tree).</summary>
+    bool IsClean,
+    /// <summary>True when the workspace has no .git directory at all — workflow falls back to filesystem-delta signal.</summary>
+    bool NotAGitRepo);

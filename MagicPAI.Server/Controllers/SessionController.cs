@@ -319,6 +319,9 @@ public class SessionController : ControllerBase
             "IterativeLoop" => await _temporal.StartWorkflowAsync(
                 (IterativeLoopWorkflow wf) => wf.RunAsync(_planner.AsIterativeLoopInput(plan, workflowId)),
                 opts),
+            "SmartImprove" => await _temporal.StartWorkflowAsync(
+                (SmartImproveWorkflow wf) => wf.RunAsync(_planner.AsSmartImproveInput(plan, workflowId)),
+                opts),
             _ => throw new ArgumentException($"Unknown workflow type: {plan.WorkflowType}")
         };
 
@@ -372,6 +375,16 @@ public record CreateSessionRequest(
     string? CompletionMarker = null,       // default "[DONE]"
     string? CompletionInstructions = null, // classifier-strategy hint
     decimal? MaxBudgetUsd = null,
+
+    // SmartImprove passthroughs (newplan.md §2.3)
+    int[]? BurstSchedule = null,
+    int? SteadyStateBurstSize = null,
+    int? MaxTotalIterations = null,
+    decimal? MaxTotalBudgetUsd = null,
+    int? MaxBursts = null,
+    int? RequiredCleanVerifies = null,
+    int? SilenceCountdownIterations = null,
+
     Dictionary<string, string>? CustomParams = null);
 
 public record CreateSessionResponse(string SessionId, string WorkflowType);

@@ -1073,6 +1073,574 @@ public class AiActivities
         }
     }
 
+    // ── SmartImprove activities ─────────────────────────────────────────
+    //
+    // GenerateRubricAsync, PlanVerificationHarnessAsync, PickNextImprovementAsync,
+    // UpdateBacklogAsync, ClassifyFailuresAsync — these wrap the model with
+    // SmartImprove-specific prompts and structured-output schemas. The shape
+    // mirrors GradeCoverageAsync (single CLI call, JSON in/out, auth retry,
+    // graceful fallback on parse failure). See newplan.md §2.2 + §3.
+
+    /// <summary>
+    /// Phase 0 preprocess. Read PROJECT_PROFILE.md (gathered earlier by
+    /// ContextGathererWorkflow) and the original user prompt; produce a
+    /// project-type-specific completion rubric. The rubric is the rest of
+    /// the loop's "definition of done" — every termination decision flows
+    /// from this.
+    /// </summary>
+    [Activity]
+    public async Task<GenerateRubricOutput> GenerateRubricAsync(GenerateRubricInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "GenerateRubric requires a ContainerId.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+        var assistantName = AiAssistantResolver.NormalizeAssistant(
+            input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+
+        var rubricPrompt = $$"""
+            You are designing a definition-of-done rubric for an autonomous
+            improvement loop. Read the PROJECT PROFILE and ORIGINAL PROMPT
+            below, then produce a rubric tailored to this specific project's
+            type.
+
+            ## PROJECT PROFILE
+            {{input.ProjectProfile}}
+
+            ## ORIGINAL PROMPT
+            {{input.OriginalPrompt}}
+
+            ## INSTRUCTIONS
+            1. Detect the project type ("game" | "web" | "api" | "cli" |
+               "library" | "desktop" | "unknown"). If genuinely ambiguous,
+               return "unknown" — do NOT guess.
+            2. Produce 6–20 rubric items. Each must be EXTERNALLY verifiable
+               (a bash command, an HTTP probe, a Playwright spec) — not the
+               model's own self-report.
+            3. **Prefer BEHAVIORAL/FUNCTIONAL checks over SOURCE-PATTERN checks.**
+               This is the most important rule. Source-pattern checks (grep
+               for specific strings in .cs / .ts / .py files) are fragile —
+               an improved implementation may keep behavior identical while
+               changing the literal source. Examples:
+                 BAD  : grep -qE 'return\s+a\s*\+\s*b' Calc.cs
+                 GOOD : dotnet test --filter Add_ReturnsCorrectSum
+                 BAD  : grep -q 'app.UseHttpsRedirection' Program.cs
+                 GOOD : curl -sI http://localhost:5000/foo | head -1 | grep '301\|HTTPS'
+                 BAD  : grep -q '\\[Fact\\]' tests/X.cs
+                 GOOD : dotnet test (counts the [Fact]s by running them)
+               Use grep ONLY for things that genuinely cannot be tested
+               functionally (e.g. "the README has a CONTRIBUTING section").
+            4. Assign priorities:
+                 P0 = critical / broken / blocker
+                 P1 = functional gap or missing feature
+                 P2 = polish / UX
+                 P3 = nitpick
+            5. For each item, choose a verification command pattern:
+                 "exit-zero"          — a bash command that should exit 0
+                 "regex:<pattern>"    — bash output must match a regex
+                 "json-path:<jq>"     — parse JSON output via jq
+                 "none"               — manual / TODO
+               Examples:
+                 dotnet build → exit-zero
+                 npm test     → exit-zero
+                 curl -s http://localhost:5000/api/foo | jq -e '.ok' → json-path:.ok
+                 playwright test e2e/login.spec.ts → exit-zero
+            6. **Avoid 'belt-and-suspenders' rubric items.** If you have a
+               P0 'tests pass' item AND a P0 'no a-b in source' grep, the
+               second is redundant — `tests pass` already proves the
+               behavior. Drop the grep, keep the test.
+            7. Mark every rubric item IsTrusted=true UNLESS the item refers
+               to a test you would have to invent. Trust = pre-existing or
+               human-curated.
+
+            Respond with JSON ONLY matching the schema. NO surrounding text.
+            """;
+
+        const string schema = """
+            {
+              "type": "object",
+              "properties": {
+                "projectType": { "type": "string" },
+                "rationale":   { "type": "string" },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id":                   { "type": "string" },
+                      "description":          { "type": "string" },
+                      "priority":             { "type": "string", "enum": ["P0","P1","P2","P3"] },
+                      "verificationCommand":  { "type": "string" },
+                      "passCriteria":         { "type": "string" },
+                      "isTrusted":            { "type": "boolean" }
+                    },
+                    "required": ["id","description","priority","verificationCommand","passCriteria"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["projectType","rationale","items"],
+              "additionalProperties": false
+            }
+            """;
+
+        var modelPower = input.ModelPower > 0 ? input.ModelPower : 2;
+
+        var request = new AgentRequest
+        {
+            Prompt = rubricPrompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, modelPower),
+            OutputSchema = schema,
+            WorkDir = NormalizeContainerWorkDir(input.WorkspacePath),
+            SessionId = null,
+        };
+
+        var (rawJson, costUsd) = await RunAiCallWithAuthRetryAsync(
+            input.ContainerId, runner, request, ct, "GenerateRubric");
+
+        // Defensive parse — the model is told to emit JSON only, but
+        // structured-output enforcement is best-effort. Fall back to a
+        // stub rubric so the caller can decide whether to retry.
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            var root = doc.RootElement;
+            var projectType = root.TryGetProperty("projectType", out var pt)
+                ? pt.GetString() ?? "unknown" : "unknown";
+            var rationale = root.TryGetProperty("rationale", out var r)
+                ? r.GetString() ?? "" : "";
+            var items = root.TryGetProperty("items", out var i) ? i.GetArrayLength() : 0;
+
+            // Persist for downstream activities (PlanHarness, PickNext, UpdateBacklog).
+            await PersistArtifactAsync(
+                input.ContainerId,
+                input.WorkspacePath,
+                ".smartimprove/rubric.json",
+                rawJson,
+                ct);
+
+            return new GenerateRubricOutput(
+                ProjectType: projectType,
+                Rationale: rationale,
+                RubricJson: TruncateForHistory(rawJson, 32 * 1024),
+                RubricItemCount: items,
+                CostUsd: costUsd);
+        }
+        catch (JsonException ex)
+        {
+            _log.LogWarning(ex, "GenerateRubric returned non-JSON; emitting stub rubric");
+            var stub = """
+                { "projectType": "unknown", "rationale": "rubric generation failed; stub returned",
+                  "items": [] }
+                """;
+            return new GenerateRubricOutput(
+                ProjectType: "unknown",
+                Rationale: "rubric generation failed: " + Truncate(ex.Message),
+                RubricJson: stub,
+                RubricItemCount: 0,
+                CostUsd: costUsd);
+        }
+    }
+
+    /// <summary>
+    /// Phase 0 preprocess. Translate the rubric into a runnable bash harness
+    /// script. Persists harness.sh to <c>/workspace/.smartimprove/harness.sh</c>
+    /// and returns a per-rubric-item command lookup so the verifier can map
+    /// failures back to rubric ids.
+    /// </summary>
+    [Activity]
+    public async Task<PlanVerificationHarnessOutput> PlanVerificationHarnessAsync(
+        PlanVerificationHarnessInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "PlanVerificationHarness requires a ContainerId.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+        var assistantName = AiAssistantResolver.NormalizeAssistant(
+            input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+
+        var harnessPrompt = $$"""
+            You are translating a definition-of-done rubric into a
+            self-contained bash verification script that can be re-run any
+            time inside the workspace container. The script must be
+            idempotent and produce machine-readable per-item results.
+
+            ## PROJECT TYPE
+            {{input.ProjectType}}
+
+            ## RUBRIC (JSON)
+            {{input.RubricJson}}
+
+            ## INSTRUCTIONS
+            1. Emit a single bash script. First line must be `#!/usr/bin/env bash`
+               followed by `set -uo pipefail`.
+            2. For each rubric item, run its verification command, capture
+               stdout/stderr, and emit ONE JSON line on stdout in this exact
+               shape (no surrounding text):
+                 {"id":"<rubric.id>","status":"pass|fail","exitCode":<n>,"evidence":"<≤200 chars>"}
+            3. The script must NOT terminate early on the first failure —
+               every item must be reported.
+            4. For "playwright:" prefixed verification commands, treat the
+               remainder as a spec path under /workspace/.smartimprove/playwright/
+               and shell out to `npx playwright test <spec> --reporter=line`.
+            5. For "http:" prefixed commands of form "http:<url>:<expected_status>",
+               run `curl -s -o /dev/null -w '%{http_code}' <url>` and compare.
+            6. Also produce a CommandsByRubricId lookup so the workflow can map
+               failures back to rubric ids without re-parsing the script.
+
+            Respond with JSON ONLY matching the schema below.
+            """;
+
+        const string schema = """
+            {
+              "type": "object",
+              "properties": {
+                "harnessScript":         { "type": "string" },
+                "commandsByRubricId":    {
+                   "type": "object",
+                   "additionalProperties": { "type": "string" }
+                }
+              },
+              "required": ["harnessScript","commandsByRubricId"],
+              "additionalProperties": false
+            }
+            """;
+
+        var modelPower = input.ModelPower > 0 ? input.ModelPower : 2;
+
+        var request = new AgentRequest
+        {
+            Prompt = harnessPrompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, modelPower),
+            OutputSchema = schema,
+            WorkDir = NormalizeContainerWorkDir(input.WorkspacePath),
+            SessionId = null,
+        };
+
+        var (rawJson, costUsd) = await RunAiCallWithAuthRetryAsync(
+            input.ContainerId, runner, request, ct, "PlanVerificationHarness");
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            var root = doc.RootElement;
+            var script = root.TryGetProperty("harnessScript", out var s)
+                ? s.GetString() ?? "" : "";
+            var commands = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (root.TryGetProperty("commandsByRubricId", out var cmds)
+                && cmds.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in cmds.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.String)
+                        commands[prop.Name] = prop.Value.GetString() ?? "";
+                }
+            }
+
+            const string harnessPath = ".smartimprove/harness.sh";
+            await PersistArtifactAsync(input.ContainerId, input.WorkspacePath, harnessPath, script, ct);
+            await ChmodExecutableAsync(input.ContainerId, input.WorkspacePath, harnessPath, ct);
+
+            return new PlanVerificationHarnessOutput(
+                HarnessScriptPath: harnessPath,
+                CommandsByRubricId: commands,
+                CostUsd: costUsd);
+        }
+        catch (JsonException ex)
+        {
+            _log.LogWarning(ex, "PlanVerificationHarness returned non-JSON; harness not persisted");
+            return new PlanVerificationHarnessOutput(
+                HarnessScriptPath: "",
+                CommandsByRubricId: new Dictionary<string, string>(),
+                CostUsd: costUsd);
+        }
+    }
+
+    /// <summary>
+    /// LLM-as-judge that buckets verifier failures into
+    /// <c>{real | structural | environmental}</c> using the failure evidence
+    /// + recent diff context. Per Hamel Husain's "LLM-as-Judge" guidance,
+    /// LLM-as-judge is appropriate for the SUBJECTIVE classification step
+    /// (why did this fail) but not for the OBJECTIVE termination decision
+    /// (which is left to the deterministic harness). See newplan.md §3.3.
+    /// </summary>
+    /// <remarks>
+    /// Routing of the result classes:
+    /// <list type="bullet">
+    /// <item><c>real</c> — added to backlog as the same priority the rubric assigned</item>
+    /// <item><c>structural</c> — selector/locator drift; spawn a separate
+    /// "selector heal" sub-task; does NOT drive the next fix burst</item>
+    /// <item><c>environmental</c> — flake/port-conflict/network; retry once,
+    /// quarantine if it persists; does NOT drive the next fix burst</item>
+    /// </list>
+    /// Mis-classification risk (recorded in newplan.md §10) is contained by
+    /// always logging full evidence so an operator can audit decisions in
+    /// Studio.
+    /// </remarks>
+    [Activity]
+    public async Task<ClassifyFailuresOutput> ClassifyFailuresAsync(ClassifyFailuresInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "ClassifyFailures requires a ContainerId.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+        var assistantName = AiAssistantResolver.NormalizeAssistant(
+            input.AiAssistant, _config.DefaultAgent);
+        var runner = _factory.Create(assistantName);
+
+        // Cap incoming text to keep the prompt under 24 KB which fits in a
+        // single CLI argv on every supported runner without resorting to stdin.
+        var truncatedHarness = TruncateForHistory(input.HarnessOutput ?? "", 12 * 1024);
+        var truncatedFailures = TruncateForHistory(input.FailuresJson ?? "[]", 12 * 1024);
+
+        var classifyPrompt = $$"""
+            You are triaging verifier failures from an autonomous code-improvement
+            loop. For EACH failure, decide whether it represents a REAL bug in
+            the model's code, a STRUCTURAL drift (locator/selector/element
+            renamed but functionality intact), or an ENVIRONMENTAL flake
+            (port-in-use, network blip, race, missing CLI tool).
+
+            ## RUBRIC FAILURES (JSON array)
+            {{truncatedFailures}}
+
+            ## RAW HARNESS OUTPUT (truncated)
+            {{truncatedHarness}}
+
+            ## CLASSIFICATION RULES
+            - "real"          — the underlying functionality is wrong/missing.
+                                e.g. compile error, wrong assertion result,
+                                wrong HTTP response shape, broken UI flow.
+            - "structural"    — the test cannot find an element / endpoint
+                                because of a NAME change, but the underlying
+                                feature still works. Indicates the test needs
+                                to be updated, not the source.
+            - "environmental" — the test can't run at all due to env state.
+                                Examples: "EADDRINUSE", "Cannot find module
+                                @playwright/test", "ECONNREFUSED localhost:5000",
+                                missing Docker socket. NOT a code defect.
+
+            Return JSON ONLY: an array of {id, classification, reason} entries
+            in the SAME order as the input failures. The "reason" field is a
+            ≤120 char one-liner explaining the classification.
+            """;
+
+        const string schema = """
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id":             { "type": "string" },
+                  "classification": { "type": "string", "enum": ["real","structural","environmental"] },
+                  "reason":         { "type": "string" }
+                },
+                "required": ["id","classification","reason"],
+                "additionalProperties": false
+              }
+            }
+            """;
+
+        var modelPower = input.ModelPower > 0 ? input.ModelPower : 3;
+
+        var request = new AgentRequest
+        {
+            Prompt = classifyPrompt,
+            Model = AiAssistantResolver.ResolveModelForPower(runner, _config, modelPower),
+            OutputSchema = schema,
+            WorkDir = NormalizeContainerWorkDir(input.WorkspacePath),
+            SessionId = null,
+        };
+
+        var (rawJson, costUsd) = await RunAiCallWithAuthRetryAsync(
+            input.ContainerId, runner, request, ct, "ClassifyFailures");
+
+        // Default: keep the original failures unchanged if classification
+        // failed to parse — better to let the workflow act on un-downgraded
+        // "real" failures (safer) than to silently drop them.
+        try
+        {
+            using var inputDoc = JsonDocument.Parse(input.FailuresJson ?? "[]");
+            using var classDoc = JsonDocument.Parse(rawJson);
+
+            // Build a lookup of id → classification. The model is told to
+            // preserve order, but we don't trust it for long lists.
+            var classByid = new Dictionary<string, (string Cls, string Reason)>(StringComparer.Ordinal);
+            if (classDoc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var entry in classDoc.RootElement.EnumerateArray())
+                {
+                    var id = entry.TryGetProperty("id", out var i) ? i.GetString() ?? "" : "";
+                    var cls = entry.TryGetProperty("classification", out var c) ? c.GetString() ?? "real" : "real";
+                    var reason = entry.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "";
+                    if (!string.IsNullOrEmpty(id))
+                        classByid[id] = (Normalize(cls), reason);
+                }
+            }
+
+            // Materialize merged result, preserving original failure shape.
+            var merged = new List<object>();
+            int real = 0, structural = 0, environmental = 0;
+            if (inputDoc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var f in inputDoc.RootElement.EnumerateArray())
+                {
+                    var id = f.TryGetProperty("rubricItemId", out var iid)
+                        ? iid.GetString() ?? "" :
+                        f.TryGetProperty("id", out var ii) ? ii.GetString() ?? "" : "";
+                    var prio = f.TryGetProperty("priority", out var pp) ? pp.GetString() ?? "P1" : "P1";
+                    var ev = f.TryGetProperty("evidence", out var ee) ? ee.GetString() ?? "" : "";
+
+                    var cls = classByid.TryGetValue(id, out var hit) ? hit.Cls : "real";
+                    switch (cls)
+                    {
+                        case "structural":    structural++; break;
+                        case "environmental": environmental++; break;
+                        default:              real++; cls = "real"; break;
+                    }
+
+                    merged.Add(new
+                    {
+                        rubricItemId = id,
+                        priority = prio,
+                        classification = cls,
+                        evidence = ev,
+                    });
+                }
+            }
+
+            var classifiedJson = JsonSerializer.Serialize(merged);
+
+            return new ClassifyFailuresOutput(
+                ClassifiedFailuresJson: TruncateForHistory(classifiedJson, 16 * 1024),
+                RealCount: real,
+                StructuralCount: structural,
+                EnvironmentalCount: environmental,
+                CostUsd: costUsd);
+        }
+        catch (JsonException ex)
+        {
+            _log.LogWarning(ex, "ClassifyFailures parse failed; falling back to all-real");
+            return new ClassifyFailuresOutput(
+                ClassifiedFailuresJson: input.FailuresJson ?? "[]",
+                RealCount: 0,
+                StructuralCount: 0,
+                EnvironmentalCount: 0,
+                CostUsd: costUsd);
+        }
+    }
+
+    /// <summary>Normalize the model's classification string to the canonical lowercase form.</summary>
+    private static string Normalize(string cls)
+    {
+        var c = (cls ?? "").Trim().ToLowerInvariant();
+        return c switch
+        {
+            "real" or "structural" or "environmental" => c,
+            "bug" or "code" or "defect" => "real",
+            "selector" or "locator" or "drift" => "structural",
+            "flake" or "flaky" or "env" or "infrastructure" => "environmental",
+            _ => "real",
+        };
+    }
+
+    // ── Shared SmartImprove helpers ─────────────────────────────────────
+
+    /// <summary>
+    /// Run a single CLI agent call, recover from auth errors once, return
+    /// the parsed body + cost. Centralizes the boilerplate that would
+    /// otherwise repeat across every SmartImprove activity.
+    /// </summary>
+    private async Task<(string Body, decimal CostUsd)> RunAiCallWithAuthRetryAsync(
+        string containerId, ICliAgentRunner runner, AgentRequest request,
+        CancellationToken ct, string activityName)
+    {
+        var plan = runner.BuildExecutionPlan(request);
+        foreach (var setup in plan.SetupRequests ?? [])
+            await _docker.ExecAsync(containerId, setup, ct);
+
+        var result = await _docker.ExecAsync(containerId, plan.MainRequest, ct);
+
+        if (result.ExitCode != 0
+            && AuthErrorDetector.ContainsAuthError((result.Output ?? "") + (result.Error ?? "")))
+        {
+            _log.LogWarning("{Activity} auth error detected; attempting credential recovery", activityName);
+            var (recovered, authError, credsJson) = await _auth.RecoverAuthAsync(ct);
+            if (recovered && !string.IsNullOrEmpty(credsJson))
+            {
+                await CredentialInjector.InjectAsync(containerId, credsJson, ct);
+                result = await _docker.ExecAsync(containerId, plan.MainRequest, ct);
+            }
+            else
+            {
+                _log.LogWarning("{Activity} auth recovery failed: {Error}", activityName, authError);
+            }
+        }
+
+        var parsed = runner.ParseResponse(result.Output ?? "");
+        var body = !string.IsNullOrWhiteSpace(parsed.StructuredOutputJson)
+            ? parsed.StructuredOutputJson!
+            : parsed.Output ?? result.Output ?? "{}";
+
+        // Cost is parser-reported when the runner extracts it; some runners
+        // pass it through StructuredOutputJson tail. For now use 0 — cost
+        // accounting upgrade is tracked separately.
+        return (body, parsed.CostUsd);
+    }
+
+    /// <summary>
+    /// Write a text payload to a workspace-relative path inside the
+    /// container. Creates parent directories. Used to persist rubric.json,
+    /// harness.sh, IMPROVEMENTS.md across iterations.
+    /// </summary>
+    private async Task PersistArtifactAsync(
+        string containerId, string workspacePath, string relPath,
+        string content, CancellationToken ct)
+    {
+        var workspace = NormalizeContainerWorkDir(workspacePath);
+        var fullPath = $"{workspace.TrimEnd('/')}/{relPath.TrimStart('/')}";
+        var parentDir = fullPath[..fullPath.LastIndexOf('/')];
+
+        // mkdir -p then write payload via stdin to avoid argv length limits.
+        var mkdirReq = new ContainerExecRequest(
+            FileName: "bash",
+            Arguments: new[] { "-lc", $"mkdir -p {ShellEscape(parentDir)}" },
+            WorkingDirectory: workspace);
+        await _docker.ExecAsync(containerId, mkdirReq, ct);
+
+        var writeReq = new ContainerExecRequest(
+            FileName: "bash",
+            Arguments: new[] { "-lc", $"cat > {ShellEscape(fullPath)}" },
+            WorkingDirectory: workspace,
+            StdinInput: content);
+        await _docker.ExecAsync(containerId, writeReq, ct);
+    }
+
+    private async Task ChmodExecutableAsync(
+        string containerId, string workspacePath, string relPath, CancellationToken ct)
+    {
+        var workspace = NormalizeContainerWorkDir(workspacePath);
+        var fullPath = $"{workspace.TrimEnd('/')}/{relPath.TrimStart('/')}";
+        var req = new ContainerExecRequest(
+            FileName: "chmod",
+            Arguments: new[] { "+x", fullPath },
+            WorkingDirectory: workspace);
+        await _docker.ExecAsync(containerId, req, ct);
+    }
+
+    private static string ShellEscape(string s)
+    {
+        // Single-quote-safe POSIX shell quoting.
+        return "'" + s.Replace("'", "'\\''") + "'";
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     /// <summary>

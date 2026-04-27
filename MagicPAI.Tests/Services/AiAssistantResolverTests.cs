@@ -20,7 +20,10 @@ public class AiAssistantResolverTests
     [Theory]
     [InlineData(1, "opus")]
     [InlineData(2, "sonnet")]
-    [InlineData(3, "haiku")]
+    // Per the no-Haiku policy (commit 8380eee), power=3 maps to sonnet
+    // rather than haiku. Triage/classify/route default to power=3 and
+    // haiku has shown long hangs on structured-output prompts in live runs.
+    [InlineData(3, "sonnet")]
     public void ResolveModelForPower_Uses_Claude_Default_Map(int modelPower, string expected)
     {
         var config = new MagicPaiConfig();

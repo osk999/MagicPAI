@@ -33,7 +33,14 @@ public record FullOrchestrateInput(
     // get rated 1–2 and stay on simple-path. Raise to 5/7 for
     // Sonnet/Opus-class triage where "complexity" means something
     // more substantial.
-    int ComplexityThreshold = 3);
+    int ComplexityThreshold = 3,
+    // Container handoff. When non-null, FullOrchestrate reuses the
+    // caller-supplied container instead of spawning its own. Required for
+    // SmartImproveWorkflow (which owns the container for the entire
+    // multi-burst run so filesystem deltas + state persist across
+    // iterations). When null, the original spawn-and-destroy lifecycle
+    // applies. Mirrors SimpleAgentInput.ExistingContainerId.
+    string? ExistingContainerId = null);
 
 public record FullOrchestrateOutput(
     string PipelineUsed,            // "website-audit" | "simple" | "complex"

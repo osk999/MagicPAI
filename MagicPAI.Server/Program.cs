@@ -91,6 +91,7 @@ builder.Services.AddSingleton<ISessionStreamSink, SignalRSessionStreamSink>();
         .AddScopedActivities<GitActivities>()
         .AddScopedActivities<VerifyActivities>()
         .AddScopedActivities<BlackboardActivities>()
+        .AddScopedActivities<MagicPAI.Activities.SmartImprove.SmartImproveActivities>()
         .AddWorkflow<SimpleAgentWorkflow>()
         .AddWorkflow<VerifyAndRepairWorkflow>()
         .AddWorkflow<PromptEnhancerWorkflow>()
@@ -107,7 +108,9 @@ builder.Services.AddSingleton<ISessionStreamSink, SignalRSessionStreamSink>();
         .AddWorkflow<WebsiteAuditLoopWorkflow>()
         .AddWorkflow<FullOrchestrateWorkflow>()
         .AddWorkflow<DeepResearchOrchestrateWorkflow>()
-        .AddWorkflow<IterativeLoopWorkflow>();
+        .AddWorkflow<IterativeLoopWorkflow>()
+        .AddWorkflow<SmartIterativeLoopWorkflow>()
+        .AddWorkflow<SmartImproveWorkflow>();
 }
 
 // --- Session / workflow catalog services ---

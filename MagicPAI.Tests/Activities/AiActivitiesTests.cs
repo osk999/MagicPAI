@@ -293,7 +293,10 @@ public class AiActivitiesTests
         var env = new ActivityEnvironment();
         var output = await env.RunAsync(() => sut.RouteModelAsync(input));
 
-        output.SelectedModel.Should().Be("haiku");       // <4 → power 3
+        // Per the no-Haiku policy (commit 8380eee), power=3 maps to sonnet
+        // rather than haiku. Triage/classify/route default to power=3 and
+        // haiku has shown long hangs on structured-output prompts in live runs.
+        output.SelectedModel.Should().Be("sonnet");      // <4 → power 3 → sonnet
     }
 
     [Fact]
@@ -800,5 +803,317 @@ public class AiActivitiesTests
     {
         var sut = MakeSutForCwd(configCwd: null);
         sut.NormalizeContainerWorkDir("C:/tmp").Should().Be("/workspace");
+    }
+
+    // ── GenerateRubricAsync ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task GenerateRubricAsync_ParsesProjectTypeAndItems()
+    {
+        const string rubricJson = """
+            {
+              "projectType": "web",
+              "rationale": "ASP.NET Core web app with Razor Pages",
+              "items": [
+                { "id":"build","description":"dotnet build succeeds","priority":"P0",
+                  "verificationCommand":"dotnet build","passCriteria":"exit-zero","isTrusted":true },
+                { "id":"test","description":"unit tests pass","priority":"P0",
+                  "verificationCommand":"dotnet test","passCriteria":"exit-zero","isTrusted":true }
+              ]
+            }
+            """;
+
+        // The persistence side-effects (mkdir, cat > file) are also dispatched
+        // through ExecAsync(ContainerExecRequest). Since the loose mock returns
+        // ExecResult(0, "", "") by default, those calls succeed silently.
+        var docker = new Mock<IContainerManager>(MockBehavior.Loose);
+        docker.Setup(d => d.ExecAsync(
+                It.IsAny<string>(),
+                It.IsAny<ContainerExecRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExecResult(0, rubricJson, ""));
+
+        var sut = BuildSut(docker: docker);
+        var input = new GenerateRubricInput(
+            SessionId: "sess-1",
+            ContainerId: "ctr-1",
+            WorkspacePath: "/workspace",
+            ProjectProfile: "ASP.NET Core webapi project",
+            OriginalPrompt: "Build a todo API",
+            AiAssistant: "claude");
+
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.GenerateRubricAsync(input));
+
+        output.ProjectType.Should().Be("web");
+        output.RubricItemCount.Should().Be(2);
+        // The activity preserves whatever JSON shape the model returned —
+        // assert structural content (rubric ids, commands), not exact whitespace.
+        output.RubricJson.Should().Contain("\"build\"")
+            .And.Contain("dotnet build");
+    }
+
+    [Fact]
+    public async Task GenerateRubricAsync_ReturnsStubOnNonJsonResponse()
+    {
+        var docker = new Mock<IContainerManager>(MockBehavior.Loose);
+        docker.Setup(d => d.ExecAsync(
+                It.IsAny<string>(),
+                It.IsAny<ContainerExecRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExecResult(0, "this is not json at all", ""));
+
+        var sut = BuildSut(docker: docker);
+        var input = new GenerateRubricInput(
+            "sess-1", "ctr-1", "/workspace", "profile", "prompt", "claude");
+
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.GenerateRubricAsync(input));
+
+        // Falls back to a stub rather than throwing — the workflow can decide
+        // to retry GenerateRubric or proceed with the empty rubric.
+        output.ProjectType.Should().Be("unknown");
+        output.RubricItemCount.Should().Be(0);
+        output.Rationale.Should().Contain("rubric generation failed");
+    }
+
+    [Fact]
+    public async Task GenerateRubricAsync_RejectsEmptyContainerId()
+    {
+        var sut = BuildSut();
+        var input = new GenerateRubricInput(
+            SessionId: "s", ContainerId: "", WorkspacePath: "/workspace",
+            ProjectProfile: "p", OriginalPrompt: "o", AiAssistant: "claude");
+
+        var env = new ActivityEnvironment();
+        var act = () => env.RunAsync(() => sut.GenerateRubricAsync(input));
+
+        await act.Should().ThrowAsync<Temporalio.Exceptions.ApplicationFailureException>()
+            .Where(ex => ex.ErrorType == "ConfigError");
+    }
+
+    // ── PlanVerificationHarnessAsync ────────────────────────────────────
+
+    [Fact]
+    public async Task PlanVerificationHarnessAsync_ParsesScriptAndCommandMap()
+    {
+        const string responseJson = """
+            {
+              "harnessScript": "#!/usr/bin/env bash\nset -uo pipefail\ndotnet build && echo '{\"id\":\"build\",\"status\":\"pass\",\"exitCode\":0,\"evidence\":\"\"}'",
+              "commandsByRubricId": {
+                "build": "dotnet build",
+                "test":  "dotnet test"
+              }
+            }
+            """;
+
+        var docker = new Mock<IContainerManager>(MockBehavior.Loose);
+        docker.Setup(d => d.ExecAsync(
+                It.IsAny<string>(),
+                It.IsAny<ContainerExecRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExecResult(0, responseJson, ""));
+
+        var sut = BuildSut(docker: docker);
+        var input = new PlanVerificationHarnessInput(
+            SessionId: "s", ContainerId: "ctr-1", WorkspacePath: "/workspace",
+            ProjectType: "web", RubricJson: "{}", AiAssistant: "claude");
+
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.PlanVerificationHarnessAsync(input));
+
+        output.HarnessScriptPath.Should().Be(".smartimprove/harness.sh");
+        output.CommandsByRubricId.Should().HaveCount(2);
+        output.CommandsByRubricId["build"].Should().Be("dotnet build");
+        output.CommandsByRubricId["test"].Should().Be("dotnet test");
+    }
+
+    [Fact]
+    public async Task PlanVerificationHarnessAsync_GracefulOnInvalidJson()
+    {
+        var docker = new Mock<IContainerManager>(MockBehavior.Loose);
+        docker.Setup(d => d.ExecAsync(
+                It.IsAny<string>(),
+                It.IsAny<ContainerExecRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExecResult(0, "<<not json>>", ""));
+
+        var sut = BuildSut(docker: docker);
+        var input = new PlanVerificationHarnessInput(
+            "s", "ctr-1", "/workspace", "web", "{}", "claude");
+
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.PlanVerificationHarnessAsync(input));
+
+        // No harness path written, no commands registered — workflow must
+        // observe this and either retry or escalate.
+        output.HarnessScriptPath.Should().BeEmpty();
+        output.CommandsByRubricId.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PlanVerificationHarnessAsync_RejectsEmptyContainerId()
+    {
+        var sut = BuildSut();
+        var input = new PlanVerificationHarnessInput(
+            "s", "", "/workspace", "web", "{}", "claude");
+
+        var env = new ActivityEnvironment();
+        var act = () => env.RunAsync(() => sut.PlanVerificationHarnessAsync(input));
+
+        await act.Should().ThrowAsync<Temporalio.Exceptions.ApplicationFailureException>()
+            .Where(ex => ex.ErrorType == "ConfigError");
+    }
+
+    // ── ClassifyFailuresAsync ───────────────────────────────────────────
+
+    [Fact]
+    public async Task ClassifyFailuresAsync_BucketsFailuresByModelDecision()
+    {
+        // Model returns: build=real, port=environmental, login_link=structural.
+        const string modelResponse = """
+            [
+              {"id":"build","classification":"real","reason":"compile error"},
+              {"id":"port","classification":"environmental","reason":"EADDRINUSE"},
+              {"id":"login_link","classification":"structural","reason":"renamed selector"}
+            ]
+            """;
+
+        var docker = new Mock<IContainerManager>(MockBehavior.Loose);
+        docker.Setup(d => d.ExecAsync(
+                It.IsAny<string>(),
+                It.IsAny<ContainerExecRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExecResult(0, modelResponse, ""));
+
+        var sut = BuildSut(docker: docker);
+
+        const string failuresJson = """
+            [
+              {"rubricItemId":"build","priority":"P0","evidence":"compile broke"},
+              {"rubricItemId":"port","priority":"P1","evidence":"port in use"},
+              {"rubricItemId":"login_link","priority":"P1","evidence":"selector miss"}
+            ]
+            """;
+
+        var input = new ClassifyFailuresInput(
+            SessionId: "s", ContainerId: "ctr-1", WorkspacePath: "/workspace",
+            HarnessOutput: "raw harness output...", FailuresJson: failuresJson,
+            AiAssistant: "claude");
+
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.ClassifyFailuresAsync(input));
+
+        output.RealCount.Should().Be(1);
+        output.StructuralCount.Should().Be(1);
+        output.EnvironmentalCount.Should().Be(1);
+
+        // Result JSON preserves the original structure (rubricItemId, priority,
+        // evidence) PLUS the new classification field per item.
+        using var doc = System.Text.Json.JsonDocument.Parse(output.ClassifiedFailuresJson);
+        var arr = doc.RootElement.EnumerateArray().ToList();
+        arr.Should().HaveCount(3);
+        arr.First(e => e.GetProperty("rubricItemId").GetString() == "build")
+           .GetProperty("classification").GetString().Should().Be("real");
+        arr.First(e => e.GetProperty("rubricItemId").GetString() == "port")
+           .GetProperty("classification").GetString().Should().Be("environmental");
+        arr.First(e => e.GetProperty("rubricItemId").GetString() == "login_link")
+           .GetProperty("classification").GetString().Should().Be("structural");
+    }
+
+    [Fact]
+    public async Task ClassifyFailuresAsync_NormalizesAliasClassifications()
+    {
+        // Model returns aliases ("flake", "selector") that should normalize.
+        const string modelResponse = """
+            [
+              {"id":"a","classification":"flake","reason":""},
+              {"id":"b","classification":"selector","reason":""}
+            ]
+            """;
+        var docker = new Mock<IContainerManager>(MockBehavior.Loose);
+        docker.Setup(d => d.ExecAsync(
+                It.IsAny<string>(),
+                It.IsAny<ContainerExecRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExecResult(0, modelResponse, ""));
+
+        var sut = BuildSut(docker: docker);
+        var input = new ClassifyFailuresInput(
+            "s", "ctr-1", "/workspace", "raw",
+            "[{\"rubricItemId\":\"a\",\"priority\":\"P1\"},{\"rubricItemId\":\"b\",\"priority\":\"P1\"}]",
+            "claude");
+
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.ClassifyFailuresAsync(input));
+
+        output.EnvironmentalCount.Should().Be(1); // "flake" → environmental
+        output.StructuralCount.Should().Be(1);    // "selector" → structural
+    }
+
+    [Fact]
+    public async Task ClassifyFailuresAsync_FallsBackToRealOnUnknownClassification()
+    {
+        const string modelResponse = """
+            [
+              {"id":"a","classification":"weird-tag","reason":""}
+            ]
+            """;
+        var docker = new Mock<IContainerManager>(MockBehavior.Loose);
+        docker.Setup(d => d.ExecAsync(
+                It.IsAny<string>(),
+                It.IsAny<ContainerExecRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExecResult(0, modelResponse, ""));
+
+        var sut = BuildSut(docker: docker);
+        var input = new ClassifyFailuresInput(
+            "s", "ctr-1", "/workspace", "raw",
+            "[{\"rubricItemId\":\"a\",\"priority\":\"P0\"}]", "claude");
+
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.ClassifyFailuresAsync(input));
+
+        // Unknown tag → safest default = real (workflow keeps treating as bug).
+        output.RealCount.Should().Be(1);
+        output.StructuralCount.Should().Be(0);
+        output.EnvironmentalCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ClassifyFailuresAsync_GracefulOnNonJsonResponse()
+    {
+        var docker = new Mock<IContainerManager>(MockBehavior.Loose);
+        docker.Setup(d => d.ExecAsync(
+                It.IsAny<string>(),
+                It.IsAny<ContainerExecRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExecResult(0, "<<not json>>", ""));
+
+        var sut = BuildSut(docker: docker);
+        var input = new ClassifyFailuresInput(
+            "s", "ctr-1", "/workspace", "raw",
+            "[{\"rubricItemId\":\"a\",\"priority\":\"P0\"}]", "claude");
+
+        var env = new ActivityEnvironment();
+        var output = await env.RunAsync(() => sut.ClassifyFailuresAsync(input));
+
+        // Parse-fail path: original failures unchanged, all counts 0 — caller
+        // sees the original failures and keeps acting on them as "real".
+        output.ClassifiedFailuresJson.Should().Contain("\"a\"");
+        output.RealCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ClassifyFailuresAsync_RejectsEmptyContainerId()
+    {
+        var sut = BuildSut();
+        var input = new ClassifyFailuresInput(
+            "s", "", "/workspace", "raw", "[]", "claude");
+        var env = new ActivityEnvironment();
+        var act = () => env.RunAsync(() => sut.ClassifyFailuresAsync(input));
+
+        await act.Should().ThrowAsync<Temporalio.Exceptions.ApplicationFailureException>()
+            .Where(ex => ex.ErrorType == "ConfigError");
     }
 }

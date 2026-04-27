@@ -23,6 +23,10 @@ public class AiActivitiesRegistrationTests
     [InlineData(nameof(AiActivities.ResearchPromptAsync))]
     [InlineData(nameof(AiActivities.ClassifyWebsiteTaskAsync))]
     [InlineData(nameof(AiActivities.GradeCoverageAsync))]
+    // SmartImprove activities (newplan.md §2.2):
+    [InlineData(nameof(AiActivities.GenerateRubricAsync))]
+    [InlineData(nameof(AiActivities.PlanVerificationHarnessAsync))]
+    [InlineData(nameof(AiActivities.ClassifyFailuresAsync))]
     public void Method_IsDecoratedWithActivityAttribute(string methodName)
     {
         var method = typeof(AiActivities).GetMethod(methodName,
@@ -44,16 +48,21 @@ public class AiActivitiesRegistrationTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        // Phase 2 Day 5 has all 9 planned AiActivities methods:
-        // RunCliAgent, Triage, Classify, RouteModel, EnhancePrompt,
-        // Architect, ResearchPrompt, ClassifyWebsiteTask, GradeCoverage.
+        // Includes the original 9 (Day 5) plus the SmartImprove additions
+        // tracked in newplan.md §2.2. PickNextImprovementAsync,
+        // UpdateBacklogAsync, and ClassifyFailuresAsync land in Phase 3 of
+        // SmartImprove rollout — this assertion will fail (intentionally)
+        // when those land, prompting the developer to update the list.
         activityMethods.Should().BeEquivalentTo(new[]
         {
             nameof(AiActivities.ArchitectAsync),
             nameof(AiActivities.ClassifyAsync),
+            nameof(AiActivities.ClassifyFailuresAsync),
             nameof(AiActivities.ClassifyWebsiteTaskAsync),
             nameof(AiActivities.EnhancePromptAsync),
+            nameof(AiActivities.GenerateRubricAsync),
             nameof(AiActivities.GradeCoverageAsync),
+            nameof(AiActivities.PlanVerificationHarnessAsync),
             nameof(AiActivities.ResearchPromptAsync),
             nameof(AiActivities.RouteModelAsync),
             nameof(AiActivities.RunCliAgentAsync),
