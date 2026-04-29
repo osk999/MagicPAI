@@ -296,6 +296,14 @@ public class LocalContainerManager : IContainerManager
 
     public string? GetGuiUrl(string containerId) => null;
 
+    /// <summary>
+    /// Local mode has no real container engine, so the orphan-by-label sweep
+    /// is a no-op. Real containers can never leak here.
+    /// </summary>
+    public Task<IReadOnlyList<LabeledContainer>> ListContainersByLabelAsync(
+        string labelKey, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<LabeledContainer>>([]);
+
     private static ProcessStartInfo CreateProcessStartInfo(string command, string workDir)
     {
         var psi = new ProcessStartInfo

@@ -34,4 +34,14 @@ public interface IContainerManager
 
     /// <summary>Get container GUI URL (if noVNC enabled).</summary>
     string? GetGuiUrl(string containerId);
+
+    /// <summary>
+    /// List all containers that carry the given label key (regardless of value),
+    /// returning their id, labels, created-at and running flag. Used by the
+    /// worker garbage collector to find MagicPAI-owned containers that survived
+    /// a server restart (when the in-memory session tracker is empty).
+    /// Implementations that do not have a notion of "containers" (e.g. local
+    /// host execution) may return an empty list.
+    /// </summary>
+    Task<IReadOnlyList<LabeledContainer>> ListContainersByLabelAsync(string labelKey, CancellationToken ct);
 }

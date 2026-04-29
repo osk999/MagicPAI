@@ -27,6 +27,14 @@ namespace MagicPAI.Server.Workflows;
 [Workflow]
 public class WebsiteAuditCoreWorkflow
 {
+    private decimal _totalCost;
+
+    /// <summary>
+    /// Running cost of this section's agent run. Phase-1 gap: query missing.
+    /// </summary>
+    [WorkflowQuery]
+    public decimal TotalCostUsd => _totalCost;
+
     private const string StructuredSchema = """
         {
           "type": "object",
@@ -85,6 +93,8 @@ public class WebsiteAuditCoreWorkflow
             var run = await Workflow.ExecuteActivityAsync(
                 (AiActivities a) => a.RunCliAgentAsync(runInput),
                 ActivityProfiles.Long);
+
+            _totalCost += run.CostUsd;
 
             var (report, issueCount) = ParseStructured(run.StructuredOutputJson ?? run.Response);
             return new WebsiteAuditCoreOutput(

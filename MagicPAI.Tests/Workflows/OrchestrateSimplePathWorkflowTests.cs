@@ -45,6 +45,7 @@ public class OrchestrateSimplePathWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-orch-simple-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<OrchestrateSimplePathWorkflow>()
                 .AddWorkflow<SimpleAgentWorkflow>());
 
@@ -107,6 +108,7 @@ public class OrchestrateSimplePathWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-orch-simple-toplevel-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<OrchestrateSimplePathWorkflow>()
                 .AddWorkflow<SimpleAgentWorkflow>());
 

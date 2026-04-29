@@ -43,6 +43,7 @@ public class WebsiteAuditLoopWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-wal-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<WebsiteAuditLoopWorkflow>()
                 .AddWorkflow<WebsiteAuditCoreWorkflow>());
 

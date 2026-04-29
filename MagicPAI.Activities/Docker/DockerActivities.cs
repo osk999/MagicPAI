@@ -54,13 +54,31 @@ public class DockerActivities
                 "MagicPAI is configured without Docker backend; spawn rejected.",
                 errorType: "ConfigError", nonRetryable: true);
 
+        // Pull workflow identity from the activity context so the labels we
+        // attach to the container survive a server restart and the GC's
+        // fallback sweep can reap orphans (BUG-4). SessionId is required.
+        var workflowType = ctx.Info.WorkflowType ?? string.Empty;
+        var workflowId = ctx.Info.WorkflowId ?? string.Empty;
+
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["magicpai.session"] = input.SessionId,
+            ["magicpai.workflow"] = workflowType,
+            ["magicpai.workflow_id"] = workflowId,
+            // ISO-8601 round-trip so the GC can compare against UtcNow without
+            // locale ambiguity. Activity executes outside the workflow body so
+            // DateTime.UtcNow is fine here (this is non-deterministic code).
+            ["magicpai.created_at"] = DateTime.UtcNow.ToString("O"),
+        };
+
         var config = new ContainerConfig
         {
             Image = input.Image,
             WorkspacePath = input.WorkspacePath,
             MemoryLimitMb = input.MemoryLimitMb,
             EnableGui = input.EnableGui,
-            Env = input.EnvVars ?? new Dictionary<string, string>()
+            Env = input.EnvVars ?? new Dictionary<string, string>(),
+            Labels = labels,
         };
 
         var ownerId = input.SessionId;

@@ -91,6 +91,7 @@ builder.Services.AddSingleton<ISessionStreamSink, SignalRSessionStreamSink>();
         .AddScopedActivities<GitActivities>()
         .AddScopedActivities<VerifyActivities>()
         .AddScopedActivities<BlackboardActivities>()
+        .AddScopedActivities<MagicPAI.Activities.Stage.StageActivities>()
         .AddScopedActivities<MagicPAI.Activities.SmartImprove.SmartImproveActivities>()
         .AddWorkflow<SimpleAgentWorkflow>()
         .AddWorkflow<VerifyAndRepairWorkflow>()

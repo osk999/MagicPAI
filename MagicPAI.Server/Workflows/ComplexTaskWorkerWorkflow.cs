@@ -7,6 +7,7 @@ using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Contracts;
 using MagicPAI.Activities.Infrastructure;
+using MagicPAI.Activities.Stage;
 using MagicPAI.Activities.Verification;
 using MagicPAI.Workflows;
 using MagicPAI.Workflows.Contracts;
@@ -52,6 +53,8 @@ public class ComplexTaskWorkerWorkflow
     [WorkflowRun]
     public async Task<ComplexTaskOutput> RunAsync(ComplexTaskInput input)
     {
+        await EmitStageAsync(input.ParentSessionId, $"task-{input.TaskId}-claiming");
+
         // Claim each file up front. If a sibling holds it, wait with
         // exponential backoff (30 s → 60 s → 120 s → … capped at 5 min)
         // until either we get the lock or we exhaust FileLockMaxWait.
@@ -99,6 +102,8 @@ public class ComplexTaskWorkerWorkflow
 
         try
         {
+            await EmitStageAsync(input.ParentSessionId, $"task-{input.TaskId}-executing");
+
             var runInput = new RunCliAgentInput(
                 Prompt: input.Description,
                 ContainerId: input.ContainerId,
@@ -117,6 +122,8 @@ public class ComplexTaskWorkerWorkflow
             var finalCost = run.CostUsd;
             var finalSuccess = run.Success;
 
+            await EmitStageAsync(input.ParentSessionId, $"task-{input.TaskId}-verifying");
+
             // Post-agent verify → at most ONE repair iteration → re-verify.
             // Intentionally capped at 1 attempt inside a single subtask; the
             // parent orchestrator's coverage loop handles the bigger picture.
@@ -133,6 +140,8 @@ public class ComplexTaskWorkerWorkflow
 
             if (!verify.AllPassed)
             {
+                await EmitStageAsync(input.ParentSessionId, $"task-{input.TaskId}-repairing");
+
                 // One repair attempt. Build a repair prompt from the failed
                 // gates + gate results and re-run the agent on the same
                 // container / workspace. Then re-verify.
@@ -181,6 +190,31 @@ public class ComplexTaskWorkerWorkflow
                 }
             }
 
+            // Commit any uncommitted work in the worktree so the merge step
+            // in OrchestrateComplexPath actually has something to merge. Without
+            // this, agent-written files only live in the worktree's working tree
+            // and are silently deleted by `git worktree remove --force`.
+            if (Workflow.Patched("complex-worker-commit-v1"))
+            {
+                try
+                {
+                    await Workflow.ExecuteActivityAsync(
+                        (MagicPAI.Activities.Git.GitActivities g) => g.CommitWorktreeAsync(
+                            new MagicPAI.Activities.Contracts.CommitWorktreeInput(
+                                ContainerId: input.ContainerId,
+                                WorktreePath: input.WorkspacePath,
+                                Message: $"magicpai: complete task {input.TaskId}")),
+                        ActivityProfiles.Short);
+                }
+                catch (Exception)
+                {
+                    // Commit best-effort: a failed commit shouldn't fail the task
+                    // (the verify step already passed). Merge will be a no-op.
+                }
+            }
+
+            await EmitStageAsync(input.ParentSessionId, $"task-{input.TaskId}-done");
+
             return new ComplexTaskOutput(
                 TaskId: input.TaskId,
                 Success: finalSuccess,
@@ -193,6 +227,21 @@ public class ComplexTaskWorkerWorkflow
         {
             await ReleaseAllAsync(input);
         }
+    }
+
+    /// <summary>
+    /// Emit a stage transition. Gated on <c>Workflow.Patched("emit-stage-activity-v1")</c>
+    /// so old workflow histories — which never scheduled this activity — replay
+    /// deterministically.
+    /// </summary>
+    private static async Task EmitStageAsync(string sessionId, string stage)
+    {
+        if (!Workflow.Patched("emit-stage-activity-v1")) return;
+
+        var stageInput = new EmitStageInput(sessionId, stage);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitStageAsync(stageInput),
+            ActivityProfiles.Short);
     }
 
     private static async Task ReleaseAllAsync(ComplexTaskInput input)

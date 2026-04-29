@@ -374,6 +374,7 @@ public class ClassifierLiveDockerTests : IAsyncLifetime
         public Task EmitChunkAsync(string sessionId, string line, CancellationToken ct) => Task.CompletedTask;
         public Task EmitStructuredAsync(string sessionId, string eventName, object payload, CancellationToken ct) => Task.CompletedTask;
         public Task EmitStageAsync(string sessionId, string stage, CancellationToken ct) => Task.CompletedTask;
+        public Task EmitCostAsync(string sessionId, decimal totalCostUsd, CancellationToken ct = default) => Task.CompletedTask;
         public Task CompleteSessionAsync(string sessionId, CancellationToken ct) => Task.CompletedTask;
     }
 }

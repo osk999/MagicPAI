@@ -79,6 +79,7 @@ public class ContextGathererWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-cg-happy-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ContextGathererWorkflow>());
 
         await worker.ExecuteAsync(async () =>

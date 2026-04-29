@@ -310,6 +310,7 @@ public class IterativeLoopWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-il-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<IterativeLoopWorkflow>());
 
         return await worker.ExecuteAsync(async () =>

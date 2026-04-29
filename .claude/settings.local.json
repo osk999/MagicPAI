@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(rm -f C:/AllGit/poc/games/rocketfifa/.mcp.json)",
-      "Read(//c/AllGit/poc/games/rocketfifa/**)"
+      "Read(//c/AllGit/poc/games/rocketfifa/**)",
+      "Bash(rm -rf \"C:/AllGit/poc/games/b2\"/* \"C:/AllGit/poc/games/b2\"/.[!.]*)",
+      "Read(//c/AllGit/poc/games/b2/**)"
     ]
   }
 }

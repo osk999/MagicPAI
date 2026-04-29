@@ -80,6 +80,7 @@ public class ResearchPipelineWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-rp-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>());
 
@@ -132,6 +133,7 @@ public class ResearchPipelineWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-rp-own-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>());
 
@@ -186,6 +188,7 @@ public class ResearchPipelineWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-rp-fb-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>());
 

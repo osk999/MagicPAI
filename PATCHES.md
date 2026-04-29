@@ -5,8 +5,11 @@ for workflow-versioning debt.
 
 **Rule:** every `Workflow.Patched("patch-id")` must have an entry here.
 
-Last updated: 2026-04-20
-Active patches: **0** (clean slate at start of migration)
+Last updated: 2026-04-29
+Active patches: **7** (Phase 2 wire-up — stage emission, cost broadcast,
+verify-and-repair handoff, worktree-per-task, worktree merge,
+DAG-ordered fan-out, and the existing-but-undocumented FullOrchestrate
+container handoff)
 
 ---
 
@@ -29,8 +32,123 @@ Active patches: **0** (clean slate at start of migration)
 
 ## Active patches
 
-*(none at start of Phase 0; future entries added here as workflow changes
-require them)*
+### full-orchestrate-container-handoff-v1
+
+- **Workflow:** `FullOrchestrateWorkflow`
+- **Introduced:** 2026-04-26 (existed pre-Phase-2; documented in Phase 2)
+- **Purpose:** When the caller (e.g. `SmartImproveWorkflow`) supplies
+  `FullOrchestrateInput.ExistingContainerId`, the workflow reuses that
+  container instead of spawning its own. The patch gate skips the new
+  branching logic for old histories that always emitted a `SpawnAsync`
+  activity at workflow entry.
+- **Old behavior:** Always spawn → run → destroy a workflow-owned container.
+- **New behavior:** When `ExistingContainerId` is non-null, skip spawn/destroy
+  and reuse the parent's container; otherwise fall back to old behavior.
+- **Owner:** server agent
+
+### emit-stage-activity-v1
+
+- **Workflow:** `FullOrchestrateWorkflow`, `OrchestrateComplexPathWorkflow`,
+  `ComplexTaskWorkerWorkflow`, `VerifyAndRepairWorkflow`,
+  `StandardOrchestrateWorkflow`, `SmartImproveWorkflow`
+- **Introduced:** 2026-04-29
+- **Purpose:** Replace the silent `_pipelineStage = "..."` field-only
+  approach with an actual side-channel SignalR emit so the Studio stage
+  chip moves through real stages instead of staying at the field default.
+  Calls `StageActivities.EmitStageAsync` at every stage boundary.
+- **Old behavior:** Field-only; query polled but Studio doesn't poll, so
+  chip stuck at "initializing".
+- **New behavior:** New `EmitStageAsync` activity scheduled at every
+  pipeline-stage transition; sink failures swallowed (UX-only emission).
+- **Replay-safe:** old histories never scheduled this activity, so the
+  guard returns false during replay and the new path is skipped.
+- **Owner:** server agent
+
+### emit-cost-activity-v1
+
+- **Workflow:** `FullOrchestrateWorkflow`, `OrchestrateComplexPathWorkflow`,
+  `VerifyAndRepairWorkflow`, `StandardOrchestrateWorkflow`,
+  `SmartImproveWorkflow`
+- **Introduced:** 2026-04-29
+- **Purpose:** Broadcast running total cost mid-session so the Studio
+  cost tile updates live instead of only at completion. Pairs with a
+  new `StageActivities.EmitCostAsync` activity. New `TotalCostUsd`
+  workflow queries were also added on the workflows that previously
+  lacked them (`OrchestrateSimplePathWorkflow`, `WebsiteAuditLoopWorkflow`,
+  `WebsiteAuditCoreWorkflow`, `DeepResearchOrchestrateWorkflow`,
+  `OrchestrateComplexPathWorkflow`, `VerifyAndRepairWorkflow`).
+- **Old behavior:** No mid-run cost emission; `WorkflowCompletionMonitor`
+  queries `TotalCostUsd` only at completion.
+- **New behavior:** Each `_totalCost +=` is followed by a guarded
+  `StageActivities.EmitCostAsync` activity invocation.
+- **Replay-safe:** old histories never scheduled this activity; gate
+  returns false during replay.
+- **Owner:** server agent
+
+### full-orchestrate-verify-and-repair-v1
+
+- **Workflow:** `FullOrchestrateWorkflow`
+- **Introduced:** 2026-04-29
+- **Purpose:** After the existing GradeCoverage-only post-execution loop
+  converges on the complex branch, hand off to the reusable
+  `VerifyAndRepairWorkflow` child so build/test/lint gates also drive
+  repair iterations (not just requirements coverage). Default gates
+  `["compile", "test", "lint"]`; `coverage` is intentionally omitted
+  (already handled by the existing coverage loop).
+- **Old behavior:** Coverage loop only.
+- **New behavior:** Coverage loop, then a child `VerifyAndRepairWorkflow`
+  invocation against the same container.
+- **Replay-safe:** old histories never executed the child workflow start
+  command; gate returns false during replay.
+- **Owner:** server agent
+
+### complex-path-worktree-v1
+
+- **Workflow:** `OrchestrateComplexPathWorkflow`
+- **Introduced:** 2026-04-29
+- **Purpose:** Create a per-task git worktree before starting each
+  `ComplexTaskWorkerWorkflow` child so parallel children stop racing on
+  the bind-mounted filesystem. Each child receives its own
+  `WorkspacePath` pointing at `/workspaces/worktrees/task/{TaskId}`.
+- **Old behavior:** All children share the parent's `WorkspacePath`.
+- **New behavior:** A `GitActivities.CreateWorktreeAsync` activity runs
+  per task before child startup; child input gets the per-task worktree
+  path.
+- **Replay-safe:** old histories never scheduled `CreateWorktree` at this
+  point; gate returns false during replay.
+- **Owner:** server agent
+
+### complex-path-worktree-merge-v1
+
+- **Workflow:** `OrchestrateComplexPathWorkflow`
+- **Introduced:** 2026-04-29
+- **Purpose:** After all children finish, merge each per-task branch
+  back into the base branch and clean up the worktree. Merge conflicts
+  emit a `merge-conflict-{taskId}` stage but DO NOT throw — the
+  `verify-and-repair` loop in the parent picks the issue up.
+- **Old behavior:** No merge step.
+- **New behavior:** `GitActivities.MergeWorktreeAsync` +
+  `GitActivities.CleanupWorktreeAsync` per task after fan-out.
+- **Replay-safe:** old histories never scheduled these activities; gate
+  returns false during replay.
+- **Owner:** server agent
+
+### complex-path-dag-ordering-v1
+
+- **Workflow:** `OrchestrateComplexPathWorkflow`
+- **Introduced:** 2026-04-29
+- **Purpose:** Respect each task's `DependsOn` list when starting child
+  workflows. Caps concurrent children at
+  `OrchestrateComplexInput.MaxConcurrentWorkers` (default 5, mirrors
+  `MagicPaiConfig.MaxConcurrentContainers`). Ready tasks are started up
+  to the cap; on any child completion the parent re-evaluates which
+  pending tasks are now startable.
+- **Old behavior:** Fan-out all children up front; ignore `DependsOn`.
+- **New behavior:** DAG-ordered fan-out with concurrency cap.
+- **Replay-safe:** old histories captured the fan-out-all schedule, so
+  the gate returns false during replay and the legacy branch reproduces
+  the original `StartChildWorkflow` ordering.
+- **Owner:** server agent
 
 ### Post-migration note (2026-04-20)
 

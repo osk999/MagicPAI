@@ -7,6 +7,7 @@ using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Contracts;
 using MagicPAI.Activities.Docker;
+using MagicPAI.Activities.Stage;
 using MagicPAI.Workflows;
 using MagicPAI.Workflows.Contracts;
 
@@ -27,6 +28,8 @@ public class StandardOrchestrateWorkflow
     [WorkflowRun]
     public async Task<StandardOrchestrateOutput> RunAsync(StandardOrchestrateInput input)
     {
+        await EmitStageAsync(input.SessionId, "spawning-container");
+
         var spawnInput = new SpawnContainerInput(
             SessionId: input.SessionId,
             WorkspacePath: input.WorkspacePath,
@@ -39,6 +42,8 @@ public class StandardOrchestrateWorkflow
         try
         {
             // Step 1 — enhance the original prompt for specificity.
+            await EmitStageAsync(input.SessionId, "enhancing-prompt");
+
             var enhanceInput = new EnhancePromptInput(
                 OriginalPrompt: input.Prompt,
                 EnhancementInstructions: "Improve specificity and add missing context.",
@@ -52,6 +57,8 @@ public class StandardOrchestrateWorkflow
                 ActivityProfiles.Medium);
 
             // Step 2 — run the enhanced prompt through the agent.
+            await EmitStageAsync(input.SessionId, "running-agent");
+
             var runInput = new RunCliAgentInput(
                 Prompt: enhance.EnhancedPrompt,
                 ContainerId: spawn.ContainerId,
@@ -66,8 +73,11 @@ public class StandardOrchestrateWorkflow
                 ActivityProfiles.Long);
 
             _totalCost += run.CostUsd;
+            await EmitCostAsync(input.SessionId, _totalCost);
 
             // Step 3 — verify + repair via the reusable child workflow.
+            await EmitStageAsync(input.SessionId, "verify-and-repair");
+
             var verifyInput = new VerifyAndRepairInput(
                 SessionId: input.SessionId,
                 ContainerId: spawn.ContainerId,
@@ -84,6 +94,8 @@ public class StandardOrchestrateWorkflow
                 new ChildWorkflowOptions { Id = $"{input.SessionId}-verify" });
 
             _totalCost += verify.RepairCostUsd;
+            await EmitCostAsync(input.SessionId, _totalCost);
+            await EmitStageAsync(input.SessionId, "done");
 
             return new StandardOrchestrateOutput(
                 Response: run.Response,
@@ -97,5 +109,34 @@ public class StandardOrchestrateWorkflow
                 (DockerActivities a) => a.DestroyAsync(destroyInput),
                 ActivityProfiles.ContainerCleanup);
         }
+    }
+
+    /// <summary>
+    /// Emit a stage transition. Gated on <c>Workflow.Patched("emit-stage-activity-v1")</c>
+    /// so old workflow histories — which never scheduled this activity — replay
+    /// deterministically.
+    /// </summary>
+    private static async Task EmitStageAsync(string sessionId, string stage)
+    {
+        if (!Workflow.Patched("emit-stage-activity-v1")) return;
+
+        var stageInput = new EmitStageInput(sessionId, stage);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitStageAsync(stageInput),
+            ActivityProfiles.Short);
+    }
+
+    /// <summary>
+    /// Broadcast running cost. Gated on <c>Workflow.Patched("emit-cost-activity-v1")</c>
+    /// for replay safety.
+    /// </summary>
+    private static async Task EmitCostAsync(string sessionId, decimal totalCost)
+    {
+        if (!Workflow.Patched("emit-cost-activity-v1")) return;
+
+        var costInput = new EmitCostInput(sessionId, totalCost);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitCostAsync(costInput),
+            ActivityProfiles.Short);
     }
 }

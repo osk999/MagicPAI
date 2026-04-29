@@ -19,6 +19,13 @@ public interface ISessionStreamSink
     /// <summary>Emit a pipeline-stage transition for UI badges / status displays.</summary>
     Task EmitStageAsync(string sessionId, string stage, CancellationToken ct);
 
+    /// <summary>
+    /// Emit a mid-run total-cost update for the Studio cost tile. Activities call
+    /// this whenever an LLM invocation completes and accumulated cost changes, so
+    /// the UI can reflect spend live rather than waiting for the completion event.
+    /// </summary>
+    Task EmitCostAsync(string sessionId, decimal totalCostUsd, CancellationToken ct = default);
+
     /// <summary>Signal that a session has completed (success or failure). Final payload in the stream.</summary>
     Task CompleteSessionAsync(string sessionId, CancellationToken ct);
 }

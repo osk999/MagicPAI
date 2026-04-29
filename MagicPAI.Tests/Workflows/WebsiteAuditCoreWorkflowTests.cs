@@ -52,6 +52,7 @@ public class WebsiteAuditCoreWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-wac-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<WebsiteAuditCoreWorkflow>());
 
         await worker.ExecuteAsync(async () =>

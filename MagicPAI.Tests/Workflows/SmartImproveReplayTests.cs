@@ -67,6 +67,7 @@ public class SmartImproveReplayTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"replay-cap-si-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SmartImproveWorkflow>()
                 .AddWorkflow<ContextGathererWorkflow>()
                 .AddWorkflow<SmartIterativeLoopWorkflow>());

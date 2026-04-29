@@ -31,6 +31,7 @@ using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Contracts;
 using MagicPAI.Activities.Docker;
 using MagicPAI.Activities.SmartImprove;
+using MagicPAI.Activities.Stage;
 using MagicPAI.Workflows;
 using MagicPAI.Workflows.Contracts;
 
@@ -144,10 +145,12 @@ public class SmartImproveWorkflow
 
                 // ── FIX BURST ────────────────────────────────────────────
                 _phase = $"burst-{burstIndex + 1}";
+                await EmitStageAsync(input.SessionId, "burst-start");
                 var burstOut = await RunBurstAsync(input, spawn.ContainerId, burstSize);
 
                 _totalIterations += burstOut.IterationsRun;
                 _totalCost += burstOut.TotalCostUsd;
+                await EmitCostAsync(input.SessionId, _totalCost);
                 // Bump _completedBursts immediately on burst-finish so the
                 // observable query reflects the burst we just completed even
                 // when the workflow exits before the schedule advances.
@@ -155,6 +158,7 @@ public class SmartImproveWorkflow
 
                 // ── VERIFY (dual-separated runs) ────────────────────────
                 _phase = $"verify-{burstIndex + 1}-run-1";
+                await EmitStageAsync(input.SessionId, "verifying");
                 var run1 = await RunVerifyAsync(input, spawn.ContainerId,
                     cleanRebuild: false, seed: 0);
 
@@ -167,6 +171,7 @@ public class SmartImproveWorkflow
                     run1.Failures, run2.Failures);
 
                 _phase = $"classify-{burstIndex + 1}";
+                await EmitStageAsync(input.SessionId, "repairing");
                 var classified = await ClassifyFailuresIfAnyAsync(
                     input, spawn.ContainerId, mergedFailuresJson, run1, run2);
 
@@ -186,6 +191,7 @@ public class SmartImproveWorkflow
                 if (bothClean)
                 {
                     _stableVerifyStreak++;
+                    await EmitStageAsync(input.SessionId, "converged");
                     if (_stableVerifyStreak >= input.RequiredCleanVerifies)
                     {
                         exitReason = "verified-clean";
@@ -195,12 +201,14 @@ public class SmartImproveWorkflow
                 else
                 {
                     _stableVerifyStreak = 0;
+                    await EmitStageAsync(input.SessionId, "escalating");
                 }
 
                 burstIndex++;
             }
 
             _phase = "completed";
+            await EmitStageAsync(input.SessionId, "done");
 
             // Surface remaining P2/P3 items so the caller knows what's left.
             var remaining = ExtractRemainingP2P3(_latestFailuresJson);
@@ -235,6 +243,7 @@ public class SmartImproveWorkflow
             new ChildWorkflowOptions { Id = $"{input.SessionId}-context" });
 
         _totalCost += context.CostUsd;
+        await EmitCostAsync(input.SessionId, _totalCost);
 
         // 0b — Generate the rubric.
         _phase = "preprocess-rubric";
@@ -255,6 +264,7 @@ public class SmartImproveWorkflow
         _projectType = rubric.ProjectType;
         _rubricJson = rubric.RubricJson;
         _totalCost += rubric.CostUsd;
+        await EmitCostAsync(input.SessionId, _totalCost);
         _latestRubricSnapshot = new DoneRubricSnapshot(
             TotalItems: rubric.RubricItemCount,
             PassedItems: 0,
@@ -278,6 +288,7 @@ public class SmartImproveWorkflow
 
         _harnessScriptPath = harness.HarnessScriptPath;
         _totalCost += harness.CostUsd;
+        await EmitCostAsync(input.SessionId, _totalCost);
     }
 
     // ── PHASE 1 helpers ─────────────────────────────────────────────────
@@ -353,6 +364,7 @@ public class SmartImproveWorkflow
             ActivityProfiles.Medium);
 
         _totalCost += result.CostUsd;
+        await EmitCostAsync(input.SessionId, _totalCost);
         return result;
     }
 
@@ -543,6 +555,35 @@ public class SmartImproveWorkflow
     /// is sufficient and trivially debuggable.
     /// </summary>
     private static int NextSeed(int burstIndex) => 31337 + (burstIndex * 17);
+
+    /// <summary>
+    /// Emit a stage transition. Gated on <c>Workflow.Patched("emit-stage-activity-v1")</c>
+    /// so old workflow histories — which never scheduled this activity — replay
+    /// deterministically.
+    /// </summary>
+    private static async Task EmitStageAsync(string sessionId, string stage)
+    {
+        if (!Workflow.Patched("emit-stage-activity-v1")) return;
+
+        var stageInput = new EmitStageInput(sessionId, stage);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitStageAsync(stageInput),
+            ActivityProfiles.Short);
+    }
+
+    /// <summary>
+    /// Broadcast running cost. Gated on <c>Workflow.Patched("emit-cost-activity-v1")</c>
+    /// for replay safety.
+    /// </summary>
+    private static async Task EmitCostAsync(string sessionId, decimal totalCost)
+    {
+        if (!Workflow.Patched("emit-cost-activity-v1")) return;
+
+        var costInput = new EmitCostInput(sessionId, totalCost);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitCostAsync(costInput),
+            ActivityProfiles.Short);
+    }
 
     private static void ValidateInput(SmartImproveInput input)
     {

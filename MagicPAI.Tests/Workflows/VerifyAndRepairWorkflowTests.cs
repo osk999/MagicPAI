@@ -50,6 +50,7 @@ public class VerifyAndRepairWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-vr-happy-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<VerifyAndRepairWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -127,6 +128,7 @@ public class VerifyAndRepairWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-vr-repair-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<VerifyAndRepairWorkflow>());
 
         await worker.ExecuteAsync(async () =>

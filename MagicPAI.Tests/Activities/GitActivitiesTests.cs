@@ -31,8 +31,23 @@ public class GitActivitiesTests
     [Fact]
     public async Task CreateWorktreeAsync_CreatesBranchAndWorktree_WhenBranchMissing()
     {
-        // Arrange — rev-parse returns non-zero (branch missing), branch + worktree add succeed.
+        // Arrange — repo already exists (skip init), rev-parse returns non-zero (branch missing),
+        // mkdir + branch + worktree add succeed.
         var docker = new Mock<IContainerManager>(MockBehavior.Strict);
+
+        // is-inside-work-tree → 0 (repo exists, skip init path)
+        docker.Setup(d => d.ExecAsync(
+                   "ctr-1",
+                   It.Is<string>(s => s.Contains("rev-parse --is-inside-work-tree")),
+                   "/repo", It.IsAny<CancellationToken>()))
+              .ReturnsAsync(new ExecResult(0, "true", ""));
+
+        // mkdir -p worktree root
+        docker.Setup(d => d.ExecAsync(
+                   "ctr-1",
+                   It.Is<string>(s => s.Contains("mkdir -p /tmp/magicpai-worktrees")),
+                   "/repo", It.IsAny<CancellationToken>()))
+              .ReturnsAsync(new ExecResult(0, "", ""));
 
         // rev-parse --verify --quiet  → non-zero (branch missing)
         docker.Setup(d => d.ExecAsync(
@@ -48,10 +63,10 @@ public class GitActivitiesTests
                    "/repo", It.IsAny<CancellationToken>()))
               .ReturnsAsync(new ExecResult(0, "", ""));
 
-        // worktree add → success
+        // worktree add → success (path now under /tmp/magicpai-worktrees/<flat-name>)
         docker.Setup(d => d.ExecAsync(
                    "ctr-1",
-                   It.Is<string>(s => s.Contains("worktree add /workspaces/worktrees/agent-a agent-a")),
+                   It.Is<string>(s => s.Contains("worktree add /tmp/magicpai-worktrees/agent-a agent-a")),
                    "/repo", It.IsAny<CancellationToken>()))
               .ReturnsAsync(new ExecResult(0, "Preparing worktree", ""));
 
@@ -67,7 +82,7 @@ public class GitActivitiesTests
         var output = await env.RunAsync(() => sut.CreateWorktreeAsync(input));
 
         // Assert
-        output.WorktreePath.Should().Be("/workspaces/worktrees/agent-a");
+        output.WorktreePath.Should().Be("/tmp/magicpai-worktrees/agent-a");
         output.CreatedFromScratch.Should().BeTrue();
 
         docker.VerifyAll();
@@ -164,7 +179,7 @@ public class GitActivitiesTests
 
         docker.Setup(d => d.ExecAsync(
                    "ctr-3",
-                   It.Is<string>(s => s.Contains("worktree remove --force /workspaces/worktrees/agent-c")),
+                   It.Is<string>(s => s.Contains("worktree remove --force /tmp/magicpai-worktrees/agent-c")),
                    "/repo", It.IsAny<CancellationToken>()))
               .ReturnsAsync(new ExecResult(0, "", ""));
 

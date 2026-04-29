@@ -73,6 +73,7 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-fo-thresh-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<FullOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>()
@@ -125,6 +126,7 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-fo-simple-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<FullOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>()
@@ -192,6 +194,7 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-fo-web-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<FullOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>()
@@ -318,6 +321,7 @@ public class FullOrchestrateWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-fo-gate-{scenarioName}-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<FullOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>()

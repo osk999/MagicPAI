@@ -8,6 +8,7 @@ using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Contracts;
 using MagicPAI.Activities.Docker;
+using MagicPAI.Activities.Stage;
 using MagicPAI.Workflows;
 using MagicPAI.Workflows.Contracts;
 
@@ -116,12 +117,14 @@ public class FullOrchestrateWorkflow
         if (canHandoff && !string.IsNullOrWhiteSpace(input.ExistingContainerId))
         {
             _pipelineStage = "container-handoff";
+            await EmitStageAsync(input.SessionId, "container-handoff");
             containerId = input.ExistingContainerId;
             ownsContainer = false;
         }
         else
         {
             _pipelineStage = "spawning-container";
+            await EmitStageAsync(input.SessionId, "spawning-container");
 
             var spawnInput = new SpawnContainerInput(
                 SessionId: input.SessionId,
@@ -140,6 +143,7 @@ public class FullOrchestrateWorkflow
         {
             // Stage 1 — website classification gate.
             _pipelineStage = "classifying-website";
+            await EmitStageAsync(input.SessionId, "classifying-website");
 
             var classifyInput = new WebsiteClassifyInput(
                 Prompt: input.Prompt,
@@ -154,6 +158,7 @@ public class FullOrchestrateWorkflow
             if (websiteClass.IsWebsiteTask)
             {
                 _pipelineStage = "website-audit";
+                await EmitStageAsync(input.SessionId, "website-audit");
 
                 var siteInput = new WebsiteAuditInput(
                     SessionId: input.SessionId,
@@ -168,7 +173,9 @@ public class FullOrchestrateWorkflow
                     new ChildWorkflowOptions { Id = $"{input.SessionId}-website" });
 
                 _totalCost += siteResult.CostUsd;
+                await EmitCostAsync(input.SessionId, _totalCost);
                 _pipelineStage = "completed";
+                await EmitStageAsync(input.SessionId, "completed");
 
                 return new FullOrchestrateOutput(
                     PipelineUsed: "website-audit",
@@ -184,6 +191,7 @@ public class FullOrchestrateWorkflow
             // reuses this workflow's container (MinIterations=3, MaxIter=20)
             // and writes research.md into the workspace as a side-effect.
             _pipelineStage = "research-prompt";
+            await EmitStageAsync(input.SessionId, "research-prompt");
 
             var researchInput = new ResearchPipelineInput(
                 SessionId: input.SessionId,
@@ -197,6 +205,7 @@ public class FullOrchestrateWorkflow
                 new ChildWorkflowOptions { Id = $"{input.SessionId}-research" });
 
             _totalCost += research.CostUsd;
+            await EmitCostAsync(input.SessionId, _totalCost);
 
             // If the research loop produced no useable rewrite (e.g. max
             // iterations fired early), fall back to the original user prompt
@@ -207,6 +216,7 @@ public class FullOrchestrateWorkflow
 
             // Stage 3 — triage to decide complexity.
             _pipelineStage = "triage";
+            await EmitStageAsync(input.SessionId, "triage");
 
             var triageInput = new TriageInput(
                 Prompt: groundedPrompt,
@@ -227,6 +237,7 @@ public class FullOrchestrateWorkflow
             if (input.RequireTriageApproval)
             {
                 _pipelineStage = "awaiting-gate-approval";
+                await EmitStageAsync(input.SessionId, "awaiting-gate-approval");
 
                 var timeoutHours = input.GateApprovalTimeoutHours > 0
                     ? input.GateApprovalTimeoutHours
@@ -249,6 +260,7 @@ public class FullOrchestrateWorkflow
                 if (_gateRejectReason != null)
                 {
                     _pipelineStage = "rejected";
+                    await EmitStageAsync(input.SessionId, "rejected");
                     return new FullOrchestrateOutput(
                         PipelineUsed: "rejected",
                         FinalResponse: $"Gate rejected: {_gateRejectReason}",
@@ -264,6 +276,7 @@ public class FullOrchestrateWorkflow
             if (triage.IsComplex)
             {
                 _pipelineStage = "complex-path";
+                await EmitStageAsync(input.SessionId, "complex-path");
 
                 var complexInput = new OrchestrateComplexInput(
                     SessionId: input.SessionId,
@@ -279,6 +292,7 @@ public class FullOrchestrateWorkflow
                     new ChildWorkflowOptions { Id = $"{input.SessionId}-complex" });
 
                 _totalCost += complex.TotalCostUsd;
+                await EmitCostAsync(input.SessionId, _totalCost);
 
                 // Post-execution requirements-coverage loop. Unlike SimpleAgent's
                 // coverage loop (which runs inside its own child workflow), the
@@ -298,6 +312,7 @@ public class FullOrchestrateWorkflow
                      _coverageIteration++)
                 {
                     _pipelineStage = $"coverage-iteration-{_coverageIteration}";
+                    await EmitStageAsync(input.SessionId, _pipelineStage);
 
                     var coverageInput = new CoverageInput(
                         OriginalPrompt: input.Prompt,
@@ -331,6 +346,39 @@ public class FullOrchestrateWorkflow
                         ActivityProfiles.Long);
 
                     _totalCost += gapRun.CostUsd;
+                    await EmitCostAsync(input.SessionId, _totalCost);
+                }
+
+                // After the coverage loop converges, hand the implementation off
+                // to the reusable VerifyAndRepair child workflow so real
+                // build/test/lint gates drive the final repair iterations
+                // instead of GradeCoverage alone. The coverage loop is a
+                // requirements-vs-output check; gates are a code-correctness
+                // check — both are needed.
+                if (Workflow.Patched("full-orchestrate-verify-and-repair-v1"))
+                {
+                    _pipelineStage = "verify-and-repair";
+                    await EmitStageAsync(input.SessionId, "verify-and-repair");
+
+                    var defaultGates = new[] { "compile", "test", "lint" };
+                    var verifyInput = new VerifyAndRepairInput(
+                        SessionId: input.SessionId,
+                        ContainerId: containerId,
+                        WorkingDirectory: input.WorkspacePath,
+                        OriginalPrompt: input.Prompt,
+                        AiAssistant: input.AiAssistant,
+                        Model: triage.RecommendedModel,
+                        ModelPower: triage.RecommendedModelPower,
+                        Gates: input.SelectedGates ?? defaultGates,
+                        WorkerOutput: $"Completed {complex.TaskCount} tasks",
+                        MaxRepairAttempts: input.MaxRepairAttempts);
+
+                    var verifyResult = await Workflow.ExecuteChildWorkflowAsync(
+                        (VerifyAndRepairWorkflow w) => w.RunAsync(verifyInput),
+                        new ChildWorkflowOptions { Id = $"{input.SessionId}-verify" });
+
+                    _totalCost += verifyResult.RepairCostUsd;
+                    await EmitCostAsync(input.SessionId, _totalCost);
                 }
 
                 result = new FullOrchestrateOutput(
@@ -341,6 +389,7 @@ public class FullOrchestrateWorkflow
             else
             {
                 _pipelineStage = "simple-path";
+                await EmitStageAsync(input.SessionId, "simple-path");
 
                 // Pass this workflow's container id down so SimpleAgent reuses
                 // it instead of spawning a second container (which would
@@ -360,6 +409,7 @@ public class FullOrchestrateWorkflow
                     new ChildWorkflowOptions { Id = $"{input.SessionId}-simple" });
 
                 _totalCost += simple.TotalCostUsd;
+                await EmitCostAsync(input.SessionId, _totalCost);
                 result = new FullOrchestrateOutput(
                     PipelineUsed: "simple",
                     FinalResponse: simple.Response,
@@ -367,6 +417,7 @@ public class FullOrchestrateWorkflow
             }
 
             _pipelineStage = "completed";
+            await EmitStageAsync(input.SessionId, "completed");
             return result;
         }
         finally
@@ -379,6 +430,7 @@ public class FullOrchestrateWorkflow
             if (ownsContainer)
             {
                 _pipelineStage = "cleanup";
+                await EmitStageAsync(input.SessionId, "cleanup");
                 var destroyInput = new DestroyInput(containerId);
                 await Workflow.ExecuteActivityAsync(
                     (DockerActivities a) => a.DestroyAsync(destroyInput),
@@ -387,7 +439,39 @@ public class FullOrchestrateWorkflow
             else
             {
                 _pipelineStage = "completed-handoff";
+                await EmitStageAsync(input.SessionId, "completed-handoff");
             }
         }
+    }
+
+    /// <summary>
+    /// Emit a stage transition through the side-channel SignalR sink so the
+    /// Studio chip moves through real stages mid-run. Gated on
+    /// <c>Workflow.Patched("emit-stage-activity-v1")</c> so old workflow
+    /// histories — which never scheduled this activity — replay deterministically.
+    /// </summary>
+    private static async Task EmitStageAsync(string sessionId, string stage)
+    {
+        if (!Workflow.Patched("emit-stage-activity-v1")) return;
+
+        var stageInput = new EmitStageInput(sessionId, stage);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitStageAsync(stageInput),
+            ActivityProfiles.Short);
+    }
+
+    /// <summary>
+    /// Broadcast running total cost mid-run so the Studio cost tile updates
+    /// live instead of only at completion. Gated on
+    /// <c>Workflow.Patched("emit-cost-activity-v1")</c> for replay safety.
+    /// </summary>
+    private static async Task EmitCostAsync(string sessionId, decimal totalCost)
+    {
+        if (!Workflow.Patched("emit-cost-activity-v1")) return;
+
+        var costInput = new EmitCostInput(sessionId, totalCost);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitCostAsync(costInput),
+            ActivityProfiles.Short);
     }
 }

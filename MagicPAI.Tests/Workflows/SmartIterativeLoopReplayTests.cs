@@ -114,6 +114,7 @@ public class SmartIterativeLoopReplayTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"replay-cap-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SmartIterativeLoopWorkflow>());
 
         var input = new SmartIterativeLoopInput(
@@ -160,6 +161,7 @@ public class SmartIterativeLoopReplayTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"replay-cap-np-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SmartIterativeLoopWorkflow>());
 
         var input = new SmartIterativeLoopInput(

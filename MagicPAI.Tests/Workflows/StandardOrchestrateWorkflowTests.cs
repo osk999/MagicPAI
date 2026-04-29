@@ -44,6 +44,7 @@ public class StandardOrchestrateWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-std-orch-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<StandardOrchestrateWorkflow>()
                 .AddWorkflow<VerifyAndRepairWorkflow>());
 

@@ -376,6 +376,7 @@ public class SmartImproveWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-si-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SmartImproveWorkflow>()
                 .AddWorkflow<ContextGathererWorkflow>()
                 .AddWorkflow<SmartIterativeLoopWorkflow>());
@@ -472,5 +473,9 @@ public class SmartImproveWorkflowTests : IAsyncLifetime
             => Task.FromResult(GitResponder(i));
         [Activity] public Task<ResearchPromptOutput> ResearchPromptAsync(ResearchPromptInput i)
             => Task.FromResult(ResearchResponder(i));
+
+        // EmitStageAsync / EmitCostAsync are registered by the shared
+        // StageActivityStubs class — see RunWorkflow / EnsureFixtureAsync
+        // for the second .AddAllActivities call.
     }
 }

@@ -6,6 +6,7 @@ using Temporalio.Workflows;
 using MagicPAI.Activities.AI;
 using MagicPAI.Activities.Contracts;
 using MagicPAI.Activities.Docker;
+using MagicPAI.Activities.Stage;
 using MagicPAI.Activities.Verification;
 using MagicPAI.Workflows;
 using MagicPAI.Workflows.Contracts;
@@ -32,6 +33,14 @@ public class VerifyAndRepairWorkflow
 
     [WorkflowQuery]
     public int RepairAttempts => _repairAttempts;
+
+    /// <summary>
+    /// Running cost of repair iterations. Mirrors <see cref="RepairAttempts"/>
+    /// for the cost dimension so Studio's cost tile can reflect this child
+    /// workflow's spend live (Phase-1 gap: query was missing).
+    /// </summary>
+    [WorkflowQuery]
+    public decimal TotalCostUsd => _repairCostUsd;
 
     [WorkflowRun]
     public async Task<VerifyAndRepairOutput> RunAsync(VerifyAndRepairInput input)
@@ -64,6 +73,8 @@ public class VerifyAndRepairWorkflow
 
             while (true)
             {
+                await EmitStageAsync(input.SessionId, "gates-running");
+
                 // Step 1 — run the gates against the current output.
                 var verifyInput = new VerifyInput(
                     ContainerId: containerId,
@@ -78,6 +89,8 @@ public class VerifyAndRepairWorkflow
 
                 if (verify.AllPassed)
                 {
+                    await EmitStageAsync(input.SessionId, "gates-passing");
+                    await EmitStageAsync(input.SessionId, "done");
                     return new VerifyAndRepairOutput(
                         Success: true,
                         RepairAttempts: _repairAttempts,
@@ -87,6 +100,7 @@ public class VerifyAndRepairWorkflow
 
                 if (_repairAttempts >= input.MaxRepairAttempts)
                 {
+                    await EmitStageAsync(input.SessionId, "done");
                     return new VerifyAndRepairOutput(
                         Success: false,
                         RepairAttempts: _repairAttempts,
@@ -95,6 +109,7 @@ public class VerifyAndRepairWorkflow
                 }
 
                 _repairAttempts++;
+                await EmitStageAsync(input.SessionId, "repairing");
 
                 // Step 2 — generate a repair prompt from the failed gates.
                 var repairInput = new RepairInput(
@@ -111,6 +126,7 @@ public class VerifyAndRepairWorkflow
 
                 if (!repairPrompt.ShouldAttemptRepair)
                 {
+                    await EmitStageAsync(input.SessionId, "done");
                     return new VerifyAndRepairOutput(
                         Success: false,
                         RepairAttempts: _repairAttempts,
@@ -133,6 +149,7 @@ public class VerifyAndRepairWorkflow
                     ActivityProfiles.Long);
 
                 _repairCostUsd += rerun.CostUsd;
+                await EmitCostAsync(input.SessionId, _repairCostUsd);
                 currentOutput = rerun.Response;
             }
         }
@@ -146,5 +163,34 @@ public class VerifyAndRepairWorkflow
                     ActivityProfiles.ContainerCleanup);
             }
         }
+    }
+
+    /// <summary>
+    /// Emit a stage transition. Gated on <c>Workflow.Patched("emit-stage-activity-v1")</c>
+    /// so old workflow histories — which never scheduled this activity — replay
+    /// deterministically.
+    /// </summary>
+    private static async Task EmitStageAsync(string sessionId, string stage)
+    {
+        if (!Workflow.Patched("emit-stage-activity-v1")) return;
+
+        var stageInput = new EmitStageInput(sessionId, stage);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitStageAsync(stageInput),
+            ActivityProfiles.Short);
+    }
+
+    /// <summary>
+    /// Broadcast running cost. Gated on <c>Workflow.Patched("emit-cost-activity-v1")</c>
+    /// for replay safety.
+    /// </summary>
+    private static async Task EmitCostAsync(string sessionId, decimal totalCost)
+    {
+        if (!Workflow.Patched("emit-cost-activity-v1")) return;
+
+        var costInput = new EmitCostInput(sessionId, totalCost);
+        await Workflow.ExecuteActivityAsync(
+            (StageActivities a) => a.EmitCostAsync(costInput),
+            ActivityProfiles.Short);
     }
 }

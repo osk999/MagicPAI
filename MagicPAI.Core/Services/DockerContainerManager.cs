@@ -333,6 +333,61 @@ public class DockerContainerManager : IContainerManager, IDisposable
     public string? GetGuiUrl(string containerId) =>
         _guiUrls.TryGetValue(containerId, out var url) ? url : null;
 
+    public async Task<IReadOnlyList<LabeledContainer>> ListContainersByLabelAsync(
+        string labelKey, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(labelKey))
+            return [];
+
+        // Use Docker.DotNet directly here — it's the cleanest way to get back
+        // structured label dictionaries plus created-at timestamps in a single
+        // round-trip. Spawn/destroy still go via the docker CLI to preserve
+        // the rest of the working pipeline.
+        var parameters = new ContainersListParameters
+        {
+            All = true,
+            Filters = new Dictionary<string, IDictionary<string, bool>>
+            {
+                ["label"] = new Dictionary<string, bool> { [labelKey] = true }
+            }
+        };
+
+        IList<ContainerListResponse> response;
+        try
+        {
+            response = await _docker.Containers.ListContainersAsync(parameters, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Best-effort: a Docker API hiccup must NOT take down the GC loop.
+            // The caller logs and skips this scan iteration.
+            Trace.WriteLine($"[MagicPAI] ListContainersByLabelAsync failed: {ex.Message}");
+            return [];
+        }
+
+        var results = new List<LabeledContainer>(response.Count);
+        foreach (var c in response)
+        {
+            var labels = (IReadOnlyDictionary<string, string>)
+                (c.Labels is null
+                    ? new Dictionary<string, string>()
+                    : new Dictionary<string, string>(c.Labels, StringComparer.Ordinal));
+
+            // Docker.DotNet exposes Created as DateTime (UTC) in recent versions.
+            // Treat anything non-UTC as UTC defensively.
+            var createdUtc = c.Created.Kind == DateTimeKind.Utc
+                ? c.Created
+                : DateTime.SpecifyKind(c.Created, DateTimeKind.Utc);
+
+            // ContainerListResponse.State examples: "running", "exited", "created", "paused".
+            var isRunning = string.Equals(c.State, "running", StringComparison.OrdinalIgnoreCase);
+
+            results.Add(new LabeledContainer(c.ID, labels, createdUtc, isRunning));
+        }
+
+        return results;
+    }
+
     public async Task StreamLogsAsync(string containerId, Action<string> onLog, CancellationToken ct)
     {
         var psi = CreateDockerCliStartInfo();
@@ -635,6 +690,18 @@ public class DockerContainerManager : IContainerManager, IDisposable
         {
             psi.ArgumentList.Add("-e");
             psi.ArgumentList.Add(envVar);
+        }
+
+        // Attach session/workflow labels so the GC can identify MagicPAI-owned
+        // containers across server restarts even when the in-memory tracker
+        // is gone. See WorkerPodGarbageCollector fallback sweep.
+        foreach (var label in config.Labels)
+        {
+            if (string.IsNullOrWhiteSpace(label.Key))
+                continue;
+
+            psi.ArgumentList.Add("--label");
+            psi.ArgumentList.Add($"{label.Key}={label.Value ?? string.Empty}");
         }
 
         if (config.EnableGui && config.GuiPort.HasValue)

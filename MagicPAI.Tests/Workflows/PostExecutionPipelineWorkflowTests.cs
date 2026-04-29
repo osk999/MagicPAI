@@ -40,6 +40,7 @@ public class PostExecutionPipelineWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-postexec-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<PostExecutionPipelineWorkflow>());
 
         await worker.ExecuteAsync(async () =>

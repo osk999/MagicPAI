@@ -40,7 +40,15 @@ public record FullOrchestrateInput(
     // multi-burst run so filesystem deltas + state persist across
     // iterations). When null, the original spawn-and-destroy lifecycle
     // applies. Mirrors SimpleAgentInput.ExistingContainerId.
-    string? ExistingContainerId = null);
+    string? ExistingContainerId = null,
+    // Max iterations for the post-coverage VerifyAndRepair child workflow
+    // (gated by Workflow.Patched("full-orchestrate-verify-and-repair-v1")).
+    // Default mirrors MagicPaiConfig.MaxRepairAttempts in appsettings (5).
+    int MaxRepairAttempts = 5,
+    // Verification gates to run in the post-coverage VerifyAndRepair child
+    // workflow. Null = use ["compile", "test", "lint"] which excludes
+    // "coverage" since the FullOrchestrate coverage loop already ran.
+    IReadOnlyList<string>? SelectedGates = null);
 
 public record FullOrchestrateOutput(
     string PipelineUsed,            // "website-audit" | "simple" | "complex"

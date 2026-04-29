@@ -47,6 +47,7 @@ public class SimpleAgentWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-simple-happy-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SimpleAgentWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -119,6 +120,7 @@ public class SimpleAgentWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-simple-cov-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SimpleAgentWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -204,6 +206,7 @@ public class SimpleAgentWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-simple-existing-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SimpleAgentWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -263,6 +266,7 @@ public class SimpleAgentWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-simple-fail-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SimpleAgentWorkflow>());
 
         await worker.ExecuteAsync(async () =>

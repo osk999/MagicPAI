@@ -73,6 +73,7 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-dro-empty-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<DeepResearchOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>()
@@ -171,6 +172,7 @@ public class DeepResearchOrchestrateWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-dro-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<DeepResearchOrchestrateWorkflow>()
                 .AddWorkflow<ResearchPipelineWorkflow>()
                 .AddWorkflow<IterativeLoopWorkflow>()

@@ -17,6 +17,16 @@ namespace MagicPAI.Server.Workflows;
 [Workflow]
 public class OrchestrateSimplePathWorkflow
 {
+    private decimal _totalCost;
+
+    /// <summary>
+    /// Running total cost surfaced as a query so Studio's cost tile can poll
+    /// during the run (Phase-1 gap: query was missing, sums into the result
+    /// only at completion).
+    /// </summary>
+    [WorkflowQuery]
+    public decimal TotalCostUsd => _totalCost;
+
     [WorkflowRun]
     public async Task<OrchestrateSimpleOutput> RunAsync(OrchestrateSimpleInput input)
     {
@@ -45,9 +55,11 @@ public class OrchestrateSimplePathWorkflow
             (SimpleAgentWorkflow w) => w.RunAsync(childInput),
             new ChildWorkflowOptions { Id = $"{input.SessionId}-simple-agent" });
 
+        _totalCost += child.TotalCostUsd;
+
         return new OrchestrateSimpleOutput(
             Response: child.Response,
             VerificationPassed: child.VerificationPassed,
-            TotalCostUsd: child.TotalCostUsd);
+            TotalCostUsd: _totalCost);
     }
 }

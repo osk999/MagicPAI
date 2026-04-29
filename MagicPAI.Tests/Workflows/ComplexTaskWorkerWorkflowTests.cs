@@ -44,6 +44,7 @@ public class ComplexTaskWorkerWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-ctw-happy-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ComplexTaskWorkerWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -111,6 +112,7 @@ public class ComplexTaskWorkerWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-ctw-retry-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ComplexTaskWorkerWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -177,6 +179,7 @@ public class ComplexTaskWorkerWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-ctw-manyretry-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ComplexTaskWorkerWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -228,6 +231,7 @@ public class ComplexTaskWorkerWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-ctw-fail-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ComplexTaskWorkerWorkflow>());
 
         await worker.ExecuteAsync(async () =>
@@ -301,6 +305,7 @@ public class ComplexTaskWorkerWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-ctw-repair-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<ComplexTaskWorkerWorkflow>());
 
         await worker.ExecuteAsync(async () =>

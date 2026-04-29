@@ -54,6 +54,7 @@ public class PromptEnhancerWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-pe-happy-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<PromptEnhancerWorkflow>());
 
         await worker.ExecuteAsync(async () =>

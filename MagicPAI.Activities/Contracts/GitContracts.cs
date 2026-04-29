@@ -30,3 +30,12 @@ public record CleanupWorktreeInput(
     string BranchName,
     string RepoDirectory,
     bool DeleteBranch = false);
+
+public record CommitWorktreeInput(
+    string ContainerId,
+    string WorktreePath,
+    string Message);
+
+public record CommitWorktreeOutput(
+    bool DidCommit,
+    string? CommitSha);

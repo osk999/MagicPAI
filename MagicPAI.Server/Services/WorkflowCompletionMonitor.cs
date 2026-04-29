@@ -74,7 +74,8 @@ public class WorkflowCompletionMonitor : BackgroundService
                 switch (desc.Status)
                 {
                     case WorkflowExecutionStatus.Completed:
-                        await EmitCompletedAsync(sessionId, workflowType, desc.CloseTime.Value);
+                        var totalCostUsd = await TryQueryTotalCostAsync(sessionId);
+                        await EmitCompletedAsync(sessionId, workflowType, desc.CloseTime.Value, totalCostUsd);
                         _tracker.UpdateState(sessionId, "completed");
                         break;
 
@@ -105,13 +106,37 @@ public class WorkflowCompletionMonitor : BackgroundService
         }
     }
 
-    private Task EmitCompletedAsync(string sessionId, string workflowType, DateTime closeTime) =>
+    private Task EmitCompletedAsync(string sessionId, string workflowType, DateTime closeTime, decimal totalCostUsd) =>
         _hub.Clients.Group(sessionId).SessionCompleted(new SessionCompletedPayload(
             SessionId: sessionId,
             WorkflowType: workflowType,
             CompletedAt: closeTime,
-            TotalCostUsd: 0m,    // Hydrated from cost_tracking in Phase 3
+            TotalCostUsd: totalCostUsd,
             Result: null));
+
+    /// <summary>
+    /// Best-effort query for the running total cost from a closed workflow. Most
+    /// orchestration workflows (FullOrchestrate, StandardOrchestrate, SimpleAgent,
+    /// SmartImprove, IterativeLoop, SmartIterativeLoop) expose a
+    /// <c>TotalCostUsd</c> <c>[WorkflowQuery]</c>. Workflows that do not (e.g.
+    /// PromptEnhancer, OrchestrateComplexPath, OrchestrateSimplePath, WebsiteAudit*)
+    /// will fail the query — log at debug and return 0.
+    /// </summary>
+    private async Task<decimal> TryQueryTotalCostAsync(string sessionId)
+    {
+        try
+        {
+            return await _temporal.GetWorkflowHandle(sessionId)
+                .QueryAsync<decimal>("TotalCostUsd", Array.Empty<object>());
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex,
+                "TotalCostUsd query unavailable for {SessionId}; defaulting cost to $0",
+                sessionId);
+            return 0m;
+        }
+    }
 
     private Task EmitFailedAsync(string sessionId, string reason) =>
         _hub.Clients.Group(sessionId).SessionFailed(new SessionFailedPayload(

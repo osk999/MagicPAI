@@ -319,6 +319,17 @@ public class KubernetesContainerManager : IContainerManager, IDisposable
     public Task StreamLogsAsync(string containerId, Action<string> onLog, CancellationToken ct) =>
         Task.CompletedTask;
 
+    /// <summary>
+    /// Kubernetes pods are listed via label selector through the K8s API rather
+    /// than the Docker engine. The orphan-by-label sweep is currently
+    /// Docker-only; for K8s the existing pod template + namespace scoping plus
+    /// owner references handle reaping. Returning an empty list keeps the GC's
+    /// fallback inert on K8s.
+    /// </summary>
+    public Task<IReadOnlyList<LabeledContainer>> ListContainersByLabelAsync(
+        string labelKey, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<LabeledContainer>>([]);
+
     public void Dispose()
     {
         _client.Dispose();

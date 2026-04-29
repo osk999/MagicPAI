@@ -36,6 +36,13 @@ public class WebsiteAuditLoopWorkflow
     public int SectionsDone => _sectionsDone;
 
     /// <summary>
+    /// Running total cost across all per-section audit children. Phase-1 gap:
+    /// the loop summed only at completion, leaving the live cost tile at zero.
+    /// </summary>
+    [WorkflowQuery]
+    public decimal TotalCostUsd => _results.Sum(r => r.CostUsd);
+
+    /// <summary>
     /// Sections still pending given a caller-provided total. Total is a parameter
     /// because the loop runs against <see cref="WebsiteAuditInput.SectionIds"/>
     /// (or the default set when null), so callers already know the total.

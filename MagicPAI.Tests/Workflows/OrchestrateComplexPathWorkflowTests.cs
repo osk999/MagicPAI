@@ -76,6 +76,7 @@ public class OrchestrateComplexPathWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-orch-complex-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<OrchestrateComplexPathWorkflow>()
                 .AddWorkflow<ComplexTaskWorkerWorkflow>());
 
@@ -198,5 +199,24 @@ public class OrchestrateComplexPathWorkflowTests : IAsyncLifetime
             Interlocked.Increment(ref _runGatesCalls);
             return Task.FromResult(VerifyResponder(i));
         }
+
+        // Git worktree activity stubs — the orchestrator now schedules
+        // CreateWorktree / MergeWorktree / CleanupWorktree under the
+        // "complex-path-worktree-v1" / "complex-path-worktree-merge-v1"
+        // patches. No-ops here; integration tests for the activities
+        // themselves live in MagicPAI.Tests.Integration.
+        [Activity]
+        public Task<CreateWorktreeOutput> CreateWorktreeAsync(CreateWorktreeInput i) =>
+            Task.FromResult(new CreateWorktreeOutput(
+                WorktreePath: $"/workspaces/worktrees/{i.BranchName}",
+                CreatedFromScratch: true));
+
+        [Activity]
+        public Task<MergeWorktreeOutput> MergeWorktreeAsync(MergeWorktreeInput i) =>
+            Task.FromResult(new MergeWorktreeOutput(
+                Merged: true, ConflictReport: null, MergeCommitSha: "stub-sha"));
+
+        [Activity]
+        public Task CleanupWorktreeAsync(CleanupWorktreeInput i) => Task.CompletedTask;
     }
 }

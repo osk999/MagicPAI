@@ -40,6 +40,24 @@ public class SignalRSessionStreamSink : ISessionStreamSink
     public Task EmitStageAsync(string sessionId, string stage, CancellationToken ct) =>
         _hub.Clients.Group(sessionId).SendAsync(nameof(ISessionHubClient.StageChanged), stage, ct);
 
+    public Task EmitCostAsync(string sessionId, decimal totalCostUsd, CancellationToken ct = default)
+    {
+        // Studio's CostDisplay reads CostEntry.TotalUsd. Increment / per-call fields
+        // are not tracked by the workflow today (only the running total accumulates
+        // via ClaudeRunner.ExtractCost), so they are surfaced as zero. The mid-run
+        // tile will reflect the correct cumulative spend after each LLM call.
+        var entry = new CostEntry(
+            SessionId: sessionId,
+            IncrementUsd: 0m,
+            TotalUsd: totalCostUsd,
+            Agent: "",
+            Model: "",
+            InputTokens: 0,
+            OutputTokens: 0);
+        return _hub.Clients.Group(sessionId).SendAsync(
+            nameof(ISessionHubClient.CostUpdate), entry, ct);
+    }
+
     public Task CompleteSessionAsync(string sessionId, CancellationToken ct)
     {
         var payload = new SessionCompletedPayload(

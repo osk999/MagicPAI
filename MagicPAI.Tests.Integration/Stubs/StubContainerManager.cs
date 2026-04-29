@@ -94,6 +94,15 @@ public class StubContainerManager : IContainerManager
     public string? GetGuiUrl(string containerId) =>
         _guiUrls.TryGetValue(containerId, out var guiUrl) ? guiUrl : null;
 
+    /// <summary>
+    /// Tests don't simulate real Docker label storage; default to no orphans.
+    /// Tests that need to exercise the GC fallback should mock IContainerManager
+    /// directly.
+    /// </summary>
+    public Task<IReadOnlyList<LabeledContainer>> ListContainersByLabelAsync(
+        string labelKey, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<LabeledContainer>>([]);
+
     private async Task<ExecResult> RunStreamingPlanAsync(
         StubStreamingPlan? plan,
         Action<string> onOutput,

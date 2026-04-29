@@ -272,6 +272,7 @@ public class SmartIterativeLoopWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-sil-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SmartIterativeLoopWorkflow>());
 
         var result = await worker.ExecuteAsync(async () =>
@@ -354,6 +355,7 @@ public class SmartIterativeLoopWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-sil-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 .AddWorkflow<SmartIterativeLoopWorkflow>());
 
         return await worker.ExecuteAsync(async () =>

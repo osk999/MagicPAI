@@ -64,10 +64,32 @@ public class GitActivities
                 errorType: "ConfigError", nonRetryable: true);
 
         var ct = ActivityExecutionContext.Current.CancellationToken;
-        var worktreePath = $"/workspaces/worktrees/{input.BranchName}";
+        var safeName = input.BranchName.Replace('/', '_').Replace('\\', '_');
+        var worktreeRoot = "/tmp/magicpai-worktrees";
+        var worktreePath = $"{worktreeRoot}/{safeName}";
+        await _docker.ExecAsync(input.ContainerId, $"mkdir -p {worktreeRoot}", input.RepoDirectory, ct);
 
-        // Check if branch exists. `rev-parse --verify --quiet` returns 0 when the
-        // ref resolves, and a non-zero exit code otherwise (with no output).
+        var isRepo = await _docker.ExecAsync(
+            input.ContainerId,
+            $"git -C {input.RepoDirectory} rev-parse --is-inside-work-tree",
+            input.RepoDirectory, ct);
+        if (isRepo.ExitCode != 0)
+        {
+            _log.LogInformation("Initializing git repo at {Repo} (no .git found)", input.RepoDirectory);
+            var initBranch = string.IsNullOrWhiteSpace(input.BaseBranch) ? "main" : input.BaseBranch;
+            var init = await _docker.ExecAsync(
+                input.ContainerId,
+                $"git -C {input.RepoDirectory} init -q -b {initBranch}",
+                input.RepoDirectory, ct);
+            if (init.ExitCode != 0)
+                throw new ApplicationFailureException(
+                    $"Failed to git init {input.RepoDirectory}: {init.Error}",
+                    errorType: "GitError", nonRetryable: false);
+            await _docker.ExecAsync(input.ContainerId,
+                $"git -C {input.RepoDirectory} -c user.email=magicpai@local -c user.name=MagicPAI commit --allow-empty -q -m \"magicpai: initial commit\"",
+                input.RepoDirectory, ct);
+        }
+
         var checkBranch = await _docker.ExecAsync(
             input.ContainerId,
             $"git -C {input.RepoDirectory} rev-parse --verify --quiet {input.BranchName}",
@@ -102,6 +124,58 @@ public class GitActivities
         return new CreateWorktreeOutput(
             WorktreePath: worktreePath,
             CreatedFromScratch: !branchExists);
+    }
+
+    /// <summary>
+    /// Stage and commit any uncommitted changes inside the worktree for
+    /// <paramref name="input.BranchName"/>. No-op if there are no changes.
+    /// Without this, work the agent wrote in the worktree never reaches the
+    /// branch tip and is silently lost when the worktree is removed.
+    /// </summary>
+    [Activity]
+    public async Task<CommitWorktreeOutput> CommitWorktreeAsync(CommitWorktreeInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.ContainerId))
+            throw new ApplicationFailureException(
+                "CommitWorktree requires a ContainerId.",
+                errorType: "ConfigError", nonRetryable: true);
+        if (string.IsNullOrWhiteSpace(input.WorktreePath))
+            throw new ApplicationFailureException(
+                "CommitWorktree requires a non-empty WorktreePath.",
+                errorType: "ConfigError", nonRetryable: true);
+
+        var ct = ActivityExecutionContext.Current.CancellationToken;
+        var worktreePath = input.WorktreePath;
+
+        await _docker.ExecAsync(input.ContainerId,
+            $"git -C {worktreePath} add -A",
+            worktreePath, ct);
+
+        var diff = await _docker.ExecAsync(input.ContainerId,
+            $"git -C {worktreePath} diff --cached --quiet",
+            worktreePath, ct);
+        if (diff.ExitCode == 0)
+        {
+            _log.LogInformation("CommitWorktree {Path}: no changes to commit", worktreePath);
+            return new CommitWorktreeOutput(DidCommit: false, CommitSha: null);
+        }
+
+        var safeMessage = input.Message.Replace("'", "'\\''");
+        var commit = await _docker.ExecAsync(input.ContainerId,
+            $"git -C {worktreePath} -c user.email=magicpai@local -c user.name=MagicPAI commit -m '{safeMessage}'",
+            worktreePath, ct);
+        if (commit.ExitCode != 0)
+            throw new ApplicationFailureException(
+                $"Failed to commit in worktree {worktreePath}: {commit.Error}",
+                errorType: "GitError", nonRetryable: false);
+
+        var sha = await _docker.ExecAsync(input.ContainerId,
+            $"git -C {worktreePath} rev-parse HEAD",
+            worktreePath, ct);
+
+        _log.LogInformation("CommitWorktree {Path} committed as {Sha}",
+            worktreePath, sha.Output?.Trim());
+        return new CommitWorktreeOutput(DidCommit: true, CommitSha: sha.Output?.Trim());
     }
 
     /// <summary>
@@ -186,7 +260,8 @@ public class GitActivities
                 errorType: "ConfigError", nonRetryable: true);
 
         var ct = ActivityExecutionContext.Current.CancellationToken;
-        var worktreePath = $"/workspaces/worktrees/{input.BranchName}";
+        var safeName = input.BranchName.Replace('/', '_').Replace('\\', '_');
+        var worktreePath = $"/tmp/magicpai-worktrees/{safeName}";
 
         // Best-effort cleanup: if the worktree is already gone, log and proceed.
         var removeResult = await _docker.ExecAsync(

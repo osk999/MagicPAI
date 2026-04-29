@@ -27,9 +27,17 @@ namespace MagicPAI.Server.Workflows;
 public class DeepResearchOrchestrateWorkflow
 {
     private string _stage = "initializing";
+    private decimal _totalCost;
 
     [WorkflowQuery]
     public string PipelineStage => _stage;
+
+    /// <summary>
+    /// Running total cost across the research and orchestration phases.
+    /// Phase-1 gap: query missing.
+    /// </summary>
+    [WorkflowQuery]
+    public decimal TotalCostUsd => _totalCost;
 
     [WorkflowRun]
     public async Task<DeepResearchOrchestrateOutput> RunAsync(DeepResearchOrchestrateInput input)
@@ -60,6 +68,8 @@ public class DeepResearchOrchestrateWorkflow
                 (ResearchPipelineWorkflow w) => w.RunAsync(researchInput),
                 new ChildWorkflowOptions { Id = $"{input.SessionId}-research" });
 
+            _totalCost += research.CostUsd;
+
             _stage = "standard-orchestrate";
 
             // Fallback to the original prompt when research finds nothing to
@@ -85,12 +95,14 @@ public class DeepResearchOrchestrateWorkflow
                 (StandardOrchestrateWorkflow w) => w.RunAsync(orchestrateInput),
                 new ChildWorkflowOptions { Id = $"{input.SessionId}-orchestrate" });
 
+            _totalCost += orchestrate.TotalCostUsd;
+
             _stage = "completed";
             return new DeepResearchOrchestrateOutput(
                 Response: orchestrate.Response,
                 VerificationPassed: orchestrate.VerificationPassed,
                 ResearchSummary: research.ResearchContext,
-                TotalCostUsd: orchestrate.TotalCostUsd);
+                TotalCostUsd: _totalCost);
         }
         finally
         {

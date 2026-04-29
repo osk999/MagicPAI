@@ -61,6 +61,7 @@ public class PromptGroundingWorkflowTests : IAsyncLifetime
             _env.Client,
             new TemporalWorkerOptions($"test-pg-happy-{Guid.NewGuid():N}")
                 .AddAllActivities(stubs)
+                .AddAllActivities(new StageActivityStubs())
                 // Register BOTH the parent and child workflow types — the test
                 // environment is the only worker running, so the child workflow
                 // invocation needs its implementation here as well.
