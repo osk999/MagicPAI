@@ -85,6 +85,13 @@ public class GitActivities
                 throw new ApplicationFailureException(
                     $"Failed to git init {input.RepoDirectory}: {init.Error}",
                     errorType: "GitError", nonRetryable: false);
+            // Stage any existing brownfield files BEFORE the initial commit so the main
+            // branch reflects the on-disk state. Without this, brownfield files look
+            // like uncommitted local changes vs an empty main, and a later
+            // `checkout main` step in MergeWorktreeAsync refuses to clobber them.
+            await _docker.ExecAsync(input.ContainerId,
+                $"git -C {input.RepoDirectory} add -A",
+                input.RepoDirectory, ct);
             await _docker.ExecAsync(input.ContainerId,
                 $"git -C {input.RepoDirectory} -c user.email=magicpai@local -c user.name=MagicPAI commit --allow-empty -q -m \"magicpai: initial commit\"",
                 input.RepoDirectory, ct);
@@ -194,9 +201,15 @@ public class GitActivities
 
         var ct = ActivityExecutionContext.Current.CancellationToken;
 
+        // Force checkout: agents in their worktrees can still write to the base
+        // repo via absolute paths (worktrees do NOT sandbox FS access). On
+        // brownfield projects this leaves the base working tree dirty by the
+        // time we get here. The real per-task changes are already safely
+        // committed in their task branches, so discarding the base working
+        // tree is correct — it gets re-populated by the merge.
         var checkout = await _docker.ExecAsync(
             input.ContainerId,
-            $"git -C {input.RepoDirectory} checkout {input.TargetBranch}",
+            $"git -C {input.RepoDirectory} checkout --force {input.TargetBranch}",
             input.RepoDirectory, ct);
 
         if (checkout.ExitCode != 0)

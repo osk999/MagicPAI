@@ -462,7 +462,20 @@ public class DockerContainerManager : IContainerManager, IDisposable
 
     public static IReadOnlyList<string> BuildCredentialBinds(string userProfile)
     {
+        // When the server runs inside a container, the path emitted to the
+        // worker `docker run -v` must be a HOST path (the daemon resolves it
+        // on the host), but `File.Exists` must probe the path *visible to the
+        // server*. MAGICPAI_HOST_USERPROFILE lets ops mount the host's
+        // ~/.claude / ~/.codex into the server at `userProfile` while emitting
+        // the host-side path to worker binds.
+        var hostUserProfile = Environment.GetEnvironmentVariable("MAGICPAI_HOST_USERPROFILE");
+        return BuildCredentialBinds(userProfile, hostUserProfile);
+    }
+
+    public static IReadOnlyList<string> BuildCredentialBinds(string userProfile, string? hostUserProfile)
+    {
         var binds = new List<string>();
+        var hostRoot = string.IsNullOrWhiteSpace(hostUserProfile) ? userProfile : hostUserProfile;
 
         AddFileMount(".claude.json", "/tmp/magicpai-host-claude.json");
         AddFileMount(Path.Combine(".claude", ".credentials.json"), "/tmp/magicpai-host-claude-credentials.json");
@@ -473,11 +486,14 @@ public class DockerContainerManager : IContainerManager, IDisposable
 
         void AddFileMount(string sourceName, string target)
         {
-            var source = Path.Combine(userProfile, sourceName);
-            if (!File.Exists(source))
+            var probe = Path.Combine(userProfile, sourceName);
+            if (!File.Exists(probe))
                 return;
 
-            binds.Add($"{source}:{target}:ro");
+            // Host paths may contain backslashes on Windows; docker -v wants
+            // forward slashes for the source on Windows daemons.
+            var hostSource = Path.Combine(hostRoot, sourceName).Replace('\\', '/');
+            binds.Add($"{hostSource}:{target}:ro");
         }
     }
 
